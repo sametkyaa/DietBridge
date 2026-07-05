@@ -1,12 +1,14 @@
 
 import React from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './features/auth/context/AuthContext';
 import { AppointmentProvider } from './features/appointments/context/AppointmentContext';
 import ProtectedRoute from './shared/components/ProtectedRoute';
 import DashboardLayout from './shared/components/DashboardLayout';
 import LoginPage from './features/auth/pages/LoginPage';
 import RegisterPage from './features/auth/pages/RegisterPage';
+import ForgotPasswordPage from './features/auth/pages/ForgotPasswordPage';
+import ResetPasswordPage from './features/auth/pages/ResetPasswordPage';
 
 // Feature Pages
 import DashboardPage from './features/dashboard/pages/DashboardPage';
@@ -32,6 +34,8 @@ const App = () => {
             {/* Public Route */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
 
             {/* Protected Dashboard Routes */}
             <Route element={<ProtectedRoute />}>
