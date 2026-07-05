@@ -1,31 +1,63 @@
 
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../../../lib/supabaseClient';
 import { APP_LOGO } from '../../../shared/constants';
 import { ArrowRight, Mail, Lock, AlertCircle } from 'lucide-react';
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (location.state?.error) {
+      setError(location.state.error);
+      // Clean up the state so it doesn't persist on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error: loginError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      setError(error.message);
+    if (loginError) {
+      setError(loginError.message);
       setLoading(false);
-    } else {
+      return;
+    }
+
+    if (authData?.user) {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (profileError || !profile) {
+        await supabase.auth.signOut();
+        setError('Kullanıcı profili bulunamadı.');
+        setLoading(false);
+        return;
+      }
+
+      if (profile.role !== 'dietitian') {
+        await supabase.auth.signOut();
+        setError('Bu panel yalnızca diyetisyenler içindir. Danışan hesabınızla mobil uygulamadan giriş yapabilirsiniz.');
+        setLoading(false);
+        return;
+      }
+
       // Redirect to dashboard on success
       navigate('/');
     }
@@ -69,12 +101,7 @@ const LoginPage = () => {
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex justify-between items-center ml-1">
-              <label className="text-sm font-bold text-slate-700">Şifre</label>
-              <Link to="/forgot-password" className="text-sm text-primary font-bold hover:underline transition-colors">
-                Şifremi unuttum
-              </Link>
-            </div>
+            <label className="text-sm font-bold text-slate-700 ml-1">Şifre</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
               <input
@@ -101,6 +128,12 @@ const LoginPage = () => {
               </>
             )}
           </button>
+
+          <div className="text-center mt-4">
+            <Link to="/forgot-password" className="text-sm text-primary font-bold hover:underline transition-colors">
+              Şifremi unuttum
+            </Link>
+          </div>
         </form>
 
         <div className="mt-8 text-center">

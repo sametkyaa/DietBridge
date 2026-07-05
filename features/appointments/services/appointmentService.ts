@@ -20,12 +20,18 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
       .order('date', { ascending: true });
 
     if (error) {
-      console.warn('Supabase fetch error, using mock data:', error.message);
-      return getMockAppointments();
+      console.warn('Supabase fetch error:', error.message);
+      if (import.meta.env.VITE_ENABLE_MOCK_DATA === 'true') {
+        return getMockAppointments();
+      }
+      return [];
     }
 
     if (!data || data.length === 0) {
-      return getMockAppointments();
+      if (import.meta.env.VITE_ENABLE_MOCK_DATA === 'true') {
+        return getMockAppointments();
+      }
+      return [];
     }
 
     return data.map((item: any) => ({
@@ -41,8 +47,11 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
       status: item.status,
     }));
   } catch (err: any) {
-    console.warn('Network error in fetchAppointments, using fallback:', err.message || err);
-    return getMockAppointments();
+    console.warn('Network error in fetchAppointments:', err.message || err);
+    if (import.meta.env.VITE_ENABLE_MOCK_DATA === 'true') {
+      return getMockAppointments();
+    }
+    return [];
   }
 };
 

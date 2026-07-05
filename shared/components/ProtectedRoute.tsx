@@ -1,10 +1,16 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import VerificationStatusPage from '../../features/auth/pages/VerificationStatusPage';
 
 const ProtectedRoute = () => {
-  const { user, userRole, dietitianProfile, loading } = useAuth();
+  const { user, userRole, dietitianProfile, loading, signOut } = useAuth();
+
+  useEffect(() => {
+    if (!loading && user && userRole && userRole !== 'dietitian') {
+      signOut();
+    }
+  }, [user, userRole, loading, signOut]);
 
   if (loading) {
     return (
@@ -19,6 +25,10 @@ const ProtectedRoute = () => {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (userRole && userRole !== 'dietitian') {
+    return <Navigate to="/login" replace state={{ error: 'Bu panel yalnızca diyetisyenler içindir. Danışan hesabınızla mobil uygulamadan giriş yapabilirsiniz.' }} />;
   }
 
   // Only block access if the user is a dietitian and not verified
