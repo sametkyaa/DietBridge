@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { supabase } from '../../../lib/supabaseClient';
 import { APP_LOGO } from '../../../shared/constants';
 import { ArrowRight, Mail, Lock, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { signIn, accessState, authError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,47 +22,24 @@ const LoginPage = () => {
     }
   }, [location.state]);
 
+  useEffect(() => {
+    if (['allowed', 'pending', 'rejected', 'blocked_missing_role', 'blocked_missing_dietitian_profile', 'access_error'].includes(accessState.status)) {
+      navigate('/', { replace: true });
+    }
+  }, [accessState.status, navigate]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { data: authData, error: loginError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (loginError) {
-      setError(loginError.message);
-      setLoading(false);
-      return;
-    }
-
-    if (authData?.user) {
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', authData.user.id)
-        .single();
-
-      if (profileError || !profile) {
-        await supabase.auth.signOut();
-        setError('Kullanıcı profili bulunamadı.');
-        setLoading(false);
-        return;
-      }
-
-      if (profile.role !== 'dietitian') {
-        await supabase.auth.signOut();
-        setError('Bu panel yalnızca diyetisyenler içindir. Danışan hesabınızla mobil uygulamadan giriş yapabilirsiniz.');
-        setLoading(false);
-        return;
-      }
-
-      // Redirect to dashboard on success
-      navigate('/');
-    }
+    const result = await signIn(email, password);
+    if (!result.success) setError(result.error || 'Giriş yapılamadı.');
+    setLoading(false);
   };
+
+  const displayError = error || authError || ('message' in accessState ? accessState.message : null);
+  const isResolvingAccess = accessState.status === 'initializing' || accessState.status === 'resolving_access';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center p-4">
@@ -77,10 +55,10 @@ const LoginPage = () => {
           </p>
         </div>
 
-        {error && (
+        {displayError && (
           <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-6 text-sm flex items-start gap-2">
             <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-            <span>{error === 'Invalid login credentials' ? 'E-posta veya şifre hatalı.' : error}</span>
+            <span>{displayError}</span>
           </div>
         )}
 
@@ -117,10 +95,10 @@ const LoginPage = () => {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || isResolvingAccess}
             className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-4 rounded-xl shadow-lg shadow-primary/30 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed mt-4"
           >
-            {loading ? (
+            {loading || isResolvingAccess ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
               <>

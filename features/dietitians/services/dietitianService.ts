@@ -16,6 +16,14 @@ export interface RegistrationData {
   diplomaFile: File;
 }
 
+export type RegistrationStatus = 'complete' | 'email_confirmation_required' | 'incomplete_profile' | 'failed';
+
+export interface RegistrationResult {
+  success: boolean;
+  status: RegistrationStatus;
+  error?: string;
+}
+
 /**
  * Helper function to sanitize file names (remove Turkish chars, spaces)
  */
@@ -61,7 +69,8 @@ export const uploadDiplomaFile = async (authUserId: string, file: File): Promise
  * 2. Upload Diploma (Storage) via helper
  * 3. Create Profile (Database)
  */
-export const registerDietitian = async (data: RegistrationData): Promise<{ success: boolean; error?: string }> => {
+export const registerDietitian = async (data: RegistrationData): Promise<RegistrationResult> => {
+  let authUserCreated = false;
   try {
     const fullName = [data.firstName, data.lastName]
       .map(v => String(v || '').trim())
@@ -87,20 +96,32 @@ export const registerDietitian = async (data: RegistrationData): Promise<{ succe
     });
 
     if (authError) throw authError;
-    if (!authData.user) throw new Error('User creation failed');
+    if (!authData.user) {
+      return { success: false, status: 'failed', error: 'Hesap oluşturulamadı. Lütfen tekrar deneyin.' };
+    }
 
     const userId = authData.user.id;
+    authUserCreated = true;
+
+    if (!authData.session) {
+      return {
+        success: false,
+        status: 'email_confirmation_required',
+        error: 'Hesabınız oluşturuldu ancak e-posta doğrulaması gerekiyor. Profil kurulumu tamamlanana kadar web paneline erişemezsiniz.',
+      };
+    }
 
     // 2. Upload Diploma Image using helper
-    let diplomaUrl = '';
+    let diplomaUrl: string;
     try {
-      if (authData.session) {
-        diplomaUrl = await uploadDiplomaFile(userId, data.diplomaFile);
-      } else {
-        console.log('User created but no session. Skipping file upload.');
-      }
-    } catch (uploadError: any) {
-      console.warn('Diploma upload skipped due to error:', uploadError.message);
+      diplomaUrl = await uploadDiplomaFile(userId, data.diplomaFile);
+    } catch (uploadError: unknown) {
+      console.error('Diploma upload failed after auth signup:', uploadError);
+      return {
+        success: false,
+        status: 'incomplete_profile',
+        error: 'Hesabınız oluşturulmuş olabilir ancak diploma yüklenemedi. Profil kurulumu tamamlanmadı.',
+      };
     }
 
     // 3. Insert into 'dietitian_profiles' table and update 'profiles'
@@ -139,26 +160,25 @@ export const registerDietitian = async (data: RegistrationData): Promise<{ succe
         .from('dietitian_profiles')
         .upsert([profileData]);
 
-      if (dbError) {
-        if (dbError.code === '42501' || dbError.message.includes('row-level security')) {
-           console.warn('Profile insertion blocked by RLS. Ignoring to allow success flow.');
-        } else {
-           throw dbError;
-        }
-      }
-    } catch (dbError: any) {
+      if (dbError) throw dbError;
+    } catch (dbError: unknown) {
       console.error('Database profile insert error:', dbError);
-      throw dbError;
+      return {
+        success: false,
+        status: 'incomplete_profile',
+        error: 'Hesabınız oluşturulmuş olabilir ancak diyetisyen profiliniz tamamlanamadı. Web paneline erişim verilmedi.',
+      };
     }
 
-    return { success: true };
+    return { success: true, status: 'complete' };
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Registration error:', error);
-    if (error.message === 'Failed to fetch') {
-      return { success: false, error: 'Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin veya daha sonra tekrar deneyin.' };
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'Failed to fetch') {
+      return { success: false, status: authUserCreated ? 'incomplete_profile' : 'failed', error: 'Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin veya daha sonra tekrar deneyin.' };
     }
-    return { success: false, error: error.message || 'Kayıt işlemi sırasında bir hata oluştu.' };
+    return { success: false, status: authUserCreated ? 'incomplete_profile' : 'failed', error: authUserCreated ? 'Hesabınız oluşturulmuş olabilir ancak profil kurulumu tamamlanamadı.' : 'Kayıt işlemi sırasında bir hata oluştu.' };
   }
 };
 
