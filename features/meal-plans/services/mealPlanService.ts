@@ -16,6 +16,10 @@ export interface MealInput {
   macros?: any; // JSONB
   photo_url?: string;
   is_eaten?: boolean;
+  sort_order?: number;
+  time?: string;
+  source?: string;
+  recipe_id?: string | null;
 }
 
 /**
@@ -70,14 +74,37 @@ export const createDailyMealPlan = async (
       title: m.title,
       calories: m.calories || 0,
       macros: m.macros || {},
-      is_eaten: false
+      photo_url: m.photo_url || null,
+      is_eaten: false,
+      sort_order: m.sort_order || 0,
+      time: m.time || '00:00',
+      source: m.source || 'manual',
+      recipe_id: m.recipe_id || null
+    }));
+
+    // For backwards compatibility, if the column doesn't exist, we fallback to macros storage.
+    // We'll store it in macros as well to ensure it survives if the DB doesn't have the column yet.
+    const safeMealsPayload = mealsPayload.map(m => ({
+        ...m,
+        macros: { ...m.macros, _sortOrder: m.sort_order, _time: m.time }
     }));
 
     const { error: mealsError } = await supabase
       .from('meals')
-      .insert(mealsPayload);
+      .insert(safeMealsPayload);
 
-    if (mealsError) throw mealsError;
+    // If there is an error due to missing columns, try without them
+    if (mealsError && (mealsError.code === 'PGRST204' || mealsError.code === '42703')) {
+        console.warn("sort_order or time columns not found, using macros fallback.");
+        const fallbackPayload = safeMealsPayload.map(m => {
+            const { sort_order, time, source, recipe_id, ...rest } = m as any;
+            return rest;
+        });
+        const { error: fallbackError } = await supabase.from('meals').insert(fallbackPayload);
+        if (fallbackError) throw fallbackError;
+    } else if (mealsError) {
+        throw mealsError;
+    }
   }
 
   return { success: true, planId };
@@ -102,13 +129,45 @@ export const fetchWeeklyMealPlan = async (
         calories,
         macros,
         photo_url,
-        is_eaten
+        is_eaten,
+        sort_order,
+        time,
+        source,
+        recipe_id
       )
     `)
     .eq('client_id', clientId)
     .eq('dietitian_id', dietitianId)
     .gte('plan_date', startDate)
     .lte('plan_date', endDate);
+
+  // If selecting sort_order fails due to missing column, fallback to query without it
+  if (error && (error.code === 'PGRST200' || error.code === '42703')) {
+      console.warn("sort_order or time columns not found, fetching without them.");
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('meal_plans')
+        .select(`
+          id,
+          plan_date,
+          notes,
+          meals (
+            id,
+            type,
+            title,
+            calories,
+            macros,
+            photo_url,
+            is_eaten
+          )
+        `)
+        .eq('client_id', clientId)
+        .eq('dietitian_id', dietitianId)
+        .gte('plan_date', startDate)
+        .lte('plan_date', endDate);
+      
+      if (fallbackError) throw fallbackError;
+      return fallbackData;
+  }
 
   if (error) throw error;
   return data;

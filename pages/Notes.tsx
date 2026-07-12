@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Search, 
   Plus, 
@@ -88,6 +89,7 @@ const INITIAL_NOTES: Note[] = [
 const CATEGORIES = ['Tümü', 'İş', 'Beslenme', 'Gözlem', 'Supplement', 'Hatırlatma'];
 
 const Notes = () => {
+  const navigate = useNavigate();
   // --- State ---
   const [activeTab, setActiveTab] = useState<'general' | 'client'>('general');
   const [notes, setNotes] = useState<Note[]>(INITIAL_NOTES);

@@ -19,7 +19,7 @@ import { USER_AVATAR } from '../../../shared/constants';
 import { useAuth } from '../../auth/context/AuthContext';
 
 const SettingsPage = () => {
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState('security');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { signOut } = useAuth();
@@ -50,7 +50,7 @@ const SettingsPage = () => {
   };
 
   const tabs = [
-    { id: 'profile', label: 'Profil Bilgileri', icon: User },
+    { id: 'profile', label: 'Profil Bilgileri', icon: User, href: '/profile' },
     { id: 'security', label: 'Giriş ve Güvenlik', icon: Lock },
     { id: 'notifications', label: 'Bildirimler', icon: Bell },
     { id: 'integrations', label: 'Entegrasyonlar', icon: LinkIcon },
@@ -74,16 +74,22 @@ const SettingsPage = () => {
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    if (tab.href) {
+                      navigate(tab.href);
+                    } else {
+                      setActiveTab(tab.id);
+                    }
+                  }}
                   className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium rounded-xl transition-all ${
-                    activeTab === tab.id
+                    activeTab === tab.id && !tab.href
                       ? 'bg-emerald-50 text-emerald-700 shadow-sm'
                       : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
-                  <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-emerald-600' : 'text-slate-400'}`} />
+                  <tab.icon className={`w-5 h-5 ${activeTab === tab.id && !tab.href ? 'text-emerald-600' : 'text-slate-400'}`} />
                   {tab.label}
-                  {activeTab === tab.id && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
+                  {activeTab === tab.id && !tab.href && <ChevronRight className="w-4 h-4 ml-auto opacity-50" />}
                 </button>
               ))}
             </nav>
@@ -102,75 +108,6 @@ const SettingsPage = () => {
         {/* Content Area */}
         <div className="col-span-12 md:col-span-9 space-y-6">
           
-          {/* PROFILE SETTINGS */}
-          {activeTab === 'profile' && (
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 md:p-8 animate-in fade-in slide-in-from-right-4 duration-300">
-              <h2 className="text-xl font-bold text-slate-800 mb-6 pb-4 border-b border-slate-100">Profil Bilgileri</h2>
-              
-              {/* Avatar Upload */}
-              <div className="flex items-center gap-6 mb-8">
-                <div className="relative group cursor-pointer">
-                  <img src={USER_AVATAR} alt="Profil" className="w-24 h-24 rounded-full object-cover ring-4 ring-slate-50" />
-                  <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Camera className="w-8 h-8 text-white" />
-                  </div>
-                </div>
-                <div>
-                   <h3 className="font-bold text-slate-800">Profil Fotoğrafı</h3>
-                   <p className="text-xs text-slate-500 mt-1 mb-3">PNG, JPG (Maks. 5MB)</p>
-                   <div className="flex gap-3">
-                     <button className="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-slate-900 transition-colors">Yükle</button>
-                     <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors">Kaldır</button>
-                   </div>
-                </div>
-              </div>
-
-              {/* Form */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Ad Soyad</label>
-                  <input type="text" defaultValue="Dyt. Zeynep Yılmaz" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Ünvan</label>
-                  <input type="text" defaultValue="Uzman Diyetisyen" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">E-posta</label>
-                  <input type="email" defaultValue="zeynep@dietbridge.com" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Telefon</label>
-                  <input type="tel" defaultValue="+90 555 123 45 67" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                </div>
-                <div className="col-span-1 md:col-span-2 space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Hakkında (Biyografi)</label>
-                  <textarea rows={4} defaultValue="Hacettepe Üniversitesi Beslenme ve Diyetetik bölümü mezunuyum. Sporcu beslenmesi ve kilo yönetimi üzerine uzmanlaştım." className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm resize-none" />
-                  <p className="text-xs text-slate-400 text-right">0 / 500</p>
-                </div>
-              </div>
-
-              <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end">
-                <button 
-                  onClick={handleSave}
-                  disabled={isLoading}
-                  className="px-6 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-all active:scale-95 flex items-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      Kaydediliyor...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" /> Değişiklikleri Kaydet
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* SECURITY SETTINGS */}
           {activeTab === 'security' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">

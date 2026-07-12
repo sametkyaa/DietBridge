@@ -40,9 +40,9 @@ const Sidebar = () => {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex-col justify-between z-20">
         <div className="p-6">
-          <div className="flex items-center gap-3 mb-10">
-            <img src={APP_LOGO} alt="DietBridge Logo" className="w-10 h-10 object-contain" />
-            <span className="text-2xl font-bold text-slate-800 tracking-tight">DietBridge</span>
+          <div className="flex items-center mb-10">
+            <img src={APP_LOGO} alt="DietBridge Logo" className="h-10 w-auto object-contain" />
+            <span className="text-2xl font-bold text-slate-800 tracking-tight ml-3">DietBridge</span>
           </div>
 
           <nav className="space-y-1">

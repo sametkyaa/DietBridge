@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { APP_LOGO } from '../../../shared/constants';
+import { nutritionUniversities } from '../../../shared/constants/nutritionUniversities';
 import { User, Mail, Phone, Lock, BookOpen, Briefcase, Award, FileText, Upload, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 import { registerDietitian, RegistrationData } from '../../dietitians/services/dietitianService';
 
@@ -19,7 +20,7 @@ const RegisterPage = () => {
     password: '',
     passwordConfirm: '',
     university: '',
-    graduationYear: '',
+    graduationDate: '',
     experienceYears: '',
     specialization: '',
     bio: '',
@@ -27,6 +28,22 @@ const RegisterPage = () => {
   });
 
   const [diplomaFile, setDiplomaFile] = useState<File | null>(null);
+  const [showUniversityDropdown, setShowUniversityDropdown] = useState(false);
+  const universityRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (universityRef.current && !universityRef.current.contains(event.target as Node)) {
+        setShowUniversityDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredUniversities = nutritionUniversities.filter(u => 
+    u.toLocaleLowerCase('tr-TR').includes(formData.university.toLocaleLowerCase('tr-TR'))
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -66,7 +83,36 @@ const RegisterPage = () => {
     e.preventDefault();
     setError(null);
 
+    const normalizedFirstName = formData.firstName?.trim() || '';
+    const normalizedLastName = formData.lastName?.trim() || '';
+
+    if (!normalizedFirstName || !normalizedLastName) {
+      setError("Lütfen adınızı ve soyadınızı eksiksiz girin.");
+      return;
+    }
+
     // Validation
+    if (!formData.university) {
+      setError("Lütfen üniversitenizi seçin.");
+      return;
+    }
+    if (!nutritionUniversities.includes(formData.university)) {
+      setError("Lütfen listeden geçerli bir üniversite seçin.");
+      return;
+    }
+    if (!formData.graduationDate) {
+      setError("Lütfen mezuniyet tarihinizi seçin.");
+      return;
+    }
+    const selectedDate = new Date(formData.graduationDate);
+    if (selectedDate > new Date()) {
+      setError("Mezuniyet tarihi gelecekte olamaz.");
+      return;
+    }
+    if (selectedDate.getFullYear() < 1950) {
+      setError("Lütfen geçerli bir mezuniyet tarihi seçin.");
+      return;
+    }
     if (formData.password !== formData.passwordConfirm) {
       setError("Şifreler eşleşmiyor.");
       return;
@@ -85,11 +131,11 @@ const RegisterPage = () => {
     const payload: RegistrationData = {
       email: formData.email,
       password: formData.password,
-      firstName: formData.firstName,
-      lastName: formData.lastName,
+      firstName: normalizedFirstName,
+      lastName: normalizedLastName,
       phone: formData.phone,
       university: formData.university,
-      graduationYear: formData.graduationYear,
+      graduationYear: new Date(formData.graduationDate).getFullYear().toString(),
       experienceYears: formData.experienceYears,
       specialization: formData.specialization,
       bio: formData.bio,
@@ -137,7 +183,7 @@ const RegisterPage = () => {
         <div className="bg-white p-8 md:p-12">
           <div className="flex flex-col items-center mb-10">
             <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mb-4 shadow-sm">
-              <img src={APP_LOGO} alt="Logo" className="w-10 h-10 object-contain" />
+              <img src={APP_LOGO} alt="DietBridge" className="h-12 w-12 object-contain" />
             </div>
             <h1 className="text-3xl font-bold text-slate-800 text-center">Diyetisyen Kaydı</h1>
             <p className="text-slate-500 mt-2 text-center text-sm">
@@ -209,15 +255,55 @@ const RegisterPage = () => {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="col-span-1 md:col-span-2 space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Üniversite / Bölüm</label>
-                  <div className="relative">
+                  <label className="text-sm font-bold text-slate-700">Üniversite</label>
+                  <div className="relative" ref={universityRef}>
                     <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="text" name="university" required value={formData.university} onChange={handleChange} placeholder="Örn: Hacettepe Üniversitesi - Beslenme ve Diyetetik" className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
+                    <input 
+                      type="text" 
+                      name="university" 
+                      required 
+                      value={formData.university} 
+                      onChange={(e) => {
+                        handleChange(e);
+                        setShowUniversityDropdown(true);
+                      }} 
+                      onFocus={() => setShowUniversityDropdown(true)}
+                      autoComplete="off"
+                      placeholder="Üniversite adı yazın veya seçin" 
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" 
+                    />
+                    {showUniversityDropdown && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                        {filteredUniversities.length > 0 ? filteredUniversities.map(uni => (
+                          <div 
+                            key={uni}
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, university: uni }));
+                              setShowUniversityDropdown(false);
+                            }}
+                            className="px-4 py-3 hover:bg-slate-50 cursor-pointer text-sm text-slate-700 border-b border-slate-50 last:border-0"
+                          >
+                            {uni}
+                          </div>
+                        )) : (
+                          <div className="px-4 py-3 text-sm text-slate-500 text-center">Eşleşen üniversite bulunamadı.</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Mezuniyet Yılı</label>
-                  <input type="number" name="graduationYear" required value={formData.graduationYear} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
+                  <label className="text-sm font-bold text-slate-700">Mezuniyet Tarihi</label>
+                  <input 
+                    type="date" 
+                    name="graduationDate" 
+                    required 
+                    value={formData.graduationDate} 
+                    onChange={handleChange} 
+                    max={new Date().toISOString().split('T')[0]}
+                    min="1950-01-01"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" 
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-bold text-slate-700">Deneyim (Yıl)</label>

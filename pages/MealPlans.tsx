@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation , useNavigate} from 'react-router-dom';
 import { 
   Search, 
   ChevronDown, 
@@ -19,7 +19,11 @@ import {
   MoreHorizontal,
   Type,
   Check,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  ArrowUp,
+  ArrowDown,
+  Upload,
+  Loader2
 } from 'lucide-react';
 import { RECIPES, USER_AVATAR } from '../constants';
 import { Client, Recipe } from '../shared/types';
@@ -60,10 +64,13 @@ interface MealRow {
   time: string;
 }
 
+const LAST_MEAL_PLAN_CLIENT_KEY = 'dietbridge:lastMealPlanClientId';
+
 // Plan State: { Day: { MealID: Content } }
 type PlanState = Record<string, Record<string, Recipe | string | null>>;
 
 const MealPlans = () => {
+  const navigate = useNavigate();
   const location = useLocation();
   // --- State ---
   const [clients, setClients] = useState<Client[]>([]);
@@ -82,12 +89,25 @@ const MealPlans = () => {
   ]);
 
   const [weeklyPlan, setWeeklyPlan] = useState<PlanState>({});
+
+  // Modal State
+  const [isAddMealModalOpen, setIsAddMealModalOpen] = useState(false);
+  const [newMealType, setNewMealType] = useState('Ara Öğün');
+  const [newMealTime, setNewMealTime] = useState('15:00');
+  const [mealToDelete, setMealToDelete] = useState<string | null>(null);
   
   // Interaction State
   const [activeCell, setActiveCell] = useState<{ day: string; mealId: string } | null>(null);
   const [recipeSearch, setRecipeSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Tümü');
   const [customMealText, setCustomMealText] = useState('');
+  const [customMealCalories, setCustomMealCalories] = useState('');
+  const [customMealProtein, setCustomMealProtein] = useState('');
+  const [customMealCarbs, setCustomMealCarbs] = useState('');
+  const [customMealFat, setCustomMealFat] = useState('');
+  const [customMealPhoto, setCustomMealPhoto] = useState<File | null>(null);
+  const [customMealPhotoPreview, setCustomMealPhotoPreview] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   // Fetch Clients
   useEffect(() => {
@@ -105,15 +125,46 @@ const MealPlans = () => {
     loadClients();
   }, []);
 
-  // Automatically select client if passed from navigation state
+  // Automatically select client if passed from navigation state or local storage
   useEffect(() => {
+    if (clients.length === 0) return;
+
     const navState = location.state as { clientId?: string } | null;
-    if (navState?.clientId && clients.length > 0) {
+    
+    // Priority 1: Navigation state
+    if (navState?.clientId) {
       const client = clients.find(c => c.id === navState.clientId);
       if (client) {
-        setSelectedClient(client);
+        setSelectedClient(prev => {
+            if (prev?.id === client.id) return prev;
+            return client;
+        });
+        localStorage.setItem(LAST_MEAL_PLAN_CLIENT_KEY, client.id);
+        return;
       }
     }
+
+    // Priority 2: LocalStorage
+    setSelectedClient((currentSelected) => {
+        if (!currentSelected) {
+            const lastClientId = localStorage.getItem(LAST_MEAL_PLAN_CLIENT_KEY);
+            if (lastClientId) {
+                const client = clients.find(c => c.id === lastClientId);
+                if (client) {
+                    return client;
+                } else {
+                    localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
+                }
+            }
+        } else {
+            const stillExists = clients.some(c => c.id === currentSelected.id);
+            if (!stillExists) {
+                localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
+                return null;
+            }
+        }
+        return currentSelected;
+    });
   }, [location.state, clients]);
 
   // Fetch Weekly Plan
@@ -154,38 +205,60 @@ const MealPlans = () => {
             return;
         }
 
-        // Process plans to find max snacks
-        let maxSnacks = 0;
+        // Process plans to reconstruct unique meal rows
+        let localMeals: MealRow[] = [];
+        const mealRowMap = new Map<string, any>();
+        
         plans.forEach(p => {
-            const snacks = p.meals.filter((m: any) => m.type === 'snack');
-            if (snacks.length > maxSnacks) maxSnacks = snacks.length;
+            p.meals.forEach((m: any) => {
+                const rowName = m.macros?._rowName || (
+                    m.type === 'breakfast' ? 'Kahvaltı' :
+                    m.type === 'lunch' ? 'Öğle' :
+                    m.type === 'dinner' ? 'Akşam' : 'Ara Öğün'
+                );
+                const time = m.time || m.macros?._time || (m.type === 'breakfast' ? '08:00' : m.type === 'lunch' ? '12:30' : m.type === 'dinner' ? '19:00' : '15:00');
+                const sortOrder = m.sort_order ?? m.macros?._sortOrder ?? 0;
+                
+                const key = `${rowName}-${time}-${sortOrder}`;
+                if (!mealRowMap.has(key)) {
+                    mealRowMap.set(key, { name: rowName, time, sortOrder });
+                }
+            });
         });
 
-        // Start with DEFAULT meals to avoid stale state from previous views
-        let localMeals = [
-            { id: 'm1', name: 'Kahvaltı', time: '08:00' },
-            { id: 'm2', name: 'Öğle', time: '12:30' },
-            { id: 'm3', name: 'Akşam', time: '19:00' }
-        ];
-        
-        // Add necessary snack rows
-        for (let i = 0; i < maxSnacks; i++) {
-            const newId = `meal-auto-${Date.now()}-${i}`;
-            localMeals.push({ id: newId, name: 'Ara Öğün', time: '15:00' });
+        if (mealRowMap.size > 0) {
+            localMeals = Array.from(mealRowMap.values())
+                .sort((a, b) => {
+                    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+                    return a.time.localeCompare(b.time);
+                })
+                .map((m, i) => ({
+                    id: `meal-loaded-${i}`,
+                    name: m.name,
+                    time: m.time
+                }));
+        } else {
+            localMeals = [
+                { id: 'm1', name: 'Kahvaltı', time: '08:00' },
+                { id: 'm2', name: 'Öğle', time: '12:30' },
+                { id: 'm3', name: 'Akşam', time: '19:00' }
+            ];
         }
 
-        // Map data to weeklyPlan
         const newWeeklyPlan: PlanState = {};
         
-        const findRowId = (type: string, snackIndex: number) => {
-            if (type === 'breakfast') return localMeals.find(r => r.name === 'Kahvaltı')?.id;
-            if (type === 'lunch') return localMeals.find(r => r.name === 'Öğle')?.id;
-            if (type === 'dinner') return localMeals.find(r => r.name === 'Akşam')?.id;
-            if (type === 'snack') {
-                const snackRows = localMeals.filter(r => r.name === 'Ara Öğün');
-                return snackRows[snackIndex]?.id;
-            }
-            return null;
+        const findRowId = (m: any) => {
+            const rowName = m.macros?._rowName || (
+                    m.type === 'breakfast' ? 'Kahvaltı' :
+                    m.type === 'lunch' ? 'Öğle' :
+                    m.type === 'dinner' ? 'Akşam' : 'Ara Öğün'
+            );
+            const time = m.time || m.macros?._time || (m.type === 'breakfast' ? '08:00' : m.type === 'lunch' ? '12:30' : m.type === 'dinner' ? '19:00' : '15:00');
+            const sortOrder = m.sort_order ?? m.macros?._sortOrder ?? 0;
+            const index = Array.from(mealRowMap.keys()).indexOf(`${rowName}-${time}-${sortOrder}`);
+            if (index !== -1 && localMeals[index]) return localMeals[index].id;
+            
+            return localMeals.find(r => mapMealTypeToDb(r.name) === m.type)?.id;
         };
 
         plans.forEach(p => {
@@ -201,15 +274,8 @@ const MealPlans = () => {
                 const dayName = DAYS[diffDays];
                 if (!newWeeklyPlan[dayName]) newWeeklyPlan[dayName] = {};
 
-                let snackCount = 0;
                 p.meals.forEach((m: any) => {
-                    let rowId;
-                    if (m.type === 'snack') {
-                        rowId = findRowId('snack', snackCount);
-                        snackCount++;
-                    } else {
-                        rowId = findRowId(m.type, 0);
-                    }
+                    let rowId = findRowId(m);
 
                     if (rowId) {
                          if (m.calories || m.macros || m.photo_url) {
@@ -222,7 +288,7 @@ const MealPlans = () => {
                                  name: m.title,
                                  calories: m.calories,
                                  macros: m.macros || { protein: 0, carbs: 0, fat: 0 },
-                                 image: m.photo_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c',
+                                 image: m.photo_url,
                                  category: category,
                                  prepTime: '15 dk',
                                  ingredients: [],
@@ -276,6 +342,12 @@ const MealPlans = () => {
     if (activeCell?.day === day && activeCell?.mealId === mealId) {
       setActiveCell(null); 
       setCustomMealText('');
+      setCustomMealCalories('');
+      setCustomMealProtein('');
+      setCustomMealCarbs('');
+      setCustomMealFat('');
+      setCustomMealPhoto(null);
+      setCustomMealPhotoPreview(null);
     } else {
       setActiveCell({ day, mealId });
       // If the cell has string content, pre-fill the input
@@ -301,16 +373,72 @@ const MealPlans = () => {
     setCustomMealText('');
   };
 
-  const handleAddCustomMeal = () => {
-    if (!activeCell || !customMealText.trim()) return;
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/jpg'].includes(file.type)) {
+         alert("Lütfen geçerli bir görsel yükleyin (jpg, png, webp)");
+         return;
+      }
+      setCustomMealPhoto(file);
+      setCustomMealPhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleAddCustomMeal = async () => {
+    if (!activeCell || !customMealText.trim() || !selectedClient) return;
+
+    let photo_url = null;
+    if (customMealPhoto) {
+       setIsUploadingPhoto(true);
+       const fileExt = customMealPhoto.name.split('.').pop();
+       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+       const filePath = `meal-plans/${selectedClient.id}/${fileName}`;
+
+       const { error: uploadError } = await supabase.storage
+         .from('meal-photos')
+         .upload(filePath, customMealPhoto);
+
+       if (uploadError) {
+          setIsUploadingPhoto(false);
+          alert("Görsel yüklenirken bir hata oluştu: " + uploadError.message);
+          return;
+       }
+
+       const { data: publicUrlData } = supabase.storage.from('meal-photos').getPublicUrl(filePath);
+       photo_url = publicUrlData.publicUrl;
+       setIsUploadingPhoto(false);
+    }
+
+    const manualMeal: any = {
+       id: `manual-${Date.now()}`,
+       name: customMealText,
+       calories: parseInt(customMealCalories) || 0,
+       macros: {
+          protein: parseInt(customMealProtein) || 0,
+          carbs: parseInt(customMealCarbs) || 0,
+          fat: parseInt(customMealFat) || 0
+       },
+       image: photo_url,
+       source: 'manual'
+    };
 
     setWeeklyPlan(prev => ({
       ...prev,
       [activeCell.day]: {
         ...(prev[activeCell.day] || {}),
-        [activeCell.mealId]: customMealText
+        [activeCell.mealId]: manualMeal
       }
     }));
+    
+    // Clear inputs
+    setCustomMealText('');
+    setCustomMealCalories('');
+    setCustomMealProtein('');
+    setCustomMealCarbs('');
+    setCustomMealFat('');
+    setCustomMealPhoto(null);
+    setCustomMealPhotoPreview(null);
   };
 
   const handleClearCell = (e: React.MouseEvent, day: string, mealId: string) => {
@@ -333,46 +461,73 @@ const MealPlans = () => {
 
   // --- Dynamic Meal Functions ---
 
-  const handleAddMeal = () => {
+  const handleAddMealSubmit = () => {
+    if (!newMealType || !newMealTime) return;
     const newId = `meal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newMeal: MealRow = { 
       id: newId, 
-      name: 'Ara Öğün', 
-      time: '15:00' 
+      name: newMealType, 
+      time: newMealTime 
     };
-    setMeals([...meals, newMeal]);
+    
+    const updatedMeals = [...meals, newMeal];
+    updatedMeals.sort((a, b) => {
+        if (a.time < b.time) return -1;
+        if (a.time > b.time) return 1;
+        return 0;
+    });
+    
+    setMeals(updatedMeals);
+    setIsAddMealModalOpen(false);
+  };
+
+  const handleMoveMeal = (index: number, direction: 'up' | 'down') => {
+      const newMeals = [...meals];
+      if (direction === 'up' && index > 0) {
+          [newMeals[index - 1], newMeals[index]] = [newMeals[index], newMeals[index - 1]];
+      } else if (direction === 'down' && index < newMeals.length - 1) {
+          [newMeals[index + 1], newMeals[index]] = [newMeals[index], newMeals[index + 1]];
+      }
+      setMeals(newMeals);
   };
 
   const handleRemoveMeal = (e: React.MouseEvent, mealId: string) => {
-    // Stop propagation to prevent triggering parent clicks
     e.preventDefault();
     e.stopPropagation();
-    
-    if (window.confirm('Bu öğün satırını silmek istediğinize emin misiniz?')) {
-      // 1. Remove from meals array
-      setMeals(prevMeals => prevMeals.filter(m => m.id !== mealId));
-      
-      // 2. Remove associated data from weekly plan
-      setWeeklyPlan(prevPlan => {
-        const newPlan = { ...prevPlan };
-        Object.keys(newPlan).forEach(day => {
-          if (newPlan[day]) {
-            const dayPlan = { ...newPlan[day] };
-            if (dayPlan[mealId]) {
-              delete dayPlan[mealId];
-              newPlan[day] = dayPlan;
-            }
-          }
-        });
-        return newPlan;
-      });
+    setMealToDelete(mealId);
+  };
 
-      // 3. Clear active cell if it was the deleted meal
-      if (activeCell?.mealId === mealId) {
-        setActiveCell(null);
-        setCustomMealText('');
-      }
+  const executeRemoveMeal = () => {
+    if (!mealToDelete) return;
+    const mealId = mealToDelete;
+    
+    setMeals(prevMeals => prevMeals.filter(m => m.id !== mealId));
+    
+    setWeeklyPlan(prevPlan => {
+      const newPlan = { ...prevPlan };
+      Object.keys(newPlan).forEach(day => {
+        if (newPlan[day]) {
+          const dayPlan = { ...newPlan[day] };
+          if (dayPlan[mealId]) {
+            delete dayPlan[mealId];
+            newPlan[day] = dayPlan;
+          }
+        }
+      });
+      return newPlan;
+    });
+
+    if (activeCell?.mealId === mealId) {
+      setActiveCell(null);
+      setCustomMealText('');
+      setCustomMealCalories('');
+      setCustomMealProtein('');
+      setCustomMealCarbs('');
+      setCustomMealFat('');
+      setCustomMealPhoto(null);
+      setCustomMealPhotoPreview(null);
     }
+    setMealToDelete(null);
   };
 
   const handleUpdateMeal = (id: string, field: 'name' | 'time', value: string) => {
@@ -428,15 +583,22 @@ const MealPlans = () => {
             
             let mealData: any = {
               type: mealType,
-              title: typeof content === 'string' ? content : content.name,
-              is_eaten: false
+              title: typeof content === 'string' ? content : (content as any).name,
+              is_eaten: false,
+              sort_order: meals.findIndex(m => m.id === mealRow.id),
+              time: mealRow.time,
+              macros: { _rowName: mealRow.name }
             };
 
             if (typeof content !== 'string') {
-              // It's a recipe
-              mealData.calories = content.calories;
-              mealData.macros = content.macros;
-              mealData.photo_url = content.image;
+              // It's a recipe or manual
+              mealData.calories = (content as any).calories;
+              mealData.macros = { ...mealData.macros, ...(content as any).macros };
+              mealData.photo_url = (content as any).image;
+              mealData.source = (content as any).source || 'recipe';
+              mealData.recipe_id = mealData.source === 'recipe' ? (content as any).id : null;
+            } else {
+              mealData.source = 'manual';
             }
 
             dayMeals.push(mealData);
@@ -516,7 +678,7 @@ const MealPlans = () => {
                        {clients.map(client => (
                          <button
                            key={client.id}
-                           onClick={() => { setSelectedClient(client); setIsClientDropdownOpen(false); }}
+                           onClick={() => { setSelectedClient(client); localStorage.setItem(LAST_MEAL_PLAN_CLIENT_KEY, client.id); setIsClientDropdownOpen(false); }}
                            className="w-full flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors group"
                          >
                            <img src={client.avatar} className="w-8 h-8 rounded-full object-cover group-hover:ring-2 ring-primary/20" alt={client.name} />
@@ -556,7 +718,9 @@ const MealPlans = () => {
 
             <div className="h-8 w-px bg-slate-200"></div>
 
+            <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
             <img src={USER_AVATAR} className="w-10 h-10 rounded-full border border-slate-200 object-cover" alt="Dietitian" />
+          </button>
           </div>
         </header>
 
@@ -635,8 +799,11 @@ const MealPlans = () => {
                        
                        {/* Row Header (Editable Meal Name & Time) */}
                        <div className="bg-slate-50/50 p-2 flex flex-col justify-center items-center group relative border-r border-slate-100 hover:bg-slate-100/80 transition-colors">
-                          
-                          <div className="flex flex-col items-center w-full px-1 gap-1 relative z-10">
+                          <div className="absolute left-1 top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-50">
+                             <button disabled={idx === 0} onClick={() => handleMoveMeal(idx, 'up')} className="p-0.5 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"><ArrowUp className="w-3.5 h-3.5" /></button>
+                             <button disabled={idx === meals.length - 1} onClick={() => handleMoveMeal(idx, 'down')} className="p-0.5 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"><ArrowDown className="w-3.5 h-3.5" /></button>
+                          </div>
+                          <div className="flex flex-col items-center w-full px-1 gap-1 relative z-10 pl-5">
                              {/* Meal Type Dropdown */}
                              <div className="relative w-full">
                                 <select 
@@ -693,7 +860,7 @@ const MealPlans = () => {
                                   <span className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Ekle</span>
                                </div>
                              ) : typeof cellContent === 'string' ? (
-                               // Manual Text Content
+                               // Legacy Manual Text Content
                                <div className="h-full bg-slate-100 rounded-xl p-3 text-sm text-slate-700 relative group/text">
                                   <button 
                                     onClick={(e) => handleClearCell(e, day, meal.id)}
@@ -704,7 +871,7 @@ const MealPlans = () => {
                                  {cellContent}
                                </div>
                              ) : (
-                               // Recipe Card Content
+                               // Recipe Card Content or Modern Manual Object
                                <div className="h-full bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex flex-col gap-2 relative group/card animate-in zoom-in-95 duration-200">
                                   <button 
                                     onClick={(e) => handleClearCell(e, day, meal.id)}
@@ -712,17 +879,23 @@ const MealPlans = () => {
                                   >
                                     <X className="w-3 h-3" />
                                   </button>
-                                  <div className="h-20 w-full rounded-lg overflow-hidden relative">
-                                     <img src={cellContent.image} alt={cellContent.name} className="w-full h-full object-cover" />
-                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2">
-                                        <p className="text-white text-[10px] font-bold line-clamp-1">{cellContent.name}</p>
-                                     </div>
+                                  <div className="h-20 w-full rounded-lg overflow-hidden relative bg-slate-100 flex items-center justify-center">
+                                     {cellContent.image ? (
+                                         <img src={cellContent.image} alt={cellContent.name} className="w-full h-full object-cover" />
+                                     ) : (
+                                         <span className="text-slate-400 text-xs font-medium px-2 text-center">{cellContent.name}</span>
+                                     )}
+                                     {cellContent.image && (
+                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2">
+                                            <p className="text-white text-[10px] font-bold line-clamp-1">{cellContent.name}</p>
+                                         </div>
+                                     )}
                                   </div>
                                   <div className="flex justify-between items-center px-1">
                                      <span className="text-[10px] font-bold text-orange-500 flex items-center gap-0.5">
-                                       <Flame className="w-3 h-3" /> {cellContent.calories}
+                                       <Flame className="w-3 h-3" /> {cellContent.calories || 0}
                                      </span>
-                                     <span className="text-[10px] text-slate-400">{cellContent.macros.protein}g Prot</span>
+                                     <span className="text-[10px] text-slate-400">{cellContent.macros?.protein || 0}g Prot</span>
                                   </div>
                                </div>
                              )}
@@ -735,7 +908,7 @@ const MealPlans = () => {
                   {/* Add New Meal Row Button */}
                   <div className="border-t border-slate-200 bg-slate-50 p-2">
                     <button 
-                      onClick={handleAddMeal}
+                      onClick={() => setIsAddMealModalOpen(true)}
                       className="w-full py-3 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 font-medium hover:border-primary hover:text-primary hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
                     >
                        <Plus className="w-4 h-4" /> Yeni Öğün Ekle
@@ -816,22 +989,87 @@ const MealPlans = () => {
                       <Edit2 className="w-3 h-3" />
                       Manuel Ekleme / Düzenleme
                    </div>
-                   <div className="flex gap-2">
+                   <div className="flex flex-col gap-3">
                       <input 
                         type="text"
                         value={customMealText}
                         onChange={(e) => setCustomMealText(e.target.value)}
-                        placeholder="Örn: 2 Haşlanmış Yumurta..."
-                        className="flex-1 text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddCustomMeal()}
+                        placeholder="Yemek Adı (Örn: 2 Haşlanmış Yumurta...)"
+                        className="w-full text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
                       />
-                      <button 
-                        onClick={handleAddCustomMeal}
-                        disabled={!customMealText.trim()}
-                        className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                         <Check className="w-4 h-4" />
-                      </button>
+                      
+                      <div className="flex gap-2">
+                        <input
+                           type="number"
+                           placeholder="Kalori (kcal)"
+                           value={customMealCalories}
+                           onChange={(e) => setCustomMealCalories(e.target.value)}
+                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
+                        />
+                        <input
+                           type="number"
+                           placeholder="Protein (g)"
+                           value={customMealProtein}
+                           onChange={(e) => setCustomMealProtein(e.target.value)}
+                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
+                        />
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <input
+                           type="number"
+                           placeholder="Karb (g)"
+                           value={customMealCarbs}
+                           onChange={(e) => setCustomMealCarbs(e.target.value)}
+                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
+                        />
+                        <input
+                           type="number"
+                           placeholder="Yağ (g)"
+                           value={customMealFat}
+                           onChange={(e) => setCustomMealFat(e.target.value)}
+                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                         {customMealPhotoPreview ? (
+                            <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-indigo-200 flex-shrink-0">
+                               <img src={customMealPhotoPreview} className="w-full h-full object-cover" />
+                               <button 
+                                 onClick={() => {
+                                    setCustomMealPhoto(null);
+                                    setCustomMealPhotoPreview(null);
+                                 }}
+                                 className="absolute -top-1 -right-1 bg-white rounded-full text-red-500 shadow-sm"
+                               >
+                                 <X className="w-4 h-4" />
+                               </button>
+                            </div>
+                         ) : (
+                            <label className="flex-1 flex flex-col items-center justify-center h-16 border-2 border-dashed border-indigo-200 rounded-lg bg-indigo-50/50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
+                               <div className="flex items-center gap-2 text-indigo-500">
+                                  <Upload className="w-4 h-4" />
+                                  <span className="text-[11px] font-medium">Görsel (Opsiyonel)</span>
+                               </div>
+                               <input 
+                                  type="file" 
+                                  accept="image/jpeg, image/png, image/webp" 
+                                  className="hidden" 
+                                  onChange={handlePhotoChange} 
+                               />
+                            </label>
+                         )}
+                         
+                         <button 
+                           onClick={handleAddCustomMeal}
+                           disabled={!customMealText.trim() || isUploadingPhoto}
+                           className="h-16 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex flex-col items-center justify-center gap-1 font-medium flex-shrink-0"
+                         >
+                            {isUploadingPhoto ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                            <span className="text-[10px]">{isUploadingPhoto ? 'Yükleniyor...' : 'Ekle'}</span>
+                         </button>
+                      </div>
                    </div>
                 </div>
               )}
@@ -920,6 +1158,70 @@ const MealPlans = () => {
         </div>
       </aside>
 
+
+      {isAddMealModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+             <div className="p-6">
+                <h3 className="text-lg font-bold text-slate-800 mb-4">Yeni Öğün Ekle</h3>
+                <div className="space-y-4">
+                   <div>
+                     <label className="block text-sm font-bold text-slate-700 mb-1.5">Öğün Tipi</label>
+                     <select 
+                       value={newMealType}
+                       onChange={(e) => setNewMealType(e.target.value)}
+                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                     >
+                       {MEAL_OPTIONS.map(opt => (
+                         <option key={opt} value={opt}>{opt}</option>
+                       ))}
+                     </select>
+                   </div>
+                   <div>
+                     <label className="block text-sm font-bold text-slate-700 mb-1.5">Öğün Saati</label>
+                     <input 
+                       type="time" 
+                       value={newMealTime}
+                       onChange={(e) => setNewMealTime(e.target.value)}
+                       onClick={(e) => {
+                         try {
+                           if ('showPicker' in HTMLInputElement.prototype) {
+                             (e.target as HTMLInputElement).showPicker();
+                           }
+                         } catch (err) {
+                           // Ignore unsupported
+                         }
+                       }}
+                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
+                     />
+                   </div>
+                </div>
+                <div className="mt-6 flex gap-3 justify-end">
+                   <button onClick={() => setIsAddMealModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">İptal</button>
+                   <button onClick={handleAddMealSubmit} className="px-4 py-2 text-sm font-bold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-md shadow-primary/30 transition-all active:scale-95">Ekle</button>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {mealToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+             <div className="p-6">
+                <div className="flex items-center gap-3 mb-2 text-red-600">
+                   <div className="p-2 bg-red-50 rounded-full"><Trash2 className="w-5 h-5" /></div>
+                   <h3 className="text-lg font-bold text-slate-800">Öğünü Sil</h3>
+                </div>
+                <p className="text-sm text-slate-600 mb-6 pl-12">Bu öğün satırını silmek istiyor musunuz?</p>
+                <div className="flex gap-3 justify-end">
+                   <button onClick={() => setMealToDelete(null)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">Vazgeç</button>
+                   <button onClick={executeRemoveMeal} className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md shadow-red-600/30 transition-all active:scale-95">Evet, Sil</button>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

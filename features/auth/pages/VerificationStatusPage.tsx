@@ -12,7 +12,7 @@ const VerificationStatusPage = () => {
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center p-4">
       <div className="bg-white p-8 md:p-12 rounded-3xl shadow-xl max-w-lg w-full text-center border border-slate-100 animate-in fade-in zoom-in duration-300">
         <div className="flex justify-center mb-8">
-          <img src={APP_LOGO} alt="Logo" className="w-16 h-16 object-contain" />
+          <img src={APP_LOGO} alt="DietBridge" className="h-12 w-12 object-contain" />
         </div>
 
         {isRejected ? (

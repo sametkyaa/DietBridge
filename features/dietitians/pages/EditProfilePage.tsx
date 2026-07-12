@@ -33,9 +33,18 @@ const EditProfilePage = () => {
     setSaving(true);
     setError(null);
 
+    const normalizedFirstName = profile.first_name?.trim() || '';
+    const normalizedLastName = profile.last_name?.trim() || '';
+
+    if (!normalizedFirstName || !normalizedLastName) {
+      setError("Lütfen adınızı ve soyadınızı eksiksiz girin.");
+      setSaving(false);
+      return;
+    }
+
     const result = await updateDietitianProfile({
-      first_name: profile.first_name,
-      last_name: profile.last_name,
+      first_name: normalizedFirstName,
+      last_name: normalizedLastName,
       phone: profile.phone,
       university: profile.university,
       graduation_year: profile.graduation_year,

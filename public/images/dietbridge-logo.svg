@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <!-- Left Person -->
+  <circle cx="150" cy="150" r="40" fill="#22c55e" />
+  <!-- Body/Bridge left -->
+  <path d="M 150 190 Q 150 300 50 350 L 80 400 Q 180 340 220 280 L 200 450 L 150 450 L 200 320 Z" fill="#22c55e" />
+  
+  <!-- Right Person -->
+  <circle cx="350" cy="150" r="40" fill="#22c55e" />
+  <!-- Body/Bridge right -->
+  <path d="M 350 190 Q 350 300 450 350 L 420 400 Q 320 340 280 280 L 300 450 L 350 450 L 300 320 Z" fill="#22c55e" />
+
+  <!-- Bridge connector -->
+  <path d="M 120 320 Q 250 250 380 320 L 380 380 Q 250 310 120 380 Z" fill="#22c55e" />
+  
+  <!-- Leaf -->
+  <path d="M 380 110 C 340 20, 450 20, 480 20 C 480 80, 420 160, 380 110 Z" fill="#84cc16" />
+</svg>

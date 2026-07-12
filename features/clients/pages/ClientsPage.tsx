@@ -24,7 +24,8 @@ const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
       </td>
       <td className="px-6 py-4">
         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-          client.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+          client.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 
+          client.status === 'Onay Bekliyor' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
         }`}>
           {client.status}
         </span>
@@ -110,7 +111,8 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
           </div>
         </div>
         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-          client.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+          client.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 
+          client.status === 'Onay Bekliyor' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
         }`}>
           {client.status}
         </span>
@@ -273,6 +275,7 @@ const ClientsPage = () => {
   );
   
   const activeClients = filteredClients.filter(c => c.status === 'Aktif');
+  const pendingClients = filteredClients.filter(c => c.status === 'Onay Bekliyor');
   const passiveClients = filteredClients.filter(c => c.status === 'Pasif');
 
   return (
@@ -286,7 +289,9 @@ const ClientsPage = () => {
           </div>
           {/* Mobile Profile Pic (visible only on small screens) */}
           <div className="md:hidden">
-             <img src={USER_AVATAR} alt="Profil" className="w-10 h-10 rounded-full border border-slate-200 object-cover" />
+             <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
+            <img src={USER_AVATAR} alt="Profil" className="w-10 h-10 rounded-full border border-slate-200 object-cover" />
+          </button>
           </div>
         </div>
         
@@ -309,11 +314,13 @@ const ClientsPage = () => {
             <Bell className="w-5 h-5" />
           </button>
           
-          <img
+          <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
+            <img
             src={USER_AVATAR}
             alt="Profil"
             className="hidden md:block w-10 h-10 rounded-full border border-slate-200 object-cover"
           />
+          </button>
         </div>
       </header>
 
@@ -373,7 +380,7 @@ const ClientsPage = () => {
                   {activeClients.map((client) => (
                     <ClientRow key={client.id} client={client} />
                   ))}
-                  {activeClients.length === 0 && searchTerm && passiveClients.length === 0 && (
+                  {activeClients.length === 0 && searchTerm && pendingClients.length === 0 && passiveClients.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
                         Arama kriterlerine uygun aktif danışan bulunamadı.
@@ -381,6 +388,22 @@ const ClientsPage = () => {
                     </tr>
                   )}
                 </tbody>
+
+                {pendingClients.length > 0 && (
+                  <tbody className="divide-y divide-slate-100 bg-amber-50/30 border-t-2 border-slate-200">
+                    <tr>
+                      <td colSpan={8} className="px-6 py-3 bg-amber-50/50 border-b border-slate-200">
+                        <p className="text-xs font-bold text-amber-600 uppercase tracking-wider flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                          Onay Bekleyenler
+                        </p>
+                      </td>
+                    </tr>
+                    {pendingClients.map((client) => (
+                      <ClientRow key={client.id} client={client} />
+                    ))}
+                  </tbody>
+                )}
 
                 {passiveClients.length > 0 && (
                   <tbody className="divide-y divide-slate-100 bg-slate-50/50 border-t-2 border-slate-200">
@@ -405,9 +428,23 @@ const ClientsPage = () => {
                   <ClientCard key={client.id} client={client} />
                 ))}
                 
-                {activeClients.length === 0 && searchTerm && passiveClients.length === 0 && (
+                {activeClients.length === 0 && searchTerm && pendingClients.length === 0 && passiveClients.length === 0 && (
                     <div className="text-center py-10 text-slate-500">
                       Arama kriterlerine uygun danışan bulunamadı.
+                    </div>
+                )}
+
+                {pendingClients.length > 0 && (
+                    <div className="pt-4">
+                      <div className="flex items-center gap-2 mb-3 px-1">
+                          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                          <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">Onay Bekleyenler</p>
+                      </div>
+                      <div className="space-y-4">
+                          {pendingClients.map((client) => (
+                            <ClientCard key={client.id} client={client} />
+                          ))}
+                      </div>
                     </div>
                 )}
 

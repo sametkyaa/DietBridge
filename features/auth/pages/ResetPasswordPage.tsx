@@ -116,7 +116,7 @@ const ResetPasswordPage = () => {
         
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mb-4 shadow-sm">
-            <img src={APP_LOGO} alt="Logo" className="w-10 h-10 object-contain" />
+            <img src={APP_LOGO} alt="DietBridge" className="h-12 w-12 object-contain" />
           </div>
           <h1 className="text-2xl font-bold text-slate-800">Yeni Şifre Belirle</h1>
           <p className="text-slate-500 mt-2 text-center text-sm">

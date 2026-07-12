@@ -63,6 +63,15 @@ export const uploadDiplomaFile = async (authUserId: string, file: File): Promise
  */
 export const registerDietitian = async (data: RegistrationData): Promise<{ success: boolean; error?: string }> => {
   try {
+    const fullName = [data.firstName, data.lastName]
+      .map(v => String(v || '').trim())
+      .filter(Boolean)
+      .join(' ');
+
+    if (!fullName) {
+      throw new Error("Ad ve soyad boş bırakılamaz.");
+    }
+
     // 1. Sign Up in Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: data.email,
@@ -71,6 +80,8 @@ export const registerDietitian = async (data: RegistrationData): Promise<{ succe
         data: {
           first_name: data.firstName,
           last_name: data.lastName,
+          full_name: fullName,
+          role: 'dietitian'
         }
       }
     });
@@ -94,17 +105,18 @@ export const registerDietitian = async (data: RegistrationData): Promise<{ succe
 
     // 3. Insert into 'dietitian_profiles' table and update 'profiles'
     try {
-      // Update base profile first
+      // Upsert base profile first
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({
-          full_name: `${data.firstName} ${data.lastName}`,
-          role: 'dietitian'
-        })
-        .eq('id', userId);
+        .upsert({
+          id: userId,
+          full_name: fullName,
+          role: 'dietitian',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
 
       if (profileError) {
-        console.error('Failed to update base profile:', profileError);
+        console.error('Failed to upsert base profile:', profileError);
         throw profileError;
       }
 
@@ -213,16 +225,39 @@ export const updateDietitianProfile = async (updates: Partial<DietitianProfile>)
     const profileUpdates: any = {};
     const dietitianUpdates: any = {};
 
-    if (updates.first_name || updates.last_name) {
-      profileUpdates.full_name = `${updates.first_name || ''} ${updates.last_name || ''}`.trim();
+    if ('first_name' in updates || 'last_name' in updates) {
+      const currentProfileResult = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+      
+      let currentFullName = currentProfileResult.data?.full_name || '';
+      let [currentFirst, ...currentLastArr] = currentFullName.split(' ');
+      let currentLast = currentLastArr.join(' ');
+
+      const newFirst = updates.first_name !== undefined ? updates.first_name : currentFirst;
+      const newLast = updates.last_name !== undefined ? updates.last_name : currentLast;
+
+      const newFullName = [newFirst, newLast]
+        .map(v => String(v || '').trim())
+        .filter(Boolean)
+        .join(' ');
+      
+      if (!newFullName) {
+        throw new Error("Diyetisyen adı boş bırakılamaz.");
+      }
+
+      profileUpdates.full_name = newFullName;
+      profileUpdates.updated_at = new Date().toISOString();
     }
 
-    if (updates.phone) dietitianUpdates.phone = updates.phone;
-    if (updates.university) dietitianUpdates.university = updates.university;
-    if (updates.graduation_year) dietitianUpdates.graduation_year = updates.graduation_year;
-    if (updates.experience_years) dietitianUpdates.experience_years = updates.experience_years;
-    if (updates.specialization) dietitianUpdates.specialization = updates.specialization;
-    if (updates.bio) dietitianUpdates.bio = updates.bio;
+    if (updates.phone !== undefined) dietitianUpdates.phone = updates.phone;
+    if (updates.university !== undefined) dietitianUpdates.university = updates.university;
+    if (updates.graduation_year !== undefined) dietitianUpdates.graduation_year = updates.graduation_year;
+    if (updates.experience_years !== undefined) dietitianUpdates.experience_years = updates.experience_years;
+    if (updates.specialization !== undefined) dietitianUpdates.specialization = updates.specialization;
+    if (updates.bio !== undefined) dietitianUpdates.bio = updates.bio;
 
     // Update dietitian_profiles
     if (Object.keys(dietitianUpdates).length > 0) {

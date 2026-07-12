@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, Bell, Phone, Video, MoreVertical, Image as ImageIcon, FileText, Send, Smile } from 'lucide-react';
 import { CONVERSATIONS, USER_AVATAR } from '../constants';
 
 const Messages = () => {
+  const navigate = useNavigate();
   const [activeConversationId, setActiveConversationId] = useState<string>(CONVERSATIONS[0].id);
   const activeConversation = CONVERSATIONS.find(c => c.id === activeConversationId) || CONVERSATIONS[0];
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -33,11 +35,13 @@ const Messages = () => {
             <Bell className="w-5 h-5" />
             <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
           </button>
-          <img
+          <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
+            <img
             src={USER_AVATAR}
             alt="Profil"
             className="w-10 h-10 rounded-full border-2 border-white shadow-sm object-cover"
           />
+          </button>
         </div>
       </header>
 

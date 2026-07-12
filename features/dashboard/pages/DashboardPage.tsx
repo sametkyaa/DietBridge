@@ -200,11 +200,13 @@ const DashboardPage = () => {
             <Bell className="w-5 h-5" />
             <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
           </button>
-          <img
+          <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
+            <img
             src={USER_AVATAR}
             alt="Profil"
             className="w-12 h-12 rounded-full border-2 border-white shadow-sm object-cover"
           />
+          </button>
         </div>
       </header>
 

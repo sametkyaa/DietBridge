@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Calendar, 
   Filter, 
@@ -62,6 +63,7 @@ const FilterDropdown = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+  const navigate = useNavigate();
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
@@ -600,7 +602,9 @@ const Analytics = () => {
                 <Download className="w-4 h-4" />
                 Dışa Aktar
               </button>
-              <img src={USER_AVATAR} className="w-10 h-10 rounded-full border border-slate-200 ml-2 shadow-sm" alt="Profil" />
+              <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
+            <img src={USER_AVATAR} className="w-10 h-10 rounded-full border border-slate-200 ml-2 shadow-sm" alt="Profil" />
+          </button>
             </div>
           </div>
 

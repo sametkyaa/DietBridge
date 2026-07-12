@@ -21,14 +21,14 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
 
     if (error) {
       console.warn('Supabase fetch error:', error.message);
-      if (import.meta.env.VITE_ENABLE_MOCK_DATA === 'true') {
+      if (process.env.VITE_ENABLE_MOCK_DATA === 'true') {
         return getMockAppointments();
       }
       return [];
     }
 
     if (!data || data.length === 0) {
-      if (import.meta.env.VITE_ENABLE_MOCK_DATA === 'true') {
+      if (process.env.VITE_ENABLE_MOCK_DATA === 'true') {
         return getMockAppointments();
       }
       return [];
@@ -48,7 +48,7 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
     }));
   } catch (err: any) {
     console.warn('Network error in fetchAppointments:', err.message || err);
-    if (import.meta.env.VITE_ENABLE_MOCK_DATA === 'true') {
+    if (process.env.VITE_ENABLE_MOCK_DATA === 'true') {
       return getMockAppointments();
     }
     return [];

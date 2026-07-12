@@ -171,7 +171,9 @@ const Recipes = () => {
           </div>
           {/* Mobile Profile Pic */}
           <div className="md:hidden">
-             <img src={USER_AVATAR} alt="Profil" className="w-10 h-10 rounded-full border border-slate-200 object-cover" />
+             <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
+            <img src={USER_AVATAR} alt="Profil" className="w-10 h-10 rounded-full border border-slate-200 object-cover" />
+          </button>
           </div>
         </div>
         
@@ -202,11 +204,13 @@ const Recipes = () => {
           <button className="hidden md:block p-2.5 rounded-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors">
             <Bell className="w-5 h-5" />
           </button>
-          <img
+          <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
+            <img
             src={USER_AVATAR}
             alt="Profil"
             className="hidden md:block w-10 h-10 rounded-full border border-slate-200 object-cover"
           />
+          </button>
         </div>
       </header>
 

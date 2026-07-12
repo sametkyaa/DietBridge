@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Calendar as CalendarIcon, 
   Clock, 
@@ -20,6 +21,7 @@ import { CLIENTS, USER_AVATAR } from '../constants';
 import { Appointment, Client } from '../types';
 
 const Appointments = () => {
+  const navigate = useNavigate();
   const { appointments, addAppointment, deleteAppointment } = useAppointments();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -172,10 +174,10 @@ const Appointments = () => {
               <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm">
                  <div className="flex items-center gap-3 mb-2">
                     <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Video className="w-5 h-5" /></div>
-                    <span className="text-sm font-medium text-slate-500">Online</span>
+                    <span className="text-sm font-medium text-slate-500">Görüntülü Görüşme</span>
                  </div>
                  <p className="text-2xl font-bold text-slate-800">
-                    {appointments.filter(a => a.type === 'Görüntülü Görüşme' && new Date(a.date) >= new Date()).length}
+                    {appointmentsByDate.filter(a => a.type === 'Görüntülü Görüşme').length}
                  </p>
               </div>
               <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm">
@@ -184,7 +186,7 @@ const Appointments = () => {
                     <span className="text-sm font-medium text-slate-500">Yüzyüze</span>
                  </div>
                  <p className="text-2xl font-bold text-slate-800">
-                    {appointments.filter(a => a.type === 'Yüzyüze' && new Date(a.date) >= new Date()).length}
+                    {appointmentsByDate.filter(a => a.type === 'Yüzyüze').length}
                  </p>
               </div>
               <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm">
@@ -193,7 +195,7 @@ const Appointments = () => {
                     <span className="text-sm font-medium text-slate-500">Telefon</span>
                  </div>
                  <p className="text-2xl font-bold text-slate-800">
-                    {appointments.filter(a => a.type === 'Telefon Görüşmesi' && new Date(a.date) >= new Date()).length}
+                    {appointmentsByDate.filter(a => a.type === 'Telefon Görüşmesi').length}
                  </p>
               </div>
            </div>

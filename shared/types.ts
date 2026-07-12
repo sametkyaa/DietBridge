@@ -4,7 +4,8 @@ export interface Client {
   name: string;
   email: string;
   avatar: string;
-  status: 'Aktif' | 'Pasif';
+  profilePhotoUrl?: string | null;
+  status: 'Aktif' | 'Pasif' | 'Onay Bekliyor';
   goal: string; // Changed from union type to string to match DB text field
   startDate: string;
   duration: string;
@@ -22,6 +23,8 @@ export interface Client {
   sleepHours?: number;
   smokingStatus?: string;
   alcoholUse?: string;
+  waterGoalLiters?: number;
+  foodIntolerances?: string[];
 }
 
 export interface Task {
