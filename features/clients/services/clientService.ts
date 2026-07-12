@@ -43,6 +43,33 @@ const ALCOHOL_LABELS: Record<string, string> = {
   occasionally: 'Ara Sıra',
 };
 
+interface ClientBaseProfileRow {
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+}
+
+interface ClientDetailsProfileRow {
+  goal: string | null;
+  diet_start_date: string | null;
+  current_weight: number | null;
+  compliance_score: number | null;
+  start_weight: number | null;
+  target_weight: number | null;
+  height_cm: number | null;
+  last_lab_date: string | null;
+  activity_level: string | null;
+  sleep_hours: number | string | null;
+  smoking_status: string | null;
+  alcohol_use: string | null;
+  daily_water_goal_ml: number | null;
+  food_intolerances: unknown;
+  chronic_conditions: unknown;
+  medications: unknown;
+  blood_type: string | null;
+}
+
 
 /**
  * Fetches clients associated with the logged-in dietitian.
@@ -241,8 +268,8 @@ export const fetchClientDetails = async (clientId: string): Promise<Client | nul
        console.warn("Client profile not found or error:", clientProfileError);
     }
 
-    const clientData = userProfile || {};
-    const profile = clientProfile || {};
+    const clientData = (userProfile ?? {}) as Partial<ClientBaseProfileRow>;
+    const profile = (clientProfile ?? {}) as Partial<ClientDetailsProfileRow>;
 
     const bloodType = profile.blood_type || undefined;
     const chronicConditions = normalizeMultiValue(profile.chronic_conditions);

@@ -3,6 +3,7 @@ export interface Client {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   avatar: string;
   profilePhotoUrl?: string | null;
   status: 'Aktif' | 'Pasif' | 'Onay Bekliyor';

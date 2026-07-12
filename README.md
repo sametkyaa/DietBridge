@@ -1,20 +1,58 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# DietBridge Web
 
-# Run and deploy your AI Studio app
+Diyetisyenlerin danışan, beslenme planı ve randevu süreçlerini yönettiği React/Vite web uygulaması.
 
-This contains everything you need to run your app locally.
+## Gereksinimler
 
-View your app in AI Studio: https://ai.studio/apps/7819b21e-4604-4889-8062-869ee76fe665
+- Node.js 24 LTS
+- npm 11 veya üzeri
 
-## Run Locally
+Windows kullanıcıları, Node.js 24 LTS sürümünün kurulu ve aktif olduğundan emin olmalıdır.
 
-**Prerequisites:**  Node.js
+## Kurulum
 
+```bash
+npm ci
+cp .env.example .env
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Windows PowerShell kullanıyorsanız environment dosyasını şu komutla kopyalayabilirsiniz:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+`.env` içinde aşağıdaki değişkenleri kendi geliştirme ortamınıza göre tanımlayın:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+VITE_ENABLE_MOCK_DATA
+```
+
+İlk lockfile oluşturma veya bağımlılıkların bilinçli olarak değiştirilmesi sırasında `npm install`; mevcut lockfile ile tekrarlanabilir kurulum için `npm ci` kullanılır.
+
+## Çalıştırma
+
+```bash
+npm run dev
+```
+
+Development sunucusu varsayılan olarak `http://localhost:3000` adresinde çalışır.
+
+## Kalite kontrolleri
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Typecheck ve lint aktif uygulama zincirini (`index.tsx`, `App.tsx`, `features/`, `pages/`, `shared/`, `lib/` ve bunların kullandığı kök tip/sabitleri) kapsar. Legacy kopyalar ile geçici kontrol/patch betikleri Aşama 10 repository temizliğine kadar kalite kapsamı dışında tutulur.
+
+## Environment güvenliği
+
+- `.env` Git'e commit edilmez.
+- `.env.example` gerçek URL, anahtar veya token içermez.
+- `SUPABASE_SERVICE_ROLE_KEY` veya başka bir yönetici anahtarı istemci koduna konmaz.
+- Kök dizindeki araştırma/test betikleri production verisine karşı çalıştırılmaz.

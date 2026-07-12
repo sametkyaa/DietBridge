@@ -232,9 +232,9 @@ export const updateDietitianProfile = async (updates: Partial<DietitianProfile>)
         .eq('id', user.id)
         .single();
       
-      let currentFullName = currentProfileResult.data?.full_name || '';
-      let [currentFirst, ...currentLastArr] = currentFullName.split(' ');
-      let currentLast = currentLastArr.join(' ');
+      const currentFullName = currentProfileResult.data?.full_name || '';
+      const [currentFirst, ...currentLastArr] = currentFullName.split(' ');
+      const currentLast = currentLastArr.join(' ');
 
       const newFirst = updates.first_name !== undefined ? updates.first_name : currentFirst;
       const newLast = updates.last_name !== undefined ? updates.last_name : currentLast;

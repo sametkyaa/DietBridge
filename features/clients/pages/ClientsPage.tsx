@@ -192,6 +192,7 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
 };
 
 const ClientsPage = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);

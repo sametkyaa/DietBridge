@@ -63,7 +63,6 @@ const FilterDropdown = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-  const navigate = useNavigate();
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
@@ -249,6 +248,7 @@ const DynamicBarChart = ({ data }: { data: { label: string, value: number, color
 };
 
 const Analytics = () => {
+  const navigate = useNavigate();
   // --- State ---
   const [filters, setFilters] = useState<FilterState>({
     dateRange: 'Bu Hafta',

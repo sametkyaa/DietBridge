@@ -275,7 +275,7 @@ const MealPlans = () => {
                 if (!newWeeklyPlan[dayName]) newWeeklyPlan[dayName] = {};
 
                 p.meals.forEach((m: any) => {
-                    let rowId = findRowId(m);
+                    const rowId = findRowId(m);
 
                     if (rowId) {
                          if (m.calories || m.macros || m.photo_url) {
@@ -581,7 +581,7 @@ const MealPlans = () => {
 
             const mealType = mapMealTypeToDb(mealRow.name);
             
-            let mealData: any = {
+            const mealData: any = {
               type: mealType,
               title: typeof content === 'string' ? content : (content as any).name,
               is_eaten: false,
