@@ -149,7 +149,7 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Temiz kurulum tekrarlanabilir; `npm ci`, typecheck, lint ve build başarılı; güvenli env örneği mevcut; production DB’ye yazılmamış.
 - **Manuel doğrulama:** Login ekranı ve temel route’ları lokal ortamda açmak; stil ve font yüklenmesini kontrol etmek.
 - **Teslim çıktıları:** Lockfile, kalite yapılandırmaları, env/README iyileştirmeleri ve doğrulama raporu.
-- **Durum:** İncelemeye hazır.
+- **Durum:** Tamamlandı.
 
 ### Aşama 2 — Authentication ve rol güvenliği
 
@@ -407,7 +407,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | No | Aşama | Durum | Branch | Başlangıç tarihi | Bitiş tarihi | Not |
 |---:|---|---|---|---|---|---|
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
-| 1 | Teknik temel | İncelemeye hazır | `codex/project-foundation` | 2026-07-12 |  | Teknik temel tamamlandı; Node.js 24 LTS altında kalite kapısı doğrulaması bekliyor |
+| 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Bekliyor | `codex/auth-hardening` |  |  |  |
 | 3 | Supabase ve RLS | Bekliyor | `codex/supabase-security` |  |  |  |
 | 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
@@ -427,3 +427,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 |---|---|---|---|---|
 | 2026-07-12 | Aşama 0 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu | Tamamlandı | `codex/project-governance` |
 | 2026-07-12 | Aşama 1 | Teknik temel, lockfile, lint, typecheck ve environment standardizasyonu hazırlandı | İncelemeye hazır | codex/project-foundation |
+| 2026-07-12 | Aşama 1 | Node.js 24 LTS altında npm ci, typecheck, lint ve production build doğrulandı | Tamamlandı | `codex/project-foundation` |
