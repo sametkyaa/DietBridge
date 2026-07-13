@@ -5,7 +5,8 @@
 -- BLOKLAYICI ÖN KOŞUL:
 -- Mevcut web diyetisyen kaydı browser'dan profiles.role değerini dietitian
 -- yapmaya, danışan ekleme ise aktif ilişki öncesi profile aramasına dayanır.
--- Kontrollü onboarding ve dar linking lookup akışı ayrı görevde onaylanmadan
+-- 202607130007_auth_onboarding_hardening.sql, dar linking lookup akışı ve
+-- 202607130008_meal_completion_rpc.sql ile mobil geçiş staging'de doğrulanmadan
 -- bu taslak production'da çalıştırılmamalıdır.
 
 do $$
@@ -254,9 +255,10 @@ using (
 );
 
 -- Clients can update own meal completion policy'si alan bazlı UPDATE
--- kısıtlaması sağlamaz. RLS policy tek başına yalnızca is_eaten alanını
--- yazılabilir yapamaz. Bu policy, mobil sözleşme için dar RPC veya ayrı DB
--- rolü onaylanana kadar bu taslakta değiştirilmez.
+-- kısıtlaması sağlamaz. 202607130008_meal_completion_rpc.sql dar RPC yolunu
+-- tanımlar. Policy ancak mobil istemcinin RPC geçişi ve staging negatif testleri
+-- kanıtlandıktan sonra ayrı, açık onaylı contract migration'ında kaldırılır;
+-- bu taslak onu kaldırmaz.
 
 -- Rollback: Uygulama öncesi saklanan dört dietitian_clients ve ilgili
 -- meal_plans/meals policy tanımlarını hedefli geri yükleyin. Trigger geri

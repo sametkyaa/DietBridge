@@ -27,17 +27,20 @@ supabase/migration_drafts altındaki hiçbir SQL dosyası Supabase CLI migration
 
 | Sıra | Taslak | Durum |
 |---|---|---|
-| 1 | 202607130004_function_security_hardening.sql | İncelemeye hazır |
-| 2 | 202607130001_critical_table_rls.sql | İncelemeye hazır; onboarding kapısına bağlı |
-| 3 | 202607130002_relationship_policy_hardening.sql | İncelemeye hazır; kontrollü onboarding/linking kapısına bağlı |
-| 4 | 202607130003_storage_policy_hardening.sql | İncelemeye hazır; signed URL istemci değişikliğine bağlı |
-| 5 | 202607130005_constraints_and_indexes.sql | İncelemeye hazır; aggregate ve lock kapılarına bağlı |
+| 1 | 202607130004_function_security_hardening.sql | İncelemeye hazır; trigger regresyonuna bağlı |
+| 2 | 202607130007_auth_onboarding_hardening.sql | İncelemeye hazır; güvenli signup sözleşmesine bağlı |
+| 3 | 202607130006_verification_consistency.sql | İncelemeye hazır; ayrı onaylı veri onarımı kapısına bağlı |
+| 4 | 202607130008_meal_completion_rpc.sql | İncelemeye hazır; mobil RPC geçişine bağlı |
+| 5 | 202607130001_critical_table_rls.sql | İncelemeye hazır; onboarding/verification kapısına bağlı |
+| 6 | 202607130002_relationship_policy_hardening.sql | İncelemeye hazır; kontrollü onboarding, linking ve RPC geçişine bağlı |
+| 7 | 202607130003_storage_policy_hardening.sql | İncelemeye hazır; signed URL istemci değişikliğine bağlı |
+| 8 | 202607130005_constraints_and_indexes.sql | İncelemeye hazır; aggregate ve lock kapılarına bağlı |
 
 Realtime taslağı oluşturulmadı. Şimdilik ertelendi: appointments için aktif subscription yoktur, chat web tarafında mock’tur ve daily_logs subscription’ı ilgili diyetisyen read policy’si netleşmeden publication’a eklenmemelidir. Realtime, RLS yerine geçmez.
 
 ## 7. Önerilen uygulama sırası
 
-Önce function/trigger regression testi, sonra kritik RLS policy’leri, ardından kontrollü onboarding ve linking çözümü, Storage istemci uyumu ve en son constraint/index adımları uygulanmalıdır.
+Önerilen güvenli sıra: function/search-path hardening, auth onboarding, verification consistency, meal completion RPC, web/mobil uyumluluk release’i, sentetik staging testleri, onaylı verification veri onarımı, kritik RLS, relationship/policy hardening, Storage, constraint/index ve Realtime kararlarıdır. RLS veya geniş policy kaldırma, ilgili istemci sözleşmesi doğrulanmadan öne alınmaz.
 
 ## 8. Her migration’ın amacı
 
@@ -46,6 +49,9 @@ Realtime taslağı oluşturulmadı. Şimdilik ertelendi: appointments için akti
 - Storage: meal-photos erişimini public rolünden authenticated ve ilişki doğrulamasına geçirir.
 - Function: doğrulanmış signature’larda güvenli search_path ve dar execute grant önerir.
 - Constraint/index: veri düzeltilmeden uygulanmayan doğrulama kapıları ve sorgu odaklı index adayları verir.
+- Verification consistency: `verification_status` kanonik, `is_verified` compatibility mirror modelini ve fail-closed onarım kapısını tanımlar.
+- Auth onboarding: gerçek `handle_new_user()` trigger yolunda client/dietitian başlangıç profillerini atomik oluşturur; user metadata’yı yetkilendirme iddiası saymaz.
+- Meal completion RPC: client’ın yalnız kendi planındaki öğünün `is_eaten` alanını değiştirebildiği dar execute yüzeyini ekler.
 
 ## 9. Etkilenen nesneler
 
@@ -147,9 +153,9 @@ Metadata düzeyinde RLS durumu, pg_policies adları, function configuration/gran
 5. Verification tutarsız kaydın iş kuralına uygun düzeltmesi kim tarafından yapılacak?
 6. Index ve unique constraint adımları için bakım penceresi onaylanıyor mu?
 
-## 22. Aşama 3C önerisi
+## 22. Aşama 3C kararı ve staging kapısı
 
-Önce kontrollü diyetisyen onboarding, bağlantı isteği lookup sözleşmesi ve private Storage URL tüketimi için küçük, ayrı uygulama görevleri tasarlayın. Ardından staging’de bu taslakları uygulayıp negatif RLS testlerini çalıştırın. Production uygulaması ancak bu kanıtlarla ayrı onaya sunulmalıdır.
+Verification canonical modeli, güvenli onboarding ve meal completion RPC için taslaklar Aşama 3C’de hazırlandı. Staging projesi bulunmadığından uygulanmadı. `docs/SUPABASE_ARCHITECTURE_DECISIONS.md`, `docs/SUPABASE_APPLICATION_COMPATIBILITY_PLAN.md` ve `docs/SUPABASE_STAGING_RUNBOOK.md` birlikte okunmadan production uygulamasına geçilmemelidir.
 
 ## 23. Sonuç
 

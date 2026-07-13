@@ -6,8 +6,9 @@
 -- 1. Bu dosya staging'de trigger regression testiyle denenmelidir.
 -- 2. Trigger function revoke adımları client güncelleme akışını bozmadığını
 --    göstermelidir.
--- 3. handle_new_user ve diğer kapsam dışı function'lar bu taslakta
---    değiştirilmez.
+-- 3. handle_new_user bu taslakta değiştirilmez; onboarding tanımı yalnız
+--    202607130007_auth_onboarding_hardening.sql içinde, gerçek trigger
+--    signature'ı yeniden doğrulanarak ele alınır.
 
 do $$
 begin

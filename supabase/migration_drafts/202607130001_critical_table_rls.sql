@@ -5,9 +5,12 @@
 --
 -- Ön koşullar:
 -- 1. Staging/test ortamı ve negatif RLS test hesapları hazır olmalıdır.
--- 2. profiles.role için güvenli dietitian onboarding kararı onaylanmalıdır.
--- 3. Bu üç tabloda burada doğrulananlar dışında policy bulunmamalıdır.
--- 4. Bu dosya production'da doğrudan çalıştırılmamalıdır.
+-- 2. 202607130007_auth_onboarding_hardening.sql ile güvenli dietitian
+--    onboarding modeli staging'de doğrulanmış olmalıdır.
+-- 3. 202607130006_verification_consistency.sql için verification veri kapısı
+--    ve mirror modeli staging'de doğrulanmış olmalıdır.
+-- 4. Bu üç tabloda burada doğrulananlar dışında policy bulunmamalıdır.
+-- 5. Bu dosya production'da doğrudan çalıştırılmamalıdır.
 
 do $$
 begin

@@ -15,12 +15,16 @@ Bu klasör, Aşama 3A güvenlik denetimindeki bulgular için incelenebilir SQL �
 
 ## Önerilen uygulama sırası
 
-1. 202607130004_function_security_hardening.sql
-2. 202607130001_critical_table_rls.sql
-3. Uygulama tarafındaki kontrollü diyetisyen onboarding ve ilişki kurma akışının ayrı onaylı değişikliği
-4. 202607130002_relationship_policy_hardening.sql
-5. Private bucket için signed URL tüketimi hazırlandıktan sonra 202607130003_storage_policy_hardening.sql
-6. 202607130005_constraints_and_indexes.sql içindeki veri uyumluluğu ve lock penceresi gerektiren adımlar
+1. 202607130004_function_security_hardening.sql için trigger regresyon değerlendirmesi
+2. 202607130007_auth_onboarding_hardening.sql
+3. 202607130006_verification_consistency.sql için aggregate kapısı ve ayrı onaylı staging veri onarımı
+4. 202607130008_meal_completion_rpc.sql
+5. Web/mobil onboarding ve meal completion uyumluluk release’i
+6. Sentetik staging hesaplarıyla negatif RLS/auth/RPC testleri
+7. 202607130001_critical_table_rls.sql
+8. 202607130002_relationship_policy_hardening.sql; geniş client meal UPDATE policy’si yalnız RPC geçişi kanıtlandıysa kaldırılır
+9. Private bucket için signed URL tüketimi hazırlandıktan sonra 202607130003_storage_policy_hardening.sql
+10. 202607130005_constraints_and_indexes.sql içindeki veri uyumluluğu ve lock penceresi gerektiren adımlar
 
 Bu sıralama, RLS açılmadan önce policy’lerin hazırlanmasını ve mevcut istemci sözleşmelerinin doğrulanmasını amaçlar.
 
@@ -33,6 +37,9 @@ Bu sıralama, RLS açılmadan önce policy’lerin hazırlanmasını ve mevcut i
 | 202607130003_storage_policy_hardening.sql | meal-photos public-role policy’lerini authenticated ve ilişki tabanlı hale getirmek | Web/mobil signed URL tüketimi ve doğrulanmış path sözleşmesi |
 | 202607130004_function_security_hardening.sql | Doğrulanmış function signature’larında search_path ve execute yüzeyini daraltmak | Trigger regression testleri |
 | 202607130005_constraints_and_indexes.sql | Veri uyumluluğu kapıları, NOT VALID constraint taslağı ve index adayları | Aggregate sonuçları, staging rehearsal ve lock bütçesi |
+| 202607130006_verification_consistency.sql | Kanonik verification status, mirror boolean trigger/constraint ve manuel onarım kapısı | Aggregate tutarlılık, ayrı açık veri onarımı onayı |
+| 202607130007_auth_onboarding_hardening.sql | Auth trigger ile güvenli client/dietitian başlangıç profili | Gerçek trigger/signature, signup regresyon testi |
+| 202607130008_meal_completion_rpc.sql | Own-meal `is_eaten` RPC ve dar execute grant | Mobil RPC geçişi, negatif yetki testi |
 
 ## Ön kontrol sorguları
 

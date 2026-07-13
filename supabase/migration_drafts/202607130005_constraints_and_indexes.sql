@@ -13,15 +13,6 @@ begin
   end if;
 
   if exists (
-    select 1
-    from public.dietitian_profiles
-    where is_verified is true
-      and verification_status is distinct from 'approved'
-  ) then
-    raise exception 'verification alanlarında tutarsız kayıt var; constraint eklenmeden önce ayrı onaylı veri kararı gerekir.';
-  end if;
-
-  if exists (
     select 1 from public.appointments
     where dietitian_id is null or client_id is null
   ) then
@@ -51,20 +42,10 @@ $$;
 -- onboarding sırasında geçici null üretilebildiği doğrulandı. NOT NULL veya
 -- yeni role check bu taslakta bilinçli olarak eklenmez.
 
--- Canlıda bir verification tutarsızlığı bulunduğundan ön koşul bu noktada
--- fail-closed olur. Ayrı veri kararı sonrasında aşağıdaki iki aşama
--- uygulanabilir:
-alter table public.dietitian_profiles
-  add constraint dietitian_profiles_verification_consistency_check
-  check (
-    (verification_status = 'approved' and is_verified is true)
-    or
-    (verification_status in ('pending', 'rejected') and is_verified is not true)
-  ) not valid;
-
--- Ayrı doğrulama çalışmasında:
--- alter table public.dietitian_profiles
---   validate constraint dietitian_profiles_verification_consistency_check;
+-- Verification consistency constraint/trigger modeli bu dosyadan ayrıldı:
+-- 202607130006_verification_consistency.sql. Bu dosya önce aggregate kapısı,
+-- sonra ayrı onaylı staging veri onarımı olmadan devam etmez. Aynı constraint'i
+-- burada yeniden eklemeyin.
 
 alter table public.appointments
   alter column dietitian_id set not null;
