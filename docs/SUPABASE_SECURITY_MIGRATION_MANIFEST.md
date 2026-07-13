@@ -26,14 +26,15 @@ Başlangıç commit'i `ed8a564` ve bootstrap zinciri `20260713000000` ile `20260
 | 20260713010200 | `auth_onboarding_hardening.sql` | 007 | Allowlist onboarding | Verification | Yok | `handle_new_user()` güvenli tanım, direct execute yok | Auth trigger staging'de doğrulanmalı |
 | 20260713010300 | `critical_table_rls.sql` | 001 | Kritik üç tablo policy + RLS | Function, verification, onboarding | +3 tablo | Sistem alanı trigger revoke | Client profile satırı tüm profile alanlarını döndürür |
 | 20260713010400 | `meal_completion_rpc.sql` | 008 | Own-meal `is_eaten` RPC | Baseline | Yok | Authenticated execute yalnız RPC'de | Mobil RPC geçişi henüz zorunlu değil |
+| 20260713010500 | `ensure_auth_user_onboarding_trigger.sql` | — | `auth.users` onboarding trigger güvencesi | Onboarding | Yok | `on_auth_user_created` yalnız eksikse oluşturulur | Yanlış mevcut trigger fail-fast durur |
 
 ## Bağımlılık grafiği
 
-`function hardening → verification → onboarding → critical RLS → meal completion RPC`.
+`function hardening → verification → onboarding → critical RLS → meal completion RPC → auth onboarding trigger assurance`.
 
 ## Policy, verification ve onboarding
 
-Kritik tablolarda anonymous policy yoktur. Appointment yazmaları onaylı diyetisyen helper'ı ve aktif `dietitian_clients` ilişkisi ister. Chat sender kimliği `auth.uid()` ile bağlıdır. Verification status kanoniktir; kullanıcı kendi satırında approval alanlarını değiştiremez. Onboarding metadata yalnız `client` veya `dietitian` account type'ını kabul eder; dietitian `pending/false` başlar.
+Kritik tablolarda anonymous policy yoktur. Appointment yazmaları onaylı diyetisyen helper'ı ve aktif `dietitian_clients` ilişkisi ister. Chat sender kimliği `auth.uid()` ile bağlıdır. Verification status kanoniktir; kullanıcı kendi satırında approval alanlarını değiştiremez. Onboarding metadata yalnız `client` veya `dietitian` account type'ını kabul eder; dietitian `pending/false` başlar. `20260713010500`, `auth.users.on_auth_user_created` trigger'ını eksikse oluşturur; mevcut tanım doğruysa no-op olur, yanlış veya devre dışı tanımı asla değiştirmez ve fail-fast hata verir.
 
 ## Execute, Storage ve Realtime sınırı
 
@@ -45,4 +46,4 @@ Legacy meals UPDATE policy, mobil uygulama `set_my_meal_completion` RPC kullanı
 
 ## Uyumluluk, rollout ve rollback
 
-Web linking davranışını kırma riski taşıyan relationship hardening ertelendi. Mobil için RPC hazırdır ancak zorunlu geçiş bu pakette yapılmadı. Production rollout öncesi staging dry-run, gerçek Auth trigger signature doğrulaması, sentetik negatif RLS/RPC testleri ve rollback envanteri gerekir. Rollback RLS'yi körlemesine kapatmak değildir; hedef policy/function tanımlarını ayrı onayla ileri düzeltme migration'ıyla düzeltmektir.
+Web linking davranışını kırma riski taşıyan relationship hardening ertelendi. Mobil için RPC hazırdır ancak zorunlu geçiş bu pakette yapılmadı. Production rollout öncesi staging dry-run, gerçek Auth trigger signature doğrulaması, sentetik negatif RLS/RPC testleri ve rollback envanteri gerekir. `20260713010500` için rollback mevcut Auth trigger'ını silmek değil, beklenmeyen durumda ayrı onaylı ileri düzeltme migration'ı hazırlamaktır. Rollback RLS'yi körlemesine kapatmak değildir; hedef policy/function tanımlarını ayrı onayla ileri düzeltme migration'ıyla düzeltmektir.

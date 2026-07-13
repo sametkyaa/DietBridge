@@ -177,7 +177,7 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Her tablonun sahiplik modeli açık; başka diyetisyen verisi okunamaz/değiştirilemez; Storage ilişkisel olarak sınırlandırılır; migration uygulaması için ayrı onay kapısı vardır.
 - **Manuel doğrulama:** İki diyetisyen ve ilişkili/ilişkisiz danışanlarla negatif yetki senaryoları; Storage erişim denemeleri.
 - **Teslim çıktıları:** Şema/RLS envanteri, migration planı, doğrulama ve rollback planı.
-- **İlerleme notu:** Aşama 3D-4A kapsamında güvenlik migration taslakları bağımlılık sırasına göre active migration zincirine dönüştürüldü ve repository dışındaki disposable yerel Supabase ortamında sıfırdan uygulanarak doğrulandı. Staging, production ve GROUNDLESS projelerine güvenlik migration’ı uygulanmadı. Güvenlik migration zinciri yerel ortamda doğrulandı; staging dry-run, kontrollü uygulama ve sentetik negatif RLS testleri bekliyor.
+- **İlerleme notu:** Aşama 3D-4A kapsamında güvenlik migration taslakları bağımlılık sırasına göre active migration zincirine dönüştürüldü ve repository dışındaki disposable yerel Supabase ortamında sıfırdan uygulanarak doğrulandı. Staging, production ve GROUNDLESS projelerine güvenlik migration’ı uygulanmadı. Aşama 3D-4B-0 kapsamında staging ortamında eksik olduğu doğrulanan `auth.users` onboarding trigger’ı için ileri yönlü, idempotent ve fail-fast migration hazırlandı. Migration disposable yerel Supabase ortamında temiz replay, metadata, idempotency ve lint kontrolleriyle doğrulandı. Staging, production ve GROUNDLESS değiştirilmedi. Güvenlik migration zinciri yerel ortamda doğrulandı; staging dry-run, kontrollü uygulama ve sentetik negatif RLS testleri bekliyor.
 - **Durum:** Devam ediyor.
 
 ### Aşama 4 — Danışan yönetimi
@@ -439,3 +439,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-13 | Aşama 3D-3 | Production public şema baseline’ı staging’e uygulandı ve metadata eşitliği doğrulandı | Staging baseline hazır | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3D-4A-0 | Baseline öncesi eski migration geçmişi uzlaştırıldı ve temel migration zinciri yerel ortamda doğrulandı | Güvenlik migration hazırlığı yeniden başlayabilir | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3D-4A | Güvenlik migration zinciri hazırlandı ve disposable yerel Supabase ortamında doğrulandı | Staging uygulaması bekliyor | `codex/supabase-security` |
+| 2026-07-13 | Aşama 3D-4B-0 | Auth onboarding trigger migration’ı hazırlandı ve disposable yerel ortamda doğrulandı | Staging uygulaması bekliyor | `codex/supabase-security` |
