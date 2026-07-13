@@ -177,7 +177,7 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Her tablonun sahiplik modeli açık; başka diyetisyen verisi okunamaz/değiştirilemez; Storage ilişkisel olarak sınırlandırılır; migration uygulaması için ayrı onay kapısı vardır.
 - **Manuel doğrulama:** İki diyetisyen ve ilişkili/ilişkisiz danışanlarla negatif yetki senaryoları; Storage erişim denemeleri.
 - **Teslim çıktıları:** Şema/RLS envanteri, migration planı, doğrulama ve rollback planı.
-- **İlerleme notu:** Aşama 3A güvenlik denetimi, Aşama 3B migration taslakları ve Aşama 3C mimari karar/staging hazırlık paketi tamamlandı. Ayrı staging Supabase projesi, sentetik testler, uygulama uyumluluk değişiklikleri ve production uygulama onayı bekliyor.
+- **İlerleme notu:** Aşama 3D-1 kapsamında ayrı staging Supabase projesi doğrulandı. Staging uygulama şeması bakımından boş bulundu ve production şeması için schema-only baseline planı hazırlandı. Supabase CLI kurulumu, production baseline pull, statik DDL incelemesi ve staging uygulaması bekliyor.
 - **Durum:** Devam ediyor.
 
 ### Aşama 4 — Danışan yönetimi
@@ -410,7 +410,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
-| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Denetim, migration taslakları ve mimari kararlar tamamlandı; ayrı staging projesi, web/mobil uyumluluk uygulaması, sentetik negatif RLS testleri ve production onayı bekliyor |
+| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Staging doğrulandı ve baseline planı hazırlandı; CLI kurulumu, schema-only baseline üretimi, staging uygulaması ve negatif güvenlik testleri bekliyor |
 | 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
@@ -434,3 +434,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-13 | Aşama 3A | Supabase şema, RLS, Storage, function ve migration drift denetimi tamamlandı | Denetim tamamlandı | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3B | Supabase güvenlik migration taslakları, rollback yaklaşımı ve negatif RLS test planı hazırlandı | Taslaklar tamamlandı | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3C | Verification, güvenli onboarding ve meal completion RPC mimari kararları ile staging runbook’u hazırlandı | Hazırlık tamamlandı | `codex/supabase-security` |
+| 2026-07-13 | Aşama 3D-1 | Ayrı staging Supabase projesi doğrulandı ve schema-only baseline planı hazırlandı | Plan tamamlandı | `codex/supabase-security` |
