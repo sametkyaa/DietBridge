@@ -177,7 +177,7 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Her tablonun sahiplik modeli açık; başka diyetisyen verisi okunamaz/değiştirilemez; Storage ilişkisel olarak sınırlandırılır; migration uygulaması için ayrı onay kapısı vardır.
 - **Manuel doğrulama:** İki diyetisyen ve ilişkili/ilişkisiz danışanlarla negatif yetki senaryoları; Storage erişim denemeleri.
 - **Teslim çıktıları:** Şema/RLS envanteri, migration planı, doğrulama ve rollback planı.
-- **Durum:** Bekliyor.
+- **Durum:** Devam ediyor.
 
 ### Aşama 4 — Danışan yönetimi
 
@@ -409,7 +409,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
-| 3 | Supabase ve RLS | Bekliyor | `codex/supabase-security` |  |  |  |
+| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Salt okunur Supabase güvenlik denetimi tamamlandı; migration tasarımı, kontrollü uygulama ve negatif RLS testleri bekliyor |
 | 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
@@ -430,3 +430,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-12 | Aşama 1 | Node.js 24 LTS altında npm ci, typecheck, lint ve production build doğrulandı | Tamamlandı | `codex/project-foundation` |
 | 2026-07-12 | Aşama 2 | Merkezi auth access resolver, fail-closed route koruması ve güvenli recovery/kayıt akışları hazırlandı | İncelemeye hazır | `codex/auth-hardening` |
 | 2026-07-13 | Aşama 2 | Kritik gerçek hesap auth ve rol senaryoları doğrulandı | Tamamlandı | `codex/auth-hardening` |
+| 2026-07-13 | Aşama 3A | Supabase şema, RLS, Storage, function ve migration drift denetimi tamamlandı | Denetim tamamlandı | `codex/supabase-security` |
