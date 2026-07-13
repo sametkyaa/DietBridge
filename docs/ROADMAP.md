@@ -177,7 +177,7 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Her tablonun sahiplik modeli açık; başka diyetisyen verisi okunamaz/değiştirilemez; Storage ilişkisel olarak sınırlandırılır; migration uygulaması için ayrı onay kapısı vardır.
 - **Manuel doğrulama:** İki diyetisyen ve ilişkili/ilişkisiz danışanlarla negatif yetki senaryoları; Storage erişim denemeleri.
 - **Teslim çıktıları:** Şema/RLS envanteri, migration planı, doğrulama ve rollback planı.
-- **İlerleme notu:** Aşama 3D-3 kapsamında production public şema baseline’ı ayrı DietBridge staging Supabase projesine kontrollü olarak uygulandı. Production ve staging public metadata eşitliği doğrulandı; staging public tablolarında veri bulunmadı. Güvenlik migration’ları henüz uygulanmadı.
+- **İlerleme notu:** Aşama 3D-4A-0 kapsamında baseline öncesi yerel migration geçmişi uzlaştırıldı. Remote history’de bulunmayan ve baseline tarafından tamamen kapsanan eski `sort_order` migration’ı içerik değiştirilmeden arşivlendi. Staging başlangıç migration zinciri repository’ye eklendi ve disposable yerel Supabase ortamında sıfırdan doğrulandı. Güvenlik migration’ları henüz uygulanmadı.
 - **Durum:** Devam ediyor.
 
 ### Aşama 4 — Danışan yönetimi
@@ -437,3 +437,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-13 | Aşama 3D-1 | Ayrı staging Supabase projesi doğrulandı ve schema-only baseline planı hazırlandı | Plan tamamlandı | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3D-2 | Production public şema baseline’ı oluşturuldu, veri/secret taraması ve function envanteri uzlaştırması tamamlandı | Baseline hazır | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3D-3 | Production public şema baseline’ı staging’e uygulandı ve metadata eşitliği doğrulandı | Staging baseline hazır | `codex/supabase-security` |
+| 2026-07-13 | Aşama 3D-4A-0 | Baseline öncesi eski migration geçmişi uzlaştırıldı ve temel migration zinciri yerel ortamda doğrulandı | Güvenlik migration hazırlığı yeniden başlayabilir | `codex/supabase-security` |
