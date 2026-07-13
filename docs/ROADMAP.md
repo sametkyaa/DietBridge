@@ -177,7 +177,7 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Her tablonun sahiplik modeli açık; başka diyetisyen verisi okunamaz/değiştirilemez; Storage ilişkisel olarak sınırlandırılır; migration uygulaması için ayrı onay kapısı vardır.
 - **Manuel doğrulama:** İki diyetisyen ve ilişkili/ilişkisiz danışanlarla negatif yetki senaryoları; Storage erişim denemeleri.
 - **Teslim çıktıları:** Şema/RLS envanteri, migration planı, doğrulama ve rollback planı.
-- **İlerleme notu:** Aşama 3D-2 kapsamında production public şema baseline’ı schema-only dump yöntemiyle oluşturuldu, veri ve secret taramasından geçirildi ve function/trigger envanteri production metadata’sıyla uzlaştırıldı. Baseline henüz staging’e uygulanmadı.
+- **İlerleme notu:** Aşama 3D-3 kapsamında production public şema baseline’ı ayrı DietBridge staging Supabase projesine kontrollü olarak uygulandı. Production ve staging public metadata eşitliği doğrulandı; staging public tablolarında veri bulunmadı. Güvenlik migration’ları henüz uygulanmadı.
 - **Durum:** Devam ediyor.
 
 ### Aşama 4 — Danışan yönetimi
@@ -410,7 +410,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
-| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Production public schema baseline’ı güvenli taslak olarak hazırlandı; staging uygulaması, sentetik veri kurulumu ve negatif RLS testleri bekliyor |
+| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Production public baseline staging’e uygulandı ve metadata eşitliği doğrulandı; güvenlik migration’larının staging uygulaması, sentetik hesaplar ve negatif RLS testleri bekliyor |
 | 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
@@ -436,3 +436,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-13 | Aşama 3C | Verification, güvenli onboarding ve meal completion RPC mimari kararları ile staging runbook’u hazırlandı | Hazırlık tamamlandı | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3D-1 | Ayrı staging Supabase projesi doğrulandı ve schema-only baseline planı hazırlandı | Plan tamamlandı | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3D-2 | Production public şema baseline’ı oluşturuldu, veri/secret taraması ve function envanteri uzlaştırması tamamlandı | Baseline hazır | `codex/supabase-security` |
+| 2026-07-13 | Aşama 3D-3 | Production public şema baseline’ı staging’e uygulandı ve metadata eşitliği doğrulandı | Staging baseline hazır | `codex/supabase-security` |
