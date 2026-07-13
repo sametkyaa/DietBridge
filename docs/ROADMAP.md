@@ -163,7 +163,7 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Oturumsuz kullanıcı korunur; client web’e giremez; rol okunamazsa erişim kapalıdır; eksik/onaysız profil kontrollüdür; kayıt hatası başarılı görünmez.
 - **Manuel doğrulama:** Oturumsuz, client, rolü eksik, profili eksik, pending, rejected ve approved kullanıcı senaryoları.
 - **Teslim çıktıları:** Hedefli auth değişiklikleri ve senaryo doğrulama raporu.
-- **Durum:** İncelemeye hazır.
+- **Durum:** Tamamlandı.
 
 ### Aşama 3 — Supabase şeması, migration ve RLS güvenliği
 
@@ -408,7 +408,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 |---:|---|---|---|---|---|---|
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
-| 2 | Authentication güvenliği | İncelemeye hazır | `codex/auth-hardening` | 2026-07-12 |  | Fail-closed auth ve rol güvenliği hazırlandı; gerçek Supabase hesap senaryolarının manuel doğrulaması bekliyor |
+| 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
 | 3 | Supabase ve RLS | Bekliyor | `codex/supabase-security` |  |  |  |
 | 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
@@ -429,3 +429,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-12 | Aşama 1 | Teknik temel, lockfile, lint, typecheck ve environment standardizasyonu hazırlandı | İncelemeye hazır | codex/project-foundation |
 | 2026-07-12 | Aşama 1 | Node.js 24 LTS altında npm ci, typecheck, lint ve production build doğrulandı | Tamamlandı | `codex/project-foundation` |
 | 2026-07-12 | Aşama 2 | Merkezi auth access resolver, fail-closed route koruması ve güvenli recovery/kayıt akışları hazırlandı | İncelemeye hazır | `codex/auth-hardening` |
+| 2026-07-13 | Aşama 2 | Kritik gerçek hesap auth ve rol senaryoları doğrulandı | Tamamlandı | `codex/auth-hardening` |
