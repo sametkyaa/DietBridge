@@ -6,6 +6,8 @@ Aşama 3E-1C fiziksel Android telefon ve DietBridge Staging üzerinde tamamland�
 
 Mobil kod düzeltmesi: `73009da fix: rollback meal completion on RPC failure` (Aşama 3E-1C-2) — PASS.
 
+Legacy mobile compatibility: **NOT REQUIRED**. Bu karar kullanıcı beyanına dayanır: eski build dış kullanıcıya, mağazaya, test kanalına veya başka dağıtım yoluna gönderilmedi; yalnız geliştiricinin fiziksel telefonu ve emülatöründe kullanıldı.
+
 ## Fiziksel cihaz doğrulamaları
 
 | Test | Sonuç | Kanıt |
@@ -42,6 +44,6 @@ Yalnız Synthetic Client A'ya ait günlük log silindikten sonra ilgili Auth kul
 
 ## Sonuç ve blocker
 
-Aşama 3E-1C mobil doğrulaması tamamlandı: network rollback, kontrollü hata, own-meal RPC, restart sonrası persistence, foreign-meal reddi ve final cleanup PASS’tir. Legacy client `meals` UPDATE policy’si hâlâ mevcuttur; eski mobil build uyumluluğu da henüz değerlendirilmedi. Bu nedenle production security rollout bloklu ve Aşama 3 tamamen kapanmış değildir.
+Aşama 3E-1C mobil doğrulaması tamamlandı: network rollback, kontrollü hata, own-meal RPC, restart sonrası persistence, foreign-meal reddi ve final cleanup PASS’tir. Eski build uyumluluğu gerekmez; legacy client `meals` UPDATE policy kaldırma migration’ı Aşama 3E-2A’da hazırlandı ancak staging’e uygulanmadı. Bu nedenle production security rollout bloklu ve Aşama 3 tamamen kapanmış değildir.
 
-Sıradaki işlem: **Aşama 3E-2 — Eski mobil build uyumluluğunu değerlendir ve legacy client `meals` UPDATE policy kaldırma planını hazırla.**
+Sıradaki işlem: **Aşama 3E-2B — Legacy policy removal migration’ını yalnız staging’e uygula ve tam RLS/mobil regresyon matrisini çalıştır.**

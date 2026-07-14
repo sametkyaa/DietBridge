@@ -185,13 +185,14 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
   - Sentetik kullanıcılar ve fixture verileri tamamen temizlendi; final Auth user, public row ve Storage bucket sayıları sıfır olarak doğrulandı.
   - Repository ve staging migration history sekiz active migration ile birebir eşleşti.
   - Legacy `meals` UPDATE policy’sinin `is_eaten` dışındaki alanları da güncellemeye izin verdiği doğrulandı; bulgu P1 deferred production blocker olarak kaydedildi.
-- **Production rollout blocker:** Legacy direct `meals` UPDATE policy’si, mobil RPC cutover ve staging doğrulaması tamamlanmadan kaldırılamaz.
-- **Aşama 3E-0 — Mobil Meal Completion RPC Cutover Denetimi:** Aktif mobil Dashboard → ViewModel → MealsContext → mealService zinciri denetlendi. `mealService.updateMealCompletion` yalnız `is_eaten` gönderse de doğrudan `meals` UPDATE kullanıyor; aktif mobil source tree’de `set_my_meal_completion` RPC referansı bulunmadı. Optimistic state rollback ve kullanıcı hata bildirimi mevcut. Web diyetisyen meal-plan servisi client completion yazması yapmıyor ve diyetisyen policy’leri client policy’den bağımsız. `src_backup` içindeki local-only yol aktif import zincirinde bulunmadı.
+- **Aşama 3E-0 — Mobil Meal Completion RPC Cutover Denetimi:** Bu salt-okunur denetim, sonraki mobil cutover öncesindeki direct UPDATE yolunu kaydetti. Aşama 3E-1C’de aktif mobil service’in `set_my_meal_completion` RPC’sine geçtiği, rollback/persistence ve foreign-meal korumasının fiziksel cihaz staging testiyle doğrulandığı kaydedildi.
 - **Aşama 3E-1C tamamlanan mobil doğrulama:** Aşama 3E-1C-2 rollback kod düzeltmesi (`73009da`) PASS’tir. Fiziksel Android telefonda network database rollback, mobil UI rollback, kontrollü Türkçe hata, own-meal `set_my_meal_completion` RPC, restart sonrası persistence ve foreign-meal reddi PASS’tir. Foreign-check exit code `10` beklenen güvenlik başarısıdır. Final cleanup aggregate sonucu Auth users `0`, public rows `0`, Storage buckets `0` ve exit code `0` olarak doğrulandı.
 - **Cleanup bulgusu ve düzeltmesi:** İlk cleanup PARTIAL oldu; mobil kullanımının oluşturduğu manifest dışı `daily_logs.client_id` satırı `ON DELETE NO ACTION` bağıyla fixture Auth silmesini engelledi. Fixture cleanup scripti düzeltildi: yalnız manifest kullanıcılarına ait günlük logları Auth silmeden önce temizler, dar 404 `user_not_found` idempotency ve sınırlı retry uygular. `daily_logs` foreign key davranışı ayrı şema kararı/riskidir.
 - **Emülatör notu:** Network-offline davranışı emülatörde güvenilir kabul edilmedi; kabul sonucu fiziksel Android telefon testidir.
-- **Production rollout blocker:** Legacy client `meals` UPDATE policy’si hâlâ mevcuttur. Eski mobil build uyumluluğu değerlendirilmeden policy kaldırılamaz; production security rollout blokludur.
-- **Sıradaki işlem:** Aşama 3E-2 — Eski mobil build kullanımını değerlendir; aktif eski build yoksa legacy client `meals` UPDATE policy kaldırma migration’ını hazırla; staging’de policy kaldırıldıktan sonra RLS ve mobil regression testlerini yeniden çalıştır.
+- **Aşama 3E-2A — Migration hazırlığı:** Kullanıcı beyanına göre legacy mobile compatibility gerekli değildir; eski build dış dağıtıma çıkmadı. Exact `Clients can update own meal completion` policy’sini kaldıran fail-fast migration, salt-okunur catalog verification SQL’i ve staging regresyon runbook’u hazırlandı. Migration staging veya production’a uygulanmadı.
+- **Aşama durumları:** 3E-1C tamamlandı; 3E-2A migration hazır; 3E-2B staging uygulama ve regresyon bekliyor; 3E-2C production rollout kararı bloklu.
+- **Production rollout blocker:** Legacy client `meals` UPDATE policy’si staging’de henüz kaldırılmadı. Client direct UPDATE reddi, own/foreign RPC, dietitian update, mobile rollback/persistence ve cleanup regresyonları staging’de doğrulanmadan production security rollout blokludur.
+- **Sıradaki işlem:** Aşama 3E-2B — Migration’ı yalnız staging’e uygula; client direct UPDATE, own/foreign RPC, dietitian update, mobile rollback, persistence ve cleanup testlerini çalıştır.
 - **Durum:** Devam ediyor.
 
 ### Aşama 4 — Danışan yönetimi
@@ -424,7 +425,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
-| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | 3E-1C mobil doğrulaması tamamlandı; legacy client meals UPDATE policy ve eski mobil build uyumluluğu production blocker olarak açık |
+| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | 3E-1C tamamlandı; 3E-2A migration hazır, 3E-2B staging regresyon ve 3E-2C production kararı bekliyor |
 | 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
@@ -459,3 +460,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-14 | Aşama 3E-0 | Mobil ve web meal completion yazma yolları denetlendi; RPC cutover readiness ve legacy UPDATE policy kaldırma koşulları belirlendi | Denetim sonucundaki cutover işlemleri bekliyor | `codex/supabase-security` |
 | 2026-07-14 | Aşama 3E-1C | Fiziksel cihazda network rollback, own-meal RPC, persistence, foreign-meal reddi ve final cleanup doğrulandı | Tamamlandı; legacy policy ve eski mobil build blocker olarak açık | codex/supabase-security |
 | 2026-07-14 | Aşama 3E-1C-3 | Staging fixture cleanup, daily_logs bağı ve idempotent Auth cleanup için kalıcı olarak düzeltildi | Aşama 3E-2 eski build/policy kaldırma planı bekliyor | codex/supabase-security |
+| 2026-07-14 | Aşama 3E-2A | Legacy client meals UPDATE policy kaldırma migration’ı, verification SQL’i ve staging runbook’u hazırlandı | 3E-2B staging uygulama/regresyon; 3E-2C production kararı bloklu | codex/supabase-security |
