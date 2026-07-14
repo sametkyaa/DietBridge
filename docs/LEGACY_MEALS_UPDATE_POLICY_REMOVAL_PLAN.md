@@ -79,17 +79,19 @@ Verification SQL POST sorguları şu sonuçları göstermelidir:
 
 ## 14. Staging test matrisi
 
-| Test | Beklenen |
-|---|---|
-| Client direct `meals` UPDATE | RLS hatası veya 0 satır; database satırı değişmez |
-| Client own-meal RPC false → true | Başarılı |
-| Client foreign-meal RPC | Reddedilir ve satır değişmez |
-| Dietitian legitimate meal update | Başarılı; `title`, `time`, `calories`, `macros`, `photo_url`, `sort_order` doğrulanır |
-| Client SELECT own meal | Başarılı |
-| Client SELECT foreign meal | Görünmez veya reddedilir |
-| Mobile offline rollback | UI geri döner, DB değişmez |
-| Mobile restart persistence | Tamamlanma korunur |
-| Fixture cleanup | Auth/public/Storage sonucu `0/0/0` |
+| Test | Test ID | Aktör | Beklenen |
+|---|---|---|---|
+| Client own meals SELECT | `MEALS-SELECT-OWN` | Client A | Own meal görünür, foreign meal aynı sorguda görünmez; admin fixture varlığını doğrular |
+| Client foreign meals SELECT | `MEALS-SELECT-CROSS` | Client A | 0 satır; admin foreign fixture’ın değişmediğini doğrular |
+| Client direct `meals` UPDATE | `LEGACY-UPDATE` | Client A | RLS hatası veya 0 satır; admin readback’inde database satırı değişmez |
+| Dietitian legitimate meal update | `DIETITIAN-MEAL-UPDATE` | Dietitian A | Fixture `title` değeri güncellenir, admin readback ile doğrulanır ve orijinal değer restore edilir |
+| Client own-meal RPC false → true | `RPC-OWN` | Client A | Başarılı |
+| Client foreign-meal RPC | `RPC-CROSS` | Client A | Reddedilir ve satır değişmez |
+| Mobile offline rollback | Fiziksel cihaz | Client A | UI geri döner, DB değişmez |
+| Mobile restart persistence | Fiziksel cihaz | Client A | Tamamlanma korunur |
+| Fixture cleanup | Harness cleanup | Admin | Auth/public/Storage sonucu `0/0/0` |
+
+`MEALS-SELECT-OWN`, `MEALS-SELECT-CROSS` ve `DIETITIAN-MEAL-UPDATE` testleri staging güvenlik harness’ine hazırlanmıştır. Bu testler migration staging’e uygulandıktan sonra çalıştırılacaktır; bu hazırlık görevinde staging testi çalıştırılmamıştır.
 
 ## 15. Staging uygulama ve regresyon runbook’u
 
@@ -101,7 +103,8 @@ Bu görevde hiçbir komut çalıştırılmayacaktır. Aşama 3E-2B’de, yalnız
 4. Ayrı karar kapısından sonra aynı disposable staging çalışma alanında `npx --yes supabase@latest db push --linked` uygulanır.
 5. POST verification SQL çalıştırılır; ardından yukarıdaki test matrisi staging fixture üzerinde tamamlanır.
 6. Doğrudan UPDATE denemesi client JWT ile `from('meals').update(...)` kullanır; 0 satır/RLS hatasına ek olarak admin doğrulamasında satırın değişmediği kaydedilir.
-7. Fixture cleanup, düzeltilmiş script ile `node .\scripts\staging-mobile-meal-test-fixture.mjs cleanup` komutundan sonra `0/0/0` sonucu vermelidir.
+7. `node .\scripts\staging-security-tests.mjs` yeni meals SELECT ve dietitian UPDATE regresyonlarıyla birlikte çalıştırılır; exit code `0` olmalıdır. P2 fonksiyonel blocker exit code `12`, P0/P1 güvenlik blocker exit code `11`, cleanup hatası exit code `20` üretir.
+8. Fixture cleanup, düzeltilmiş script ile `node .\scripts\staging-mobile-meal-test-fixture.mjs cleanup` komutundan sonra `0/0/0` sonucu vermelidir.
 
 Repository kökü bu akışta linklenmez. Bu runbook migration, SQL veya fixture işlemlerinin bu hazırlık görevi içinde uygulandığı anlamına gelmez.
 
@@ -140,6 +143,10 @@ Migration staging’e uygulanmadı, client direct UPDATE reddi doğrulanmadı ve
 - `supabase/migrations/20260714010000_remove_legacy_client_meals_update_policy.sql`
 - `supabase/verification/legacy_client_meals_update_policy_verification.sql`
 - `docs/LEGACY_MEALS_UPDATE_POLICY_REMOVAL_PLAN.md`
+- `scripts/staging-security-test-assertions.mjs`
+- `scripts/staging-security-tests.mjs`
+- `scripts/staging-security-tests.test.mjs`
+- `docs/MEALS_RLS_REGRESSION_HARNESS_REPORT.md`
 - `docs/MEAL_COMPLETION_STAGING_DEVICE_TEST_REPORT.md`
 - `docs/ROADMAP.md`
 

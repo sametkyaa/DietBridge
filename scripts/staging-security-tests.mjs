@@ -6,6 +6,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
+import {
+  classifyHarnessExitCode,
+  evaluateDietitianMealUpdate,
+  evaluateForeignMealSelection,
+  evaluateOwnMealSelection,
+} from './staging-security-test-assertions.mjs';
 
 const CONFIRMATION = 'YES_DIETBRIDGE_STAGING_ONLY';
 const REPORT_PATH = 'docs/SUPABASE_STAGING_RLS_TEST_REPORT.md';
@@ -41,7 +47,8 @@ function redact(value) {
     .replace(/[\w.+-]+@[\w.-]+/g, '[redacted-email]');
 }
 function record(id, area, role, action, expected, ok, actual, severity = '', status = null, productionBlocker = false) {
-  results.push({ id, area, role, action, expected, actual: redact(actual), status: status ?? (ok ? 'PASS' : 'FAIL — SECURITY BLOCKER'), severity, productionBlocker });
+  const failureStatus = severity === 'P2' ? 'FAIL — FUNCTIONAL BLOCKER' : 'FAIL — SECURITY BLOCKER';
+  results.push({ id, area, role, action, expected, actual: redact(actual), status: status ?? (ok ? 'PASS' : failureStatus), severity, productionBlocker });
 }
 function assertNoError(result, label) { if (result?.error) throw new Error(`${label}: ${redact(result.error.message)}`); return result?.data; }
 function userClient(url, anonKey) {
@@ -114,9 +121,9 @@ function writeReport(runId, stagingRef) {
   const securityFailures = results.filter((r) => r.status.includes('SECURITY BLOCKER') && ['P0', 'P1'].includes(r.severity)).length;
   const deferredBlockers = results.filter((r) => r.status === 'KNOWN DEFERRED GAP' && r.productionBlocker).length;
   const p2 = results.filter((r) => r.severity === 'P2' && !r.status.startsWith('PASS')).length;
-  const reportExitCode = cleanupFailed ? 20 : securityFailures ? 11 : deferredBlockers ? 10 : 0;
+  const reportExitCode = classifyHarnessExitCode({ cleanupFailed, securityFailures, deferredBlockers, functionalBlockers: p2 });
   const rows = results.map((r) => `| ${r.id} | ${r.area} | ${r.role} | ${r.action} | ${r.expected} | ${r.actual} | ${r.status} | ${r.severity} |`).join('\n');
-  const report = `# DietBridge — Staging Onboarding ve Negatif RLS Test Raporu\n\n> [!IMPORTANT]\n> Bu rapor yalnız staging için tasarlanmış sentetik test harness çıktısıdır. Secret, URL, token, UUID ve email değerleri maskelenir.\n\n## Amaç ve ortam\n\n- Test run: \`${mask(runId)}\`\n- Staging referansı: \`${mask(stagingRef)}\`\n- Production ve GROUNDLESS: kullanılmadı.\n- Harness: \`scripts/staging-security-tests.mjs\`\n\n## Test özeti\n\n- Toplam: ${results.length}\n- PASS: ${(counts.PASS ?? []).length}\n- FAIL: ${(counts['FAIL — SECURITY BLOCKER'] ?? []).length}\n- Cleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}\n\n| ID | Alan | Rol | İşlem | Beklenen | Gerçek | Durum | Severity |\n|---|---|---|---|---|---|---|---|\n${rows || '| — | — | — | Çalıştırılmadı | — | — | NOT EXECUTED | — |'}\n\n## Cleanup ve sonuç\n\nCleanup yalnız runtime sırasında kaydedilen explicit ID’leri hedefler. Migration, Storage ve Realtime değişikliği yapılmaz.\n`;
+  const report = `# DietBridge — Staging Onboarding ve Negatif RLS Test Raporu\n\n> [!IMPORTANT]\n> Bu rapor yalnız staging için tasarlanmış sentetik test harness çıktısıdır. Secret, URL, token, UUID ve email değerleri maskelenir.\n\n## Amaç ve ortam\n\n- Test run: \`${mask(runId)}\`\n- Staging referansı: \`${mask(stagingRef)}\`\n- Production ve GROUNDLESS: kullanılmadı.\n- Harness: \`scripts/staging-security-tests.mjs\`\n\n## Test özeti\n\n- Toplam: ${results.length}\n- PASS: ${(counts.PASS ?? []).length}\n- FAIL: ${(counts['FAIL — SECURITY BLOCKER'] ?? []).length + (counts['FAIL — FUNCTIONAL BLOCKER'] ?? []).length}\n- Cleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}\n\n| ID | Alan | Rol | İşlem | Beklenen | Gerçek | Durum | Severity |\n|---|---|---|---|---|---|---|---|\n${rows || '| — | — | — | Çalıştırılmadı | — | — | NOT EXECUTED | — |'}\n\n## Cleanup ve sonuç\n\nCleanup yalnız runtime sırasında kaydedilen explicit ID’leri hedefler. Migration, Storage ve Realtime değişikliği yapılmaz.\n`;
   const reportWithVerification = report
     .replace(
       `- Cleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}`,
@@ -180,12 +187,19 @@ async function main() {
     const clientASession = await signIn(staging.VITE_SUPABASE_URL, staging.VITE_SUPABASE_ANON_KEY, clientA);
     const dietitianASession = await signIn(staging.VITE_SUPABASE_URL, staging.VITE_SUPABASE_ANON_KEY, dietitianA);
     const anonymous = userClient(staging.VITE_SUPABASE_URL, staging.VITE_SUPABASE_ANON_KEY);
+    const adminOwnMeal = await selectOne(admin, 'meals', 'id', fixtureA.meals[0].id);
+    const adminForeignMealBefore = await selectOne(admin, 'meals', 'id', fixtureB.meals[0].id);
+    const ownMeals = await clientASession.from('meals').select('id').in('id', [fixtureA.meals[0].id, fixtureB.meals[0].id]);
+    const ownMealsResult = evaluateOwnMealSelection({ error: ownMeals.error, rows: ownMeals.data, ownMealId: fixtureA.meals[0].id, foreignMealId: fixtureB.meals[0].id, adminOwnMeal, adminForeignMeal: adminForeignMealBefore });
+    record('MEALS-SELECT-OWN', 'Meals', 'Client A', 'own and foreign meal select', 'own visible; foreign hidden', ownMealsResult.ok, ownMealsResult.actual, 'P2');
+    const foreignMeal = await clientASession.from('meals').select('id').eq('id', fixtureB.meals[0].id);
+    const adminForeignMealAfter = await selectOne(admin, 'meals', 'id', fixtureB.meals[0].id);
+    const foreignMealResult = evaluateForeignMealSelection({ error: foreignMeal.error, rows: foreignMeal.data, foreignMealId: fixtureB.meals[0].id, adminBefore: adminForeignMealBefore, adminAfter: adminForeignMealAfter });
+    record('MEALS-SELECT-CROSS', 'Meals', 'Client A', 'foreign meal select', '0 rows', foreignMealResult.ok, foreignMealResult.actual, 'P0');
     const ownPlans = await clientASession.from('meal_plans').select('id').eq('id', fixtureA.plan.id); record('RLS-OWN-PLAN', 'Meals', 'Client A', 'own select', '1 row', !ownPlans.error && ownPlans.data?.length === 1, ownPlans.error ? 'denied' : `${ownPlans.data?.length ?? 0} row`, 'P2');
     const foreignPlans = await clientASession.from('meal_plans').select('id').eq('id', fixtureB.plan.id); record('RLS-CROSS-PLAN', 'Meals', 'Client A', 'cross-tenant select', '0 rows', !foreignPlans.error && foreignPlans.data?.length === 0, foreignPlans.error ? 'denied' : `${foreignPlans.data?.length ?? 0} row`, 'P0');
     const anonProfiles = await anonymous.from('profiles').select('id'); record('RLS-ANON', 'Anonymous', 'Anon', 'profiles select', '0 rows', !anonProfiles.error && anonProfiles.data?.length === 0, anonProfiles.error ? 'denied' : `${anonProfiles.data?.length ?? 0} row`, 'P0');
     const spoof = await clientASession.from('chat_messages').insert({ sender_id: dietitianA.id, receiver_id: clientA.id, message_text: runId }); record('RLS-SPOOF', 'Chat', 'Client A', 'sender spoofing', 'denied/0', Boolean(spoof.error), spoof.error ? 'denied' : 'accepted', 'P1');
-    const rpcOwn = await clientASession.rpc('set_my_meal_completion', { p_meal_id: fixtureA.meals[0].id, p_is_eaten: true }); record('RPC-OWN', 'RPC', 'Client A', 'own meal completion', 'success', !rpcOwn.error, rpcOwn.error ? 'denied' : 'success', 'P2');
-    const rpcForeign = await clientASession.rpc('set_my_meal_completion', { p_meal_id: fixtureB.meals[0].id, p_is_eaten: true }); record('RPC-CROSS', 'RPC', 'Client A', 'foreign meal completion', 'denied', Boolean(rpcForeign.error), rpcForeign.error ? 'denied' : 'accepted', 'P1');
     const legacyMealId = fixtureA.meals[1].id;
     const beforeLegacy = await selectOne(admin, 'meals', 'id', legacyMealId);
     if (!beforeLegacy) throw new Error('Legacy meal fixture bulunamadı.');
@@ -203,6 +217,24 @@ async function main() {
     } else {
       record('LEGACY-UPDATE', 'Meals', 'Client A', 'direct non-is_eaten update', 'denied', true, direct.error ? 'API denied; stored row unchanged' : 'stored row unchanged');
     }
+    const dietitianMealId = fixtureA.meals[0].id;
+    const beforeDietitianUpdate = await selectOne(admin, 'meals', 'id', dietitianMealId);
+    if (!beforeDietitianUpdate) throw new Error('Dietitian meal fixture bulunamadı.');
+    const dietitianTestTitle = `dbsec-dietitian-update-${randomBytes(4).toString('hex')}`;
+    const dietitianUpdate = await dietitianASession.from('meals').update({ title: dietitianTestTitle }).eq('id', dietitianMealId).select('id,title');
+    const afterDietitianUpdate = await selectOne(admin, 'meals', 'id', dietitianMealId);
+    const dietitianRestore = await dietitianASession.from('meals').update({ title: beforeDietitianUpdate.title }).eq('id', dietitianMealId).select('id,title');
+    let afterDietitianRestore = await selectOne(admin, 'meals', 'id', dietitianMealId);
+    if (afterDietitianRestore?.title !== beforeDietitianUpdate.title) {
+      const adminRestore = await admin.from('meals').update({ title: beforeDietitianUpdate.title }).eq('id', dietitianMealId);
+      assertNoError({ error: adminRestore.error }, 'Dietitian title admin fallback restore');
+      afterDietitianRestore = await selectOne(admin, 'meals', 'id', dietitianMealId);
+      if (afterDietitianRestore?.title !== beforeDietitianUpdate.title) throw new Error('Dietitian title restore doğrulanamadı.');
+    }
+    const dietitianUpdateResult = evaluateDietitianMealUpdate({ updateError: dietitianUpdate.error, updatedRows: dietitianUpdate.data, targetMealId: dietitianMealId, testTitle: dietitianTestTitle, adminAfterUpdate: afterDietitianUpdate, originalTitle: beforeDietitianUpdate.title, restoreError: dietitianRestore.error, restoredRows: dietitianRestore.data, adminAfterRestore: afterDietitianRestore });
+    record('DIETITIAN-MEAL-UPDATE', 'Meals', 'Dietitian A', 'own plan meal title update and restore', 'persisted and restored', dietitianUpdateResult.ok, dietitianUpdateResult.actual, 'P2');
+    const rpcOwn = await clientASession.rpc('set_my_meal_completion', { p_meal_id: fixtureA.meals[0].id, p_is_eaten: true }); record('RPC-OWN', 'RPC', 'Client A', 'own meal completion', 'success', !rpcOwn.error, rpcOwn.error ? 'denied' : 'success', 'P2');
+    const rpcForeign = await clientASession.rpc('set_my_meal_completion', { p_meal_id: fixtureB.meals[0].id, p_is_eaten: true }); record('RPC-CROSS', 'RPC', 'Client A', 'foreign meal completion', 'denied', Boolean(rpcForeign.error), rpcForeign.error ? 'denied' : 'accepted', 'P1');
     await Promise.all([clientASession.auth.signOut(), dietitianASession.auth.signOut()]);
   } catch (error) { record('HARNESS', 'Harness', 'System', 'execution', 'complete', false, error.message, 'P1'); exitCode = 11; }
   finally {
@@ -214,7 +246,7 @@ async function main() {
   const securityFailures = results.filter((r) => r.status === 'FAIL — SECURITY BLOCKER' && ['P0', 'P1'].includes(r.severity)).length;
   const deferredBlockers = results.filter((r) => r.status === 'KNOWN DEFERRED GAP' && r.productionBlocker).length;
   const p2 = results.filter((r) => r.severity === 'P2' && !r.status.startsWith('PASS')).length;
-  if (cleanupFailed) exitCode = 20; else if (securityFailures) exitCode = 11; else if (deferredBlockers) exitCode = 10;
+  exitCode = classifyHarnessExitCode({ cleanupFailed, securityFailures, deferredBlockers, functionalBlockers: p2, currentExitCode: exitCode });
   const passed = results.filter((r) => r.status === 'PASS').length;
   console.log(`Preflight: PASS\nOnboarding: ${results.filter((r) => r.area === 'Onboarding' && r.status === 'PASS').length}/${results.filter((r) => r.area === 'Onboarding').length}\nRLS tests: ${passed}/${results.length}\nSecurity failures P0/P1: ${securityFailures}\nDeferred P1 blockers: ${deferredBlockers}\nP2 functional blockers: ${p2}\nCleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}\nFinal Auth users: ${finalState?.authUsers ?? 'NOT EXECUTED'}\nFinal public rows: ${finalState?.publicRows ?? 'NOT EXECUTED'}\nFinal Storage buckets: ${finalState?.storageBuckets ?? 'NOT EXECUTED'}\nMigration history unchanged: ${migrationHistoryBoundary.status}\nMigration history reason: ${migrationHistoryBoundary.reason}\nReport: ${REPORT_PATH}`);
   process.exit(exitCode);
