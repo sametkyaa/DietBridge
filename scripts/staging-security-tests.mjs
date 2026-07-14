@@ -135,7 +135,7 @@ function writeReport(runId, stagingRef) {
     )
     .replace(
       'Migration, Storage ve Realtime değişikliği yapılmaz.\n',
-      `Migration, Storage ve Realtime değişikliği yapılmaz.\n\n- Final Auth users: ${finalState?.authUsers ?? 'NOT EXECUTED'}\n- Final public rows: ${finalState?.publicRows ?? 'NOT EXECUTED'}\n- Final Storage buckets: ${finalState?.storageBuckets ?? 'NOT EXECUTED'}\n\n## Environment integrity verification\n\n- Migration history unchanged: ${migrationHistoryBoundary.status}\n- Reason: ${migrationHistoryBoundary.reason}\n\nMigration history, runtime test istemcisinin Data API erişim sınırının dışındadır. Bu sınır cleanup sonucunu, P0/P1 sınıflandırmasını veya deferred P1 kaynaklı exit code 10'u etkilemez. Canlı migration history doğrulaması staging'e yönelik ayrı, salt-okunur CLI/catalog kontrolüyle yapılmalıdır.\n`,
+      `Migration, Storage ve Realtime değişikliği yapılmaz.\n\n- Final Auth users: ${finalState?.authUsers ?? 'NOT EXECUTED'}\n- Final public rows: ${finalState?.publicRows ?? 'NOT EXECUTED'}\n- Final Storage buckets: ${finalState?.storageBuckets ?? 'NOT EXECUTED'}\n\n## Environment integrity verification\n\n- Runtime migration catalog check: ${migrationHistoryBoundary.status}\n- Reason: ${migrationHistoryBoundary.reason}\n\nRuntime istemcisi migration katalogunu sorgulamaz. Migration history gerektiğinde ayrı staging-only CLI/catalog kontrolüyle doğrulanır. Bu gözlemlenebilirlik sınırı harness güvenlik, fonksiyonel veya cleanup sonucunu değiştirmez.\n`,
     );
   writeFileSync(REPORT_PATH, reportWithVerification, { encoding: 'utf8' });
 }

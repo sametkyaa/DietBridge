@@ -134,11 +134,26 @@ with check (
 );
 ```
 
-## 17. Production blocker
+## 17. Staging rollout durumu
 
-Migration staging’e uygulanmadı, client direct UPDATE reddi doğrulanmadı ve dietitian/mobile regresyonları yeniden çalıştırılmadı. Production rollout blokludur.
+```text
+Legacy compatibility: NOT REQUIRED
+Migration prepared: YES
+Applied to staging: YES
+Staging RLS regression: PASS
+Staging mobile regression: PASS
+Applied to production: NO
+Production rollout: PENDING/BLOCKED
+Stage 3 complete: NO
+```
 
-## 18. Değiştirilen dosyalar
+Staging’de legacy client direct `meals` UPDATE policy kaldırıldı. Security harness 17/17 PASS, fiziksel Android mobil regresyonu PASS ve final cleanup Auth/public/Storage `0/0/0` sonucuyla tamamlandı.
+
+## 18. Production blocker
+
+Production’a migration uygulanmadı. Production preflight, yalnız production hedefi doğrulama, postflight policy/RPC katalog doğrulaması ve kontrollü rollout karar kapısı tamamlanana kadar production rollout PENDING/BLOCKED durumundadır.
+
+## 19. Değiştirilen dosyalar
 
 - `supabase/migrations/20260714010000_remove_legacy_client_meals_update_policy.sql`
 - `supabase/verification/legacy_client_meals_update_policy_verification.sql`
@@ -150,19 +165,21 @@ Migration staging’e uygulanmadı, client direct UPDATE reddi doğrulanmadı ve
 - `docs/MEAL_COMPLETION_STAGING_DEVICE_TEST_REPORT.md`
 - `docs/ROADMAP.md`
 
-## 19. Çalıştırılan statik kontroller
+## 20. Çalıştırılan statik kontroller
 
 Migration ve verification SQL içerikleri, policy/RPC repository taraması, aktif mobil direct UPDATE taraması, whitespace/diff kontrolü ve secret taraması bu görevde çalıştırılır. Staging veya production bağlantısı gerektiren kontrol çalıştırılmaz.
 
-## 20. Sonraki aşama
+## 21. Sonraki aşama
 
-**Aşama 3E-2B — Legacy policy removal migration’ını yalnız staging’e uygula ve tam RLS/mobil regresyon matrisini çalıştır.**
+**Aşama 3E-2C — Production rollout karar kapısı, production preflight ve kontrollü legacy policy migration uygulaması.**
 
 ```text
 Legacy compatibility: NOT REQUIRED
 Migration prepared: YES
-Applied to staging: NO
+Applied to staging: YES
+Staging RLS regression: PASS
+Staging mobile regression: PASS
 Applied to production: NO
-Production rollout: BLOCKED
+Production rollout: PENDING/BLOCKED
 Stage 3 complete: NO
 ```
