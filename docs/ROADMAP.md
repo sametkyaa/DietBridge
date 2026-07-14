@@ -187,7 +187,10 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
   - Legacy `meals` UPDATE policy’sinin `is_eaten` dışındaki alanları da güncellemeye izin verdiği doğrulandı; bulgu P1 deferred production blocker olarak kaydedildi.
 - **Production rollout blocker:** Legacy direct `meals` UPDATE policy’si, mobil RPC cutover ve staging doğrulaması tamamlanmadan kaldırılamaz.
 - **Aşama 3E-0 — Mobil Meal Completion RPC Cutover Denetimi:** Aktif mobil Dashboard → ViewModel → MealsContext → mealService zinciri denetlendi. `mealService.updateMealCompletion` yalnız `is_eaten` gönderse de doğrudan `meals` UPDATE kullanıyor; aktif mobil source tree’de `set_my_meal_completion` RPC referansı bulunmadı. Optimistic state rollback ve kullanıcı hata bildirimi mevcut. Web diyetisyen meal-plan servisi client completion yazması yapmıyor ve diyetisyen policy’leri client policy’den bağımsız. `src_backup` içindeki local-only yol aktif import zincirinde bulunmadı.
-- **Sıradaki işlem:** Aşama 3E-1 — Mobil meal completion RPC cutover uygulaması.
+- **Aşama 3E-1C ara sonuçları:** DietBridge Staging fixture setup PASS tamamlandı. Own meal için `set_my_meal_completion` çalıştı, own `is_eaten=true` doğrulandı; foreign meal RPC reddedildi ve admin yeniden okumasında foreign meal değişmeden kaldı. Cross-client mutation gözlenmedi.
+- **Eksik kanıtlar:** Persistence, yeni bir false fixture ile network rollback, eski mobil build manuel doğrulaması ve final cleanup aggregate terminal kanıtı sonraki çalışmada kaydedilmelidir. Mobil UI’da completed durumundan incomplete durumuna dönen kontrol bulunmadığından toggle-back uygulanamaz; admin/script ile yapay olarak üretilmeyecektir.
+- **Production rollout blocker:** Legacy client `meals` UPDATE policy’si; persistence, network rollback, eski build ve final cleanup kanıtı tamamlanmadan kaldırılamaz.
+- **Sıradaki işlem:** Aşama 3E-1C-1 — Yeni staging fixture ile network rollback, persistence ve final cleanup aggregate kanıtının tamamlanması.
 - **Durum:** Devam ediyor.
 
 ### Aşama 4 — Danışan yönetimi
@@ -420,7 +423,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
-| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Staging güvenlik/onboarding migration’ları ve negatif RLS testleri doğrulandı; 3E-0 denetiminde aktif mobil direct meals UPDATE bulundu, P1 deferred blocker devam ediyor |
+| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Staging güvenlik/onboarding migration’ları ve negatif RLS testleri doğrulandı; 3E-1C own/foreign meal RPC sınırı doğrulandı, persistence/network rollback/eski build/final cleanup kanıtı bekliyor |
 | 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
@@ -453,3 +456,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-13 | Aşama 3D-4B | Güvenlik ve onboarding migration zinciri yalnız staging’e uygulandı; migration history ve metadata doğrulandı | Negatif RLS testleri bekliyor | `codex/supabase-security` |
 | 2026-07-14 | Aşama 3D-4C | Sentetik staging onboarding ve negatif RLS testleri tamamlandı; gerçek P0/P1 ihlal bulunmadı, legacy meals UPDATE için P1 deferred blocker doğrulandı | Mobil RPC cutover ve legacy policy kaldırma bekliyor | `codex/supabase-security` |
 | 2026-07-14 | Aşama 3E-0 | Mobil ve web meal completion yazma yolları denetlendi; RPC cutover readiness ve legacy UPDATE policy kaldırma koşulları belirlendi | Denetim sonucundaki cutover işlemleri bekliyor | `codex/supabase-security` |
+| 2026-07-14 | Aşama 3E-1C | Mobil own-meal RPC ve foreign-meal reddi staging üzerinde doğrulandı | Persistence, network rollback, eski build uyumluluğu ve final cleanup kanıtı bekliyor | codex/supabase-security |
