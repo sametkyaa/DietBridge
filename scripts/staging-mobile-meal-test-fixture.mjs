@@ -7,13 +7,16 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 
 const COMMANDS = new Set(['setup', 'status', 'foreign-check', 'cleanup']);
 const CONFIRMATION = 'YES_DIETBRIDGE_STAGING_MOBILE_ONLY';
 const MANIFEST_PATH = path.join(os.tmpdir(), 'dietbridge-staging-mobile-meal-test-manifest.json');
-const TABLES = ['profiles', 'client_profiles', 'dietitian_profiles', 'dietitian_clients', 'appointments', 'chat_messages', 'meal_plans', 'meals'];
-const EXIT = { OK: 0, INVALID: 2, ENVIRONMENT: 3, PREFLIGHT: 4, FOREIGN_REJECTED: 10, SECURITY_BLOCKER: 11, CLEANUP: 20, MANIFEST: 30 };
+const TABLES = ['profiles', 'client_profiles', 'dietitian_profiles', 'dietitian_clients', 'appointments', 'chat_messages', 'meal_plans', 'meals', 'daily_logs'];
+const AUTH_DELETE_MAX_ATTEMPTS = 3;
+const AUTH_DELETE_RETRY_DELAY_MS = 100;
+export const EXIT = { OK: 0, INVALID: 2, ENVIRONMENT: 3, PREFLIGHT: 4, FOREIGN_REJECTED: 10, SECURITY_BLOCKER: 11, CLEANUP: 20, MANIFEST: 30 };
 
 function usage() {
   console.log('Usage: node .\\scripts\\staging-mobile-meal-test-fixture.mjs <setup|status|foreign-check|cleanup>');
@@ -82,6 +85,42 @@ function requirePassword() {
 function assertNoError(result, label) {
   if (result?.error) fail(1, `${label}: ${redact(result.error.message)}`);
   return result?.data;
+}
+
+export function isAlreadyDeletedAuthUser(error) {
+  return error?.status === 404 &&
+    error?.code === 'user_not_found' &&
+    /user not found/i.test(String(error?.message ?? ''));
+}
+
+export function isRetryableAuthDeleteError(error) {
+  const errorClass = error?.name ?? error?.constructor?.name;
+  return errorClass === 'AuthRetryableFetchError' || (Number.isInteger(error?.status) && error.status >= 500 && error.status <= 599);
+}
+
+function safeAuthErrorContext(error) {
+  const errorClass = error?.name ?? error?.constructor?.name ?? 'UnknownAuthError';
+  const status = Number.isInteger(error?.status) ? error.status : 'unknown';
+  const code = typeof error?.code === 'string' ? error.code : 'unknown';
+  return `${errorClass}; status=${status}; code=${code}`;
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export async function deleteFixtureAuthUser(admin, userId, { waitForRetry = wait } = {}) {
+  for (let attempt = 1; attempt <= AUTH_DELETE_MAX_ATTEMPTS; attempt += 1) {
+    const { error } = await admin.auth.admin.deleteUser(userId);
+    if (!error || isAlreadyDeletedAuthUser(error)) return;
+
+    if (isRetryableAuthDeleteError(error) && attempt < AUTH_DELETE_MAX_ATTEMPTS) {
+      await waitForRetry(AUTH_DELETE_RETRY_DELAY_MS * attempt);
+      continue;
+    }
+
+    fail(EXIT.CLEANUP, `Auth user cleanup failed after attempt ${attempt}/${AUTH_DELETE_MAX_ATTEMPTS}: ${safeAuthErrorContext(error)}`);
+  }
 }
 
 function todayInIstanbul() {
@@ -189,7 +228,7 @@ async function createPlanAndMeal(admin, manifest, dietitianId, clientId, title) 
   return meal.id;
 }
 
-async function deleteExplicitFixtures(admin, manifest) {
+export async function deleteExplicitFixtures(admin, manifest) {
   const removeRows = async (table, ids) => {
     if (!ids?.length) return;
     const { error } = await admin.from(table).delete().in('id', ids);
@@ -198,9 +237,12 @@ async function deleteExplicitFixtures(admin, manifest) {
   await removeRows('meals', manifest.ids.meals);
   await removeRows('meal_plans', manifest.ids.plans);
   await removeRows('dietitian_clients', manifest.ids.relations);
+  if (manifest.ids.users.length) {
+    const { error } = await admin.from('daily_logs').delete().in('client_id', manifest.ids.users);
+    assertNoError({ error }, 'daily_logs cleanup');
+  }
   for (const userId of manifest.ids.users) {
-    const { error } = await admin.auth.admin.deleteUser(userId);
-    assertNoError({ error }, 'Auth user cleanup');
+    await deleteFixtureAuthUser(admin, userId);
   }
 }
 
@@ -272,7 +314,13 @@ async function status(settings) {
   const foreignMeal = assertNoError(await admin.from('meals').select('is_eaten').eq('id', manifest.ids.foreignMealId).maybeSingle(), 'Foreign meal status');
   const state = presentUsers === manifest.ids.users.length && rowsPresent === expectedRows && ownMeal && foreignMeal
     ? 'ACTIVE' : (presentUsers || rowsPresent || ownMeal || foreignMeal ? 'PARTIAL' : 'MISSING');
-  console.log(`Fixture status: ${state}\nClient A own meal is_eaten: ${ownMeal?.is_eaten === true ? 'true' : 'false'}\nClient B foreign meal unchanged: ${foreignMeal?.is_eaten === false ? 'YES' : 'NO'}\nCreated Auth users present: ${presentUsers}/${manifest.ids.users.length}\nCreated fixture rows present: ${rowsPresent}/${expectedRows}\nManifest expired: ${Date.now() > Date.parse(manifest.expiresAt) ? 'YES' : 'NO'}`);
+  const foreignMealStatus = foreignMealUnchangedStatus(foreignMeal);
+  console.log(`Fixture status: ${state}\nClient A own meal is_eaten: ${ownMeal?.is_eaten === true ? 'true' : 'false'}\nClient B foreign meal unchanged: ${foreignMealStatus}\nCreated Auth users present: ${presentUsers}/${manifest.ids.users.length}\nCreated fixture rows present: ${rowsPresent}/${expectedRows}\nManifest expired: ${Date.now() > Date.parse(manifest.expiresAt) ? 'YES' : 'NO'}`);
+}
+
+export function foreignMealUnchangedStatus(foreignMeal) {
+  if (!foreignMeal) return 'NOT APPLICABLE — fixture row absent';
+  return foreignMeal.is_eaten === false ? 'YES' : 'NO';
 }
 
 async function foreignCheck(settings) {
@@ -301,6 +349,14 @@ async function foreignCheck(settings) {
 
 async function cleanup(settings) {
   const admin = requireAdmin(settings);
+  if (!existsSync(MANIFEST_PATH)) {
+    const state = await aggregate(admin);
+    if (state.authUsers || state.publicRows || state.storageBuckets) {
+      fail(EXIT.MANIFEST, 'Fixture manifest bulunamadı; sıfır olmayan staging aggregate için cleanup güvenle devam edemez.');
+    }
+    console.log(`Cleanup: PASS\nFinal Auth users: ${state.authUsers}\nFinal public rows: ${state.publicRows}\nFinal Storage buckets: ${state.storageBuckets}`);
+    return;
+  }
   const manifest = readManifest();
   const state = await cleanupAndVerify(admin, manifest, true);
   console.log(`Cleanup: PASS\nFinal Auth users: ${state.authUsers}\nFinal public rows: ${state.publicRows}\nFinal Storage buckets: ${state.storageBuckets}`);
@@ -320,7 +376,9 @@ async function main() {
   if (command === 'cleanup') await cleanup(settings);
 }
 
-main().catch((error) => {
-  console.error(`Fixture script stopped: ${redact(error.message)}`);
-  process.exitCode = error.exitCode ?? 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(`Fixture script stopped: ${redact(error.message)}`);
+    process.exitCode = error.exitCode ?? 1;
+  });
+}

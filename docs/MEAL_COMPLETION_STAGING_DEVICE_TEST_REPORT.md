@@ -1,47 +1,47 @@
 # DietBridge Mobile — Staging Meal Completion Cihaz Test Raporu
 
-## Kapsam ve ortam
+## Kapsam ve kabul ortamı
 
-Bu rapor, yalnız DietBridge Staging üzerinde kullanıcı tarafından interaktif PowerShell ve mobil cihazla yürütülen Aşama 3E-1C kanıtını kaydeder. Production ve GROUNDLESS kullanılmadı. Bu görevde fixture script’i yeniden çalıştırılmadı ve Supabase’e yeni bir bağlantı kurulmadı.
+Aşama 3E-1C fiziksel Android telefon ve DietBridge Staging üzerinde tamamlandı. Production ve GROUNDLESS kullanılmadı. Bu sonuçlar kullanıcı tarafından interaktif PowerShell ve fiziksel cihazla doğrulandı; bu sonuç kaydı görevi staging/production bağlantısı veya yeni fixture oluşturma işlemi çalıştırmaz.
 
-## Fixture hazırlığı
+Mobil kod düzeltmesi: `73009da fix: rollback meal completion on RPC failure` (Aşama 3E-1C-2) — PASS.
 
-| Kontrol | Sonuç | Kanıt |
+## Fiziksel cihaz doğrulamaları
+
+| Test | Sonuç | Kanıt |
 |---|---|---|
-| Fixture setup | PASS | Foreign-meal fixture hazırlandı; komut exit code `0` ile bitti. |
+| Network database rollback | PASS | Ağ kapalıyken own meal `is_eaten=false` kaldı; foreign meal değişmeden kaldı. |
+| Mobil UI rollback | PASS | Uygulama kapanmadı ve buton yeniden “Öğünümü yedim” durumuna döndü. |
+| Kontrollü Türkçe hata | PASS | “Öğün durumu güncellenemedi. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.” gösterildi; teknik fetch, Supabase veya PostgREST metni gösterilmedi. |
+| Uygulama crash | PASS | Unhandled crash gözlenmedi. |
+| Own-meal RPC | PASS | İnternet yeniden açıldığında hata olmadan “Geri Al” durumuna geçildi; own meal `is_eaten=true` oldu. |
+| Persistence | PASS | Uygulama tamamen kapatılıp açıldıktan sonra fixture’daki tek öğün için “Bugünün bütün öğünleri tamamlandı” mesajı görüldü; own meal `is_eaten=true` kaldı. |
+| Foreign meal rejection | PASS | `Foreign meal RPC: REJECTED`, `Foreign meal unchanged: YES`; exit code `10` beklenen güvenlik başarısıdır. |
+| Final cleanup | PASS | Final Auth users: `0`, public rows: `0`, Storage buckets: `0`; cleanup exit code `0`. |
 
-## Doğrulanan senaryolar
+## Emülatör notu
 
-| Senaryo | Beklenen davranış | Sonuç | Kanıt |
-|---|---|---|---|
-| Own meal completion | Client A kendi öğününü RPC ile tamamlayabilir | PASS | UI tamamlanmış durumu gösterdi; `status` own meal için `is_eaten=true` bildirdi. |
-| Foreign meal completion | Client A, Client B'nin öğününü tamamlayamaz | PASS | `Foreign meal RPC: REJECTED`; foreign meal admin yeniden okumasında değişmedi; komut exit code `10` ile bitti. Bu exit code beklenen güvenlik reddidir. |
-| Cross-client mutation | Foreign kayıt değişmeden kalır | PASS | Foreign meal unchanged: YES. |
+Emülatörde ağ kapatma davranışı güvenilir kabul edilmedi: RPC isteği beklemede kalabildi veya UI geçici olarak “Geri Al” durumunda kaldı; veritabanı `is_eaten=false` kaldı. Kabul testi fiziksel Android telefon sonucudur.
 
-## Uygulanmayan veya tamamlanmamış kontroller
+## Cleanup olayı ve kök neden
 
-| Kontrol | Durum | Not |
-|---|---|---|
-| Persistence | ÇALIŞTIRILMADI | Own-meal başarısından sonra uygulamanın tamamen kapatılıp açılması ve UI/`status` ile true değerinin korunması henüz kaydedilmedi. |
-| Toggle-back | UYGULANAMAZ | Mobil UI completed durumundan incomplete durumuna dönen kontrol sunmuyor. Admin/script ile yapay toggle-back yapılmayacak. |
-| Network/RPC rollback | ÇALIŞTIRILMADI | Yeni `is_eaten=false` fixture ile, own-meal başarısından önce ağ kapatılarak optimistic UI rollback, Türkçe kontrollü hata ve DB'de false kalması doğrulanacak. |
-| Eski mobil build | BİLİNMİYOR | Ayrı manuel uyumluluk kontrolü bekliyor. |
-| Final cleanup aggregate | KANIT BEKLİYOR | Cleanup yalnız USER-CONFIRMED olarak bildirildi; terminal aggregate çıktısı bu raporda bağımsız olarak doğrulanmış değildir. |
+İlk cleanup denemesi PARTIAL oldu: Auth cleanup sırasında `user_not_found` dışı bir hata ile durdu; status, 2/3 fixture Auth kullanıcısının ve 0/6 temel fixture satırının kaldığını gösterdi. Tanılama sonucunda, mobil kullanım sırasında oluşan fixture Client A kaydı `public.daily_logs.client_id` üzerinden `profiles.id`e `ON DELETE NO ACTION` bağıyla bağlıydı. Bu tek günlük log satırı Auth kullanıcısı silinmesini engelledi. `client_profiles.user_id` ilişkisi `ON DELETE CASCADE` olduğu için engelleyici değildi.
 
-## Geçici başlangıç olayı
+Yalnız Synthetic Client A'ya ait günlük log silindikten sonra ilgili Auth kullanıcıları güvenle temizlendi. Son cleanup script ve aggregate doğrulaması, staging’de geçici test verisi kalmadığını doğruladı.
 
-İlk uygulama açılışında `whatwg-fetch` kaynaklı `Response constructor status=0` olayı görüldü. Uygulama Expo yeniden başlatıldıktan sonra açıldı ve own-meal RPC başarı senaryosu tamamlandı. Bu olay gerçek bir HTTP yanıtı veya RPC sonucu olarak değerlendirilmedi; tekrarlarsa staging environment, cihaz ağı ve fetch wrapper incelenmelidir.
+## Kalıcı fixture cleanup düzeltmesi
 
-## Güvenlik değerlendirmesi
+- Cleanup, manifestteki fixture kullanıcı UUID’leriyle sınırlı `daily_logs.client_id` satırlarını Auth silmeden önce temizler.
+- `404` yalnız `status=404`, `code=user_not_found` ve “User not found” mesajı birlikte olduğunda zaten temizlenmiş kullanıcı sayılır.
+- `AuthRetryableFetchError` veya `5xx` en çok üç kez kısa artan beklemeyle denenir; son hata başarılı sayılmaz ve manifest korunur.
+- `daily_logs` artık final public-row aggregate hesabına dahildir. Tablo/sorgu hatası sessizce yok sayılmaz.
+- Tüm fixture satırları ve aggregate sıfır olmadıkça manifest silinmez. Manifest yokken ikinci cleanup yalnız aggregate sıfırsa idempotent PASS verir.
+- Partial cleanup sonrasında foreign meal satırı yoksa status, güvenlik ihlali izlenimi vermek yerine `NOT APPLICABLE — fixture row absent` gösterir.
 
-Own-meal RPC başarıyla çalıştı. Foreign-meal çağrısı reddedildi ve hedef kayıt admin yeniden okumasında değişmedi; cross-client mutation kanıtı yoktur. Buna rağmen legacy client `meals` UPDATE policy’si, persistence, network rollback, eski build uyumluluğu ve final cleanup aggregate kanıtı tamamlanmadan kaldırılamaz.
+`daily_logs.client_id` foreign key davranışı ayrı bir şema karar/riskidir; bu görevde foreign key, migration veya policy değiştirilmedi.
 
-## Cleanup ve veri güvenliği
+## Sonuç ve blocker
 
-Cleanup sonucu yalnız USER-CONFIRMED'dır. Final Auth kullanıcı sayısı, public uygulama satır sayısı veya Storage bucket sayısı için bu çalışmadan bağımsız terminal aggregate kanıtı kaydedilmemiştir; sıfır oldukları iddia edilmez. Secret, URL, anahtar, token, parola, e-posta veya fixture kimliği bu rapora yazılmadı.
+Aşama 3E-1C mobil doğrulaması tamamlandı: network rollback, kontrollü hata, own-meal RPC, restart sonrası persistence, foreign-meal reddi ve final cleanup PASS’tir. Legacy client `meals` UPDATE policy’si hâlâ mevcuttur; eski mobil build uyumluluğu da henüz değerlendirilmedi. Bu nedenle production security rollout bloklu ve Aşama 3 tamamen kapanmış değildir.
 
-## Sonuç
-
-Aşama 3E-1C temel own-meal ve foreign-meal güvenlik kontrolleri staging üzerinde başarılıdır; persistence, network rollback, eski build uyumluluğu ve final cleanup aggregate kanıtı tamamlanmamıştır. Bu nedenle legacy client `meals` UPDATE policy’si kaldırılamaz.
-
-Sıradaki işlem: **Aşama 3E-1C-1 — Yeni staging fixture ile network rollback, persistence ve final cleanup aggregate kanıtının tamamlanması.**
+Sıradaki işlem: **Aşama 3E-2 — Eski mobil build uyumluluğunu değerlendir ve legacy client `meals` UPDATE policy kaldırma planını hazırla.**
