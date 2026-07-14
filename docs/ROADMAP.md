@@ -177,7 +177,16 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Her tablonun sahiplik modeli açık; başka diyetisyen verisi okunamaz/değiştirilemez; Storage ilişkisel olarak sınırlandırılır; migration uygulaması için ayrı onay kapısı vardır.
 - **Manuel doğrulama:** İki diyetisyen ve ilişkili/ilişkisiz danışanlarla negatif yetki senaryoları; Storage erişim denemeleri.
 - **Teslim çıktıları:** Şema/RLS envanteri, migration planı, doğrulama ve rollback planı.
-- **İlerleme notu:** Aşama 3D-4A kapsamında güvenlik migration taslakları bağımlılık sırasına göre active migration zincirine dönüştürüldü ve repository dışındaki disposable yerel Supabase ortamında sıfırdan uygulanarak doğrulandı. Staging, production ve GROUNDLESS projelerine güvenlik migration’ı uygulanmadı. Aşama 3D-4B-0 kapsamında staging ortamında eksik olduğu doğrulanan `auth.users` onboarding trigger’ı için ileri yönlü, idempotent ve fail-fast migration hazırlandı. Migration disposable yerel Supabase ortamında temiz replay, metadata, idempotency ve lint kontrolleriyle doğrulandı. Staging, production ve GROUNDLESS değiştirilmedi. Aşama 3D-4B kapsamında yerel ortamda doğrulanan güvenlik ve onboarding migration zinciri yalnız DietBridge Staging projesine dry-run sonrasında kontrollü olarak uygulandı. Migration history ve hedef metadata sonuçları doğrulandı. Production ve GROUNDLESS değiştirilmedi. Sentetik kullanıcı ve negatif RLS testleri henüz yapılmadı.
+- **İlerleme notu:** Aşama 3D-4A kapsamında güvenlik migration taslakları bağımlılık sırasına göre active migration zincirine dönüştürüldü ve repository dışındaki disposable yerel Supabase ortamında sıfırdan uygulanarak doğrulandı. Staging, production ve GROUNDLESS projelerine güvenlik migration’ı uygulanmadı. Aşama 3D-4B-0 kapsamında staging ortamında eksik olduğu doğrulanan `auth.users` onboarding trigger’ı için ileri yönlü, idempotent ve fail-fast migration hazırlandı. Migration disposable yerel Supabase ortamında temiz replay, metadata, idempotency ve lint kontrolleriyle doğrulandı. Staging, production ve GROUNDLESS değiştirilmedi. Aşama 3D-4B kapsamında yerel ortamda doğrulanan güvenlik ve onboarding migration zinciri yalnız DietBridge Staging projesine dry-run sonrasında kontrollü olarak uygulandı. Migration history ve hedef metadata sonuçları doğrulandı. Production ve GROUNDLESS değiştirilmedi.
+- **Aşama 3D-4C tamamlanan işler:**
+  - Sentetik DietBridge Staging kullanıcılarıyla onboarding ve rol ayrımı doğrulandı; onboarding testleri 7/7 başarılı tamamlandı.
+  - Cross-tenant erişim, sender spoofing, role escalation ve verification escalation engellendi.
+  - `set_my_meal_completion` RPC’sinin yalnız ilgili danışanın meal kaydında çalıştığı doğrulandı.
+  - Sentetik kullanıcılar ve fixture verileri tamamen temizlendi; final Auth user, public row ve Storage bucket sayıları sıfır olarak doğrulandı.
+  - Repository ve staging migration history sekiz active migration ile birebir eşleşti.
+  - Legacy `meals` UPDATE policy’sinin `is_eaten` dışındaki alanları da güncellemeye izin verdiği doğrulandı; bulgu P1 deferred production blocker olarak kaydedildi.
+- **Production rollout blocker:** Mobil uygulama meal completion işlemlerinde `set_my_meal_completion` RPC kullanımına tamamen geçilmeden ve legacy direct `meals` UPDATE policy kaldırılmadan production rollout yapılamaz.
+- **Sıradaki işlem:** Aşama 3E — Mobil meal completion RPC cutover doğrulaması ve legacy `meals` UPDATE policy kaldırma hazırlığı.
 - **Durum:** Devam ediyor.
 
 ### Aşama 4 — Danışan yönetimi
@@ -410,7 +419,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
-| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Staging güvenlik ve onboarding migration’ları uygulandı; sentetik onboarding, rol ayrımı ve negatif RLS yetki testleri bekliyor |
+| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Staging güvenlik/onboarding migration’ları ve sentetik onboarding/negatif RLS testleri doğrulandı; legacy meals UPDATE P1 deferred blocker olarak devam ediyor |
 | 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
@@ -441,3 +450,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-13 | Aşama 3D-4A | Güvenlik migration zinciri hazırlandı ve disposable yerel Supabase ortamında doğrulandı | Staging uygulaması bekliyor | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3D-4B-0 | Auth onboarding trigger migration’ı hazırlandı ve disposable yerel ortamda doğrulandı | Staging uygulaması bekliyor | `codex/supabase-security` |
 | 2026-07-13 | Aşama 3D-4B | Güvenlik ve onboarding migration zinciri yalnız staging’e uygulandı; migration history ve metadata doğrulandı | Negatif RLS testleri bekliyor | `codex/supabase-security` |
+| 2026-07-14 | Aşama 3D-4C | Sentetik staging onboarding ve negatif RLS testleri tamamlandı; gerçek P0/P1 ihlal bulunmadı, legacy meals UPDATE için P1 deferred blocker doğrulandı | Mobil RPC cutover ve legacy policy kaldırma bekliyor | `codex/supabase-security` |
