@@ -72,6 +72,18 @@ Baseline geniş ve idempotent değildir. Sonraki hardening migration'ları funct
 
 History relation'ı var olmayabileceği için exact version listesi dinamik SQL kullanılmadan aynı hata-güvenli sorguda okunamaz; relation mevcut çıkarsa ayrı guarded read-only adım gerekir.
 
+### İlk production contract audit denemesi
+
+İlk salt-okunur production çalıştırması sonuç üretmeden PostgreSQL runtime/catalog deparse hatasıyla durdu:
+
+```text
+ERROR: 42P01: relation "own" does not exist
+```
+
+Hata verification SQL'in Statement 08 policy contract bölümündeki `pg_policies` deparse yoluna daraltıldı. Dosyada `own` adlı relation, CTE veya identifier yoktu; `own` yalnız tek tırnaklı policy adı string'lerinde bulunuyordu. `pg_policies` görünümü kaldırılarak ham `pg_policy` metadata kontrolüne geçildi. Predicate gövdesi decompile edilmeden temel policy sözleşmesi doğrulanır; semantik predicate sonucu `MANUAL_REVIEW` olarak bırakılır.
+
+Production şeması veya verisi değişmedi, audit sonucu elde edilmedi. Düzeltilen SQL salt-okunur production retry için hazırlanmıştır; yeniden çalıştırma `PENDING` durumundadır.
+
 ## 15. Uzlaştırma karar ağacı
 
 - Tam `MATCH`: SQL tekrar çalıştırılmaz; version bazında manuel history adoption değerlendirilebilir.
@@ -89,11 +101,11 @@ History relation'ı var olmayabileceği için exact version listesi dinamik SQL 
 
 ## 17. Statik doğrulamalar
 
-SQL read-only/mutation-token kontrolü, repository testleri, typecheck, lint, diff, secret taraması ve mobil repository değişmezliği commit öncesinde çalıştırılır. Sonuçlar yalnız gerçek komut çıktısına göre görev raporunda kaydedilir.
+SQL read-only/mutation-token, statement isolation, relation/CTE graph, repository testleri, typecheck, lint, diff ve secret kontrolleri commit öncesinde çalıştırılır. Sonuçlar yalnız gerçek komut çıktısına göre görev raporunda kaydedilir.
 
 ## 18. Uygulanmayan işlemler
 
-Bu hazırlık görevinde Supabase login, project list, link, migration list, SQL Editor sorgusu, dry-run, `db push`, `migration repair`, migration/policy/RPC uygulaması, fixture ve kullanıcı oluşturma yapılmadı.
+İlk salt-okunur production contract audit denemesi kullanıcı tarafından Production SQL Editor'da çalıştırıldı ve 42P01 ile sonuçsuz durdu; DDL veya veri mutation'ı oluşmadı. Bu düzeltme görevinde Supabase login, project list, link, migration list, SQL Editor sorgusu, dry-run, `db push`, `migration repair`, migration/policy/RPC uygulaması, fixture ve kullanıcı oluşturma yapılmadı.
 
 ## 19. Sonuç
 
@@ -109,4 +121,4 @@ Decision: NOT READY
 
 ## 20. Sonraki aşama
 
-Aşama 3E-2C-2B — Production SQL Editor'da salt-okunur reconciliation verification SQL'ini çalıştır ve ilk sekiz migration'ı `MATCH`/`MISSING`/`MISMATCH`/`MANUAL_REVIEW` olarak sınıflandır.
+Aşama 3E-2C-2B — Düzeltilen reconciliation verification SQL'ini Production SQL Editor'da yeniden salt-okunur çalıştır ve ilk sekiz migration'ı `MATCH`/`MISSING`/`MISMATCH`/`MANUAL_REVIEW` olarak sınıflandır. Yeniden çalıştırma `PENDING`dir.

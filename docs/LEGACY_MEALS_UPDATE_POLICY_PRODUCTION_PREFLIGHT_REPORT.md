@@ -80,7 +80,15 @@ Ref/project adı uyuşmazlığı, staging ref eşitliği, GROUNDLESS seçimi, bo
 
 ## 17. Statik doğrulamalar
 
-Verification SQL read-only kontrolü, syntax, saf testler, typecheck, lint, diff, secret taraması ve mobil repository değişmezliği commit öncesi çalıştırılacaktır.
+İlk production contract audit denemesi salt-okunur SQL runtime/catalog deparse hatasıyla sonuç üretmeden durdu:
+
+```text
+ERROR: 42P01: relation "own" does not exist
+```
+
+Production şeması veya verisi değişmedi. Hata Statement 08'deki `pg_policies` deparse yoluna daraltıldı; ham `pg_policy` metadata kontrolüne geçilerek verification SQL düzeltildi. Audit sonucu elde edilmedi ve yeniden salt-okunur çalıştırma `PENDING`dir.
+
+Düzeltilen verification SQL için read-only, statement isolation, relation/CTE graph, syntax, saf testler, typecheck, lint, diff ve secret kontrolleri commit öncesi çalıştırılacaktır.
 
 ## 18. Uygulanmayan işlemler
 
@@ -108,8 +116,8 @@ Stage 3 complete: NO
 NOT READY FOR PRODUCTION MIGRATION
 ```
 
-Blocker'lar: migration history yok; ilk sekiz migration'ın production sözleşmesi tam doğrulanmadı; meal completion RPC production'da yok; policy removal RPC'ye bağımlı.
+Blocker'lar: migration history yok; ilk contract audit denemesi 42P01 ile sonuçsuz kaldı; ilk sekiz migration'ın production sözleşmesi tam doğrulanmadı; meal completion RPC production'da yok; policy removal RPC'ye bağımlı.
 
 ## 20. Sonraki aşama
 
-Aşama 3E-2C-2B — Production SQL Editor'da salt-okunur reconciliation verification SQL'ini çalıştır ve ilk sekiz migration'ı `MATCH`/`MISSING`/`MISMATCH`/`MANUAL_REVIEW` olarak sınıflandır.
+Aşama 3E-2C-2B — BLOCKED BY VERIFICATION SQL ERROR. Düzeltilen SQL'in production'da yeniden salt-okunur çalıştırılması `PENDING`dir; ardından ilk sekiz migration `MATCH`/`MISSING`/`MISMATCH`/`MANUAL_REVIEW` olarak sınıflandırılacaktır.

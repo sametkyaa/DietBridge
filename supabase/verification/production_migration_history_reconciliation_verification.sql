@@ -3,7 +3,8 @@
 -- Run in the production SQL Editor only during the separately approved 3E-2C-2B step.
 -- Results intentionally omit row data, URLs, keys, full function bodies and project refs.
 
--- 01. Migration history catalog state. Exact history rows cannot be read safely when the
+-- STATEMENT 01: migration tracking presence
+-- Exact history rows cannot be read safely when the
 -- relation may not exist without dynamic SQL. A present table therefore opens a separate
 -- MANUAL_REVIEW gate; a missing table is reported without raising a relation error.
 WITH history_catalog AS (
@@ -16,6 +17,7 @@ WITH history_catalog AS (
     to_regclass('supabase_migrations.schema_migrations') AS history_relation
 )
 SELECT
+  'S01'::text AS statement_id,
   'HISTORY'::text AS migration_version,
   'HISTORY-SCHEMA-01'::text AS check_id,
   'schema'::text AS object_type,
@@ -26,6 +28,7 @@ SELECT
 FROM history_catalog
 UNION ALL
 SELECT
+  'S01',
   'HISTORY',
   'HISTORY-TABLE-01',
   'table',
@@ -36,6 +39,7 @@ SELECT
 FROM history_catalog
 UNION ALL
 SELECT
+  'S01',
   'HISTORY',
   'HISTORY-ROWS-01',
   'migration_history',
@@ -49,7 +53,7 @@ SELECT
 FROM history_catalog
 ORDER BY check_id;
 
--- 02. Critical table and column contracts.
+-- STATEMENT 02: critical table and column contracts
 WITH expected_columns (
   migration_version, table_name, column_name, expected_type, expected_not_null,
   default_required, expected_default_fragment
@@ -101,6 +105,7 @@ WITH expected_columns (
   WHERE n.nspname = 'public'
 )
 SELECT
+  'S02'::text AS statement_id,
   e.migration_version,
   'COLUMN-' || upper(e.table_name) || '-' || upper(e.column_name) AS check_id,
   'column'::text AS object_type,
@@ -126,7 +131,7 @@ FROM expected_columns AS e
 LEFT JOIN actual_columns AS a USING (table_name, column_name)
 ORDER BY e.table_name, e.column_name;
 
--- 03. Primary key, foreign key, unique and check constraints.
+-- STATEMENT 03: primary key, foreign key, unique and check constraints
 WITH expected_constraints (
   migration_version, table_name, constraint_name, constraint_type, required_fragment
 ) AS (
@@ -173,6 +178,7 @@ WITH expected_constraints (
   WHERE n.nspname = 'public'
 )
 SELECT
+  'S03'::text AS statement_id,
   e.migration_version,
   'CONSTRAINT-' || upper(e.constraint_name) AS check_id,
   'constraint'::text AS object_type,
@@ -192,7 +198,7 @@ FROM expected_constraints AS e
 LEFT JOIN actual_constraints AS a USING (table_name, constraint_name)
 ORDER BY e.table_name, e.constraint_name;
 
--- 04. Critical index contracts that are not represented as named constraints.
+-- STATEMENT 04: critical index contracts
 WITH expected_indexes (migration_version, index_name, table_name, required_fragment) AS (
   VALUES
     ('20260713000001','dietitian_clients_dietitian_client_unique','dietitian_clients','dietitian_id'),
@@ -209,6 +215,7 @@ WITH expected_indexes (migration_version, index_name, table_name, required_fragm
   WHERE i.schemaname = 'public'
 )
 SELECT
+  'S04'::text AS statement_id,
   e.migration_version,
   'INDEX-' || upper(e.index_name) AS check_id,
   'index'::text AS object_type,
@@ -226,7 +233,7 @@ FROM expected_indexes AS e
 LEFT JOIN actual_indexes AS a USING (index_name)
 ORDER BY e.index_name;
 
--- 05. RLS enablement.
+-- STATEMENT 05: RLS enablement
 WITH expected_rls (migration_version, table_name) AS (
   VALUES
     ('20260713000001','profiles'),
@@ -246,6 +253,7 @@ WITH expected_rls (migration_version, table_name) AS (
   WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
 )
 SELECT
+  'S05'::text AS statement_id,
   e.migration_version,
   'RLS-' || upper(e.table_name) AS check_id,
   'table_rls'::text AS object_type,
@@ -260,7 +268,7 @@ FROM expected_rls AS e
 LEFT JOIN actual_tables AS a USING (table_name)
 ORDER BY e.table_name;
 
--- 06. Function signature, return, security, search_path, owner and body invariants.
+-- STATEMENT 06: function signature and security contracts
 WITH expected_functions (
   migration_version, signature, return_type, security_definer, search_path_fragment,
   auth_uid_required, owner_check_required, only_is_eaten_required
@@ -289,6 +297,7 @@ WITH expected_functions (
   LEFT JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
 )
 SELECT
+  'S06'::text AS statement_id,
   migration_version,
   'FUNCTION-' || upper(replace(replace(signature,'public.',''),'()','')) AS check_id,
   'function'::text AS object_type,
@@ -327,7 +336,7 @@ SELECT
 FROM function_details
 ORDER BY signature;
 
--- 07. Trigger contracts.
+-- STATEMENT 07: trigger contracts
 WITH expected_triggers (
   migration_version, schema_name, table_name, trigger_name, function_signature,
   expected_row, expected_before, expected_insert, expected_update
@@ -351,6 +360,7 @@ WITH expected_triggers (
   WHERE NOT t.tgisinternal
 )
 SELECT
+  'S07'::text AS statement_id,
   e.migration_version,
   'TRIGGER-' || upper(e.trigger_name) AS check_id,
   'trigger'::text AS object_type,
@@ -376,8 +386,9 @@ FROM expected_triggers AS e
 LEFT JOIN actual_triggers AS a USING (schema_name, table_name, trigger_name)
 ORDER BY e.schema_name, e.table_name, e.trigger_name;
 
--- 08. Critical policy contracts. Expressions are reduced to boolean contract checks;
--- full USING/WITH CHECK text is never returned.
+-- STATEMENT 08: critical policy contracts
+-- Raw pg_policy metadata is used deliberately. pg_policies decompiles policy expressions
+-- and caused the first production read-only audit to stop with SQLSTATE 42P01.
 WITH expected_policies (
   migration_version, table_name, policy_name, command_name, using_required,
   check_required, required_fragment
@@ -427,44 +438,59 @@ WITH expected_policies (
 ), policy_catalog AS (
   SELECT
     e.*,
-    p.cmd,
-    p.roles,
-    p.qual,
-    p.with_check
+    p.oid AS policy_oid,
+    CASE p.polcmd
+      WHEN 'r' THEN 'SELECT'
+      WHEN 'a' THEN 'INSERT'
+      WHEN 'w' THEN 'UPDATE'
+      WHEN 'd' THEN 'DELETE'
+      WHEN '*' THEN 'ALL'
+      ELSE NULL
+    END::text AS actual_command,
+    (p.polroles = ARRAY[authenticated_role.oid]::oid[]) AS authenticated_only,
+    (p.polqual IS NOT NULL) AS using_present,
+    (p.polwithcheck IS NOT NULL) AS check_present
   FROM expected_policies AS e
-  LEFT JOIN pg_catalog.pg_policies AS p
-    ON p.schemaname = 'public'
-   AND p.tablename = e.table_name
-   AND p.policyname = e.policy_name
+  LEFT JOIN pg_catalog.pg_namespace AS n
+    ON n.nspname = 'public'
+  LEFT JOIN pg_catalog.pg_class AS c
+    ON c.relnamespace = n.oid
+   AND c.relname = e.table_name
+   AND c.relkind IN ('r','p')
+  LEFT JOIN pg_catalog.pg_policy AS p
+    ON p.polrelid = c.oid
+   AND p.polname = e.policy_name
+  LEFT JOIN pg_catalog.pg_roles AS authenticated_role
+    ON authenticated_role.rolname = 'authenticated'
 )
 SELECT
+  'S08'::text AS statement_id,
   migration_version,
   'POLICY-' || upper(replace(policy_name,' ','-')) AS check_id,
   'policy'::text AS object_type,
   'public.' || table_name || '.' || policy_name AS object_name,
   CASE
-    WHEN cmd IS NULL THEN 'MISSING'
-    WHEN cmd <> command_name
-      OR roles <> ARRAY['authenticated']::name[]
-      OR (using_required AND qual IS NULL)
-      OR (check_required AND with_check IS NULL)
-      OR position(lower(required_fragment) IN lower(coalesce(qual,'') || ' ' || coalesce(with_check,''))) = 0
+    WHEN policy_oid IS NULL THEN 'MISSING'
+    WHEN actual_command <> command_name
+      OR authenticated_only IS DISTINCT FROM true
+      OR using_present <> using_required
+      OR check_present <> check_required
       THEN 'MISMATCH'
-    ELSE 'MATCH'
+    ELSE 'MANUAL_REVIEW'
   END::text AS status,
-  'command=' || command_name || '; authenticated only; reviewed predicate fragment present' AS expected_summary,
-  CASE WHEN cmd IS NULL THEN 'missing' ELSE
-    'command=' || cmd
-    || '; authenticated_only=' || (roles = ARRAY['authenticated']::name[])::text
-    || '; using_present=' || (qual IS NOT NULL)::text
-    || '; with_check_present=' || (with_check IS NOT NULL)::text
-    || '; reviewed_fragment=' ||
-      (position(lower(required_fragment) IN lower(coalesce(qual,'') || ' ' || coalesce(with_check,''))) > 0)::text
+  'command=' || command_name || '; authenticated only; USING/WITH CHECK presence; semantic marker=' || required_fragment AS expected_summary,
+  CASE WHEN policy_oid IS NULL THEN 'missing' ELSE
+    'command=' || actual_command
+    || '; authenticated_only=' || authenticated_only::text
+    || '; using_present=' || using_present::text
+    || '; with_check_present=' || check_present::text
+    || '; predicate_semantics=manual_review'
   END::text AS actual_summary
 FROM policy_catalog
 ORDER BY table_name, policy_name;
 
--- 09. Function execute privileges. has_function_privilege returns only booleans;
+-- STATEMENT 09: function execute privileges
+-- has_function_privilege returns only booleans;
 -- no key, token or role credential is read.
 WITH expected_privileges (
   migration_version, signature, role_name, expected_execute
@@ -506,6 +532,7 @@ WITH expected_privileges (
   FROM privilege_catalog AS p
 )
 SELECT
+  'S09'::text AS statement_id,
   migration_version,
   'EXECUTE-' || upper(replace(replace(signature,'public.',''),'()','')) || '-' || upper(role_name) AS check_id,
   'function_privilege'::text AS object_type,
@@ -521,7 +548,8 @@ SELECT
 FROM privilege_results
 ORDER BY signature, role_name;
 
--- 10. Default privilege contracts. The prelude revoke is superseded by the baseline
+-- STATEMENT 10: default privilege contracts
+-- The prelude revoke is superseded by the baseline
 -- default-privilege statements, so its historical application cannot be proven from final state.
 WITH default_acl_state AS (
   SELECT
@@ -534,6 +562,7 @@ WITH default_acl_state AS (
   JOIN pg_catalog.pg_roles AS r ON r.oid = x.grantee
 )
 SELECT
+  'S10'::text AS statement_id,
   '20260713000000'::text AS migration_version,
   'DEFAULT-PRIVILEGES-PRELUDE-HISTORY'::text AS check_id,
   'default_privilege'::text AS object_type,
@@ -543,6 +572,7 @@ SELECT
   'final state is superseded by baseline grants; application cannot be inferred'::text AS actual_summary
 UNION ALL
 SELECT
+  'S10',
   '20260713000001',
   'DEFAULT-PRIVILEGES-BASELINE-TABLES',
   'default_privilege',
@@ -566,6 +596,7 @@ SELECT
   THEN 'present' ELSE 'missing' END
 UNION ALL
 SELECT
+  'S10',
   '20260713000001',
   'DEFAULT-PRIVILEGES-BASELINE-FUNCTIONS',
   'default_privilege',
@@ -588,7 +619,8 @@ SELECT
   ) = 2
   THEN 'present' ELSE 'missing' END;
 
--- 11. Final legacy-policy dependency gate. Expected production result is NO until
+-- STATEMENT 11: legacy policy dependency gate
+-- Expected production result is NO until
 -- the RPC exists and every security/privilege/body invariant below is true.
 WITH rpc AS (
   SELECT
@@ -620,6 +652,7 @@ WITH rpc AS (
       FROM rpc),false) AS updates_only_is_eaten
 )
 SELECT
+  'S11'::text AS statement_id,
   '20260714010000'::text AS migration_version,
   'RPC_READY_FOR_POLICY_REMOVAL'::text AS check_id,
   'dependency_gate'::text AS object_type,
