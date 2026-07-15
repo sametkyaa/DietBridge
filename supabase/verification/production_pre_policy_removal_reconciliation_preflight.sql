@@ -204,6 +204,49 @@ verification_data AS (
     ) AS other_inconsistent_count
   FROM public.dietitian_profiles
 ),
+verification_constraint_catalog AS (
+  SELECT
+    con.oid IS NOT NULL AS constraint_present,
+    coalesce(con.conrelid = to_regclass('public.dietitian_profiles'), false) AS correct_table,
+    coalesce(con.conname = 'dietitian_profiles_verification_consistency_check', false) AS correct_name,
+    coalesce(con.contype = 'c', false) AS check_type_matches,
+    coalesce(con.convalidated, false) AS validated_matches,
+    coalesce(NOT con.connoinherit, false) AS no_inherit_matches,
+    coalesce(con.conbin IS NOT NULL AND normalized.constraint_definition <> '' AND normalized.expression_definition <> '', false) AS expression_available,
+    coalesce(position('is_verified' IN normalized.constraint_definition) > 0 AND position('is_verified' IN normalized.expression_definition) > 0, false) AS contains_is_verified_operand,
+    coalesce(position('verification_status' IN normalized.constraint_definition) > 0 AND position('verification_status' IN normalized.expression_definition) > 0, false) AS contains_verification_status_operand,
+    coalesce(position('''approved''' IN normalized.constraint_definition) > 0 AND position('''approved''' IN normalized.expression_definition) > 0, false) AS contains_approved_literal,
+    coalesce(
+      (
+        normalized.constraint_definition ~ '^check\(*\(*is_verified\)*isnotdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)*$'
+        OR normalized.constraint_definition ~ '^check\(*not\(+\(*is_verified\)*isdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)+\)*$'
+      )
+      AND (
+        normalized.expression_definition ~ '^\(*\(*is_verified\)*isnotdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)*$'
+        OR normalized.expression_definition ~ '^\(*not\(+\(*is_verified\)*isdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)+\)*$'
+      ),
+      false
+    ) AS distinct_semantics_matches
+  FROM (SELECT 1) AS seed
+  LEFT JOIN LATERAL (
+    SELECT candidate.*
+    FROM pg_catalog.pg_constraint AS candidate
+    WHERE candidate.conname = 'dietitian_profiles_verification_consistency_check'
+    ORDER BY (candidate.conrelid = to_regclass('public.dietitian_profiles')) DESC
+    LIMIT 1
+  ) AS con ON true
+  CROSS JOIN LATERAL (
+    SELECT
+      pg_catalog.regexp_replace(
+        pg_catalog.regexp_replace(pg_catalog.lower(coalesce(pg_catalog.pg_get_constraintdef(con.oid, false), '')), '::(pg_catalog\.)?text', '', 'g'),
+        '[[:space:]"]+', '', 'g'
+      ) AS constraint_definition,
+      pg_catalog.regexp_replace(
+        pg_catalog.regexp_replace(pg_catalog.lower(coalesce(pg_catalog.pg_get_expr(con.conbin, con.conrelid, false), '')), '::(pg_catalog\.)?text', '', 'g'),
+        '[[:space:]"]+', '', 'g'
+      ) AS expression_definition
+  ) AS normalized
+),
 checks(sequence_no, check_id, object_name, status, is_safe) AS (
   SELECT
     10,
@@ -426,23 +469,32 @@ checks(sequence_no, check_id, object_name, status, is_safe) AS (
     'VERIFICATION_CONSTRAINT',
     'public.dietitian_profiles.dietitian_profiles_verification_consistency_check',
     CASE
-      WHEN con.oid IS NULL THEN 'EXPECTED_MISSING'
-      WHEN con.convalidated
-       AND position('is_verified is not distinct from' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
-       AND position('verification_status' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
-       AND position('approved' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0 THEN 'MATCH'
+      WHEN NOT constraint_present THEN 'EXPECTED_MISSING'
+      WHEN correct_table
+       AND correct_name
+       AND check_type_matches
+       AND validated_matches
+       AND no_inherit_matches
+       AND expression_available
+       AND contains_is_verified_operand
+       AND contains_verification_status_operand
+       AND contains_approved_literal
+       AND distinct_semantics_matches THEN 'MATCH'
       ELSE 'MISMATCH'
     END,
-    con.oid IS NULL OR (
-      con.convalidated
-      AND position('is_verified is not distinct from' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
-      AND position('verification_status' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
-      AND position('approved' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
+    NOT constraint_present OR (
+      correct_table
+      AND correct_name
+      AND check_type_matches
+      AND validated_matches
+      AND no_inherit_matches
+      AND expression_available
+      AND contains_is_verified_operand
+      AND contains_verification_status_operand
+      AND contains_approved_literal
+      AND distinct_semantics_matches
     )
-  FROM (SELECT 1) AS seed
-  LEFT JOIN pg_catalog.pg_constraint AS con
-    ON con.conrelid = to_regclass('public.dietitian_profiles')
-   AND con.conname = 'dietitian_profiles_verification_consistency_check'
+  FROM verification_constraint_catalog
 
   UNION ALL
   SELECT

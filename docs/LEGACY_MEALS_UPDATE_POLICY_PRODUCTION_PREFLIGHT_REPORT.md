@@ -126,12 +126,24 @@ Blocker'lar: migration history yok; verification sync function, trigger ve consi
 
 ## 20. Sonraki aşama
 
-Verification data remediation daha önce başarıyla uygulanmış ve korunmuştur. Sonraki salt-okunur preflight `VERIFICATION_DATA_CONSISTENCY=MATCH`, `DATA_REMEDIATION_READY=NO` ve `RECONCILIATION_READY=YES` üretti. Ana reconciliation denemesi `handle_new_user()` function postcondition validator'ında fail-closed durdu ve transaction rollback oldu. Legacy policy kaldırılmadı; meal RPC, RLS, policy veya function değişikliği kalıcılaşmadı.
+Verification data remediation daha önce başarıyla uygulanmış ve korunmuştur. Function validator düzeltmesinden sonraki retry 2 verification consistency constraint postcondition aşamasında fail-closed durdu ve transaction tamamen rollback oldu. Constraint, sync function/trigger, meal RPC, RLS ve yeni policy değişiklikleri kalıcılaşmadı; yeni policy sayısı `0`, legacy policy `PRESENT` kaldı.
 
 ```text
-3E-2C-2E reconciliation application: BLOCKED BY POSTCONDITION VALIDATOR
-3E-2C-2E-1 validator correction: PREPARED
-Production reconciliation retry: PENDING
+Production reconciliation retry 2: FAILED CLOSED
+Failure point: verification consistency constraint postcondition
+Transaction: ROLLED BACK
+Constraint persisted: NO
+Sync function/trigger persisted: NO
+Meal RPC persisted: NO
+RLS changes persisted: NO
+New policy count persisted: 0
+Legacy policy: PRESENT
+Data remediation: VALID
+
+3E-2C-2E reconciliation application: BLOCKED BY CONSTRAINT VALIDATOR
+3E-2C-2E-1 function validator correction: COMPLETED
+3E-2C-2E-2 constraint validator correction: PREPARED
+Production reconciliation retry 3: PENDING
 ```
 
-Sonraki adım güncellenmiş production preflight'i salt-okunur çalıştırıp `RECONCILIATION_READY=YES` sonucunu yeniden doğrulamaktır.
+Sonraki adım, normalize edilmiş constraint semantiğini kullanan güncellenmiş production preflight'i salt-okunur çalıştırıp `RECONCILIATION_READY=YES` sonucunu yeniden doğrulamaktır. Canonical constraint DDL'i ve legacy policy değiştirilmemiştir.

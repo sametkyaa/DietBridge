@@ -9,6 +9,19 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), 'utf8').replace(/\r\n/g, '\n');
 const md5 = (value) => crypto.createHash('md5').update(value).digest('hex');
+const normalizeConstraintExpression = (value) =>
+  value
+    .toLowerCase()
+    .replace(/::(?:pg_catalog\.)?text/g, '')
+    .replace(/[\s"]+/g, '');
+const matchesVerificationConstraint = (value, constraintDefinition = false) => {
+  const normalized = normalizeConstraintExpression(value);
+  const prefix = constraintDefinition ? 'check' : '';
+  return [
+    new RegExp(`^${prefix}\\(*\\(*is_verified\\)*isnotdistinctfrom\\(+\\(*verification_status\\)*='approved'\\)+\\)*$`),
+    new RegExp(`^${prefix}\\(*not\\(+\\(*is_verified\\)*isdistinctfrom\\(+\\(*verification_status\\)*='approved'\\)+\\)+\\)*$`),
+  ].some((pattern) => pattern.test(normalized));
+};
 
 const mainPath = 'supabase/reconciliation/production_pre_policy_removal_reconciliation.sql';
 const preflightPath = 'supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql';
@@ -59,6 +72,57 @@ test('canonical Group A/B function bodies remain byte-for-byte unchanged', () =>
     assert.equal(reconciliationBody, migrationBody);
     assert.equal(md5(migrationBody), contract.expectedHash);
   }
+});
+
+test('canonical verification constraint DDL remains unchanged', () => {
+  const migration = read('supabase/migrations/20260713010100_verification_consistency.sql');
+  const canonicalExpression = "check (is_verified is not distinct from (verification_status = 'approved'))";
+  assert.ok(migration.toLowerCase().includes(canonicalExpression));
+  assert.ok(main.toLowerCase().includes(canonicalExpression));
+});
+
+test('verification constraint semantic normalization accepts equivalent deparse forms only', () => {
+  const accepted = [
+    "is_verified IS NOT DISTINCT FROM (verification_status = 'approved')",
+    " (( is_verified  IS NOT DISTINCT FROM ((verification_status = 'approved'::text)) )) ",
+    "NOT (is_verified IS DISTINCT FROM (verification_status = 'approved'::pg_catalog.text))",
+  ];
+  const rejected = [
+    "is_verified = (verification_status = 'approved')",
+    "is_verified IS DISTINCT FROM (verification_status = 'approved')",
+    "is_verified IS NOT DISTINCT FROM (verification_status = 'pending')",
+    'is_verified IS NOT DISTINCT FROM true',
+    "verification_status IS NOT DISTINCT FROM (is_verified = 'approved')",
+    "(is_verified IS NOT DISTINCT FROM verification_status) = 'approved'",
+  ];
+
+  for (const expression of accepted) {
+    assert.equal(matchesVerificationConstraint(expression), true, `Equivalent expression rejected: ${expression}`);
+    assert.equal(matchesVerificationConstraint(`CHECK (${expression})`, true), true);
+  }
+  for (const expression of rejected) {
+    assert.equal(matchesVerificationConstraint(expression), false, `Invalid expression accepted: ${expression}`);
+    assert.equal(matchesVerificationConstraint(`CHECK (${expression})`, true), false);
+  }
+});
+
+test('all SQL validators use the same dual-source normalized constraint contract', () => {
+  for (const [name, sql] of [
+    ['main', main],
+    ['preflight', preflight],
+    ['postflight', postflight],
+  ]) {
+    assert.ok(sql.includes('pg_get_constraintdef(con.oid, false)'), `${name} lacks stable constraint deparse`);
+    assert.ok(sql.includes('pg_get_expr(con.conbin, con.conrelid, false)'), `${name} lacks conbin deparse`);
+    assert.ok(sql.includes("'::(pg_catalog\\.)?text'"), `${name} lacks text-cast normalization`);
+    assert.ok(sql.includes("'[[:space:]\"]+'"), `${name} lacks formatting normalization`);
+    assert.ok(sql.includes('distinct_semantics_matches'), `${name} lacks semantic relationship check`);
+    assert.equal(sql.includes('pg_get_constraintdef(con.oid, true)'), false, `${name} still uses pretty deparse`);
+  }
+  assert.equal(
+    main.includes("RAISE EXCEPTION 'Verification constraint postcondition failed; transaction rolled back.'"),
+    false,
+  );
 });
 
 test('semantic marker sets evaluate against every canonical Group A/B body', () => {
@@ -206,6 +270,24 @@ test('diagnostics name every safe invariant without exposing function bodies', (
     assert.ok(postconditions.includes(`${invariant}=%s`), `Diagnostic missing: ${invariant}`);
   }
   assert.equal(postconditions.includes('p.prosrc=%'), false);
+
+  for (const invariant of [
+    'constraint_present',
+    'correct_table',
+    'correct_name',
+    'check_type_matches',
+    'validated_matches',
+    'no_inherit_matches',
+    'expression_available',
+    'contains_is_verified_operand',
+    'contains_verification_status_operand',
+    'contains_approved_literal',
+    'distinct_semantics_matches',
+  ]) {
+    assert.ok(postconditions.includes(`${invariant}=%s`), `Constraint diagnostic missing: ${invariant}`);
+  }
+  assert.equal(postconditions.includes('constraint_definition=%'), false);
+  assert.equal(postconditions.includes('expression_definition=%'), false);
 });
 
 test('reconciliation retains policy, history and user-data safety boundaries', () => {

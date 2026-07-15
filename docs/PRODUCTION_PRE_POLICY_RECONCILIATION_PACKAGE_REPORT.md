@@ -147,7 +147,7 @@ General verification: 11 statement / 11 marker / 11 statement_id; yalnız WITH/S
 Secret scan: 0
 package.json/package-lock.json diff: 0
 node --check staging-security-tests.mjs: PASS
-production-reconciliation-validator.test.mjs: 8/8 PASS
+production-reconciliation-validator.test.mjs: 11/11 PASS
 staging-security-tests.test.mjs: 8/8 PASS
 staging-mobile-meal-test-fixture.test.mjs: 5/5 PASS
 typecheck: PASS
@@ -228,11 +228,31 @@ Data remediation: Daha önce başarıyla uygulanmış ve korunmuştur
 Grup A/B function postcondition'ları hardcoded body MD5 yerine canonical semantic invariant'ları doğrular. Grup C, body değiştirilmediği için baseline `p.prosrc` byte modeliyle statik olarak kanıtlanmış allowlist hash'lerini korur. Search path kontrolü `proconfig` array'i üzerinde tam entry, tek search path ve tek canonical config şartlarını doğrular. Diagnostic exception her invariant sonucunu ayrı boolean olarak gösterir; function body veya kişisel veri içermez.
 
 ```text
-3E-2C-2E reconciliation application: BLOCKED BY POSTCONDITION VALIDATOR
-3E-2C-2E-1 validator correction: PREPARED
-Production reconciliation retry: PENDING
+3E-2C-2E reconciliation application: BLOCKED BY CONSTRAINT VALIDATOR
+3E-2C-2E-1 function validator correction: COMPLETED
+3E-2C-2E-2 constraint validator correction: PREPARED
+Production reconciliation retry 3: PENDING
 ```
 
-## 32. Sonraki aşama
+## 32. Production reconciliation retry 2 ve rollback
+
+Function validator düzeltmesinden sonraki ikinci production reconciliation denemesi verification consistency constraint postcondition aşamasında fail-closed durdu. PostgreSQL deparse çıktısındaki ek parantezler, canonical constraint semantiği doğru olmasına rağmen pretty-printed sabit metin marker'ını eşleştirmedi. Transaction bütünüyle rollback oldu.
+
+```text
+Production reconciliation retry 2: FAILED CLOSED
+Failure point: verification consistency constraint postcondition
+Transaction: ROLLED BACK
+Constraint persisted: NO
+Sync function/trigger persisted: NO
+Meal RPC persisted: NO
+RLS changes persisted: NO
+New policy count persisted: 0
+Legacy policy: PRESENT
+Data remediation: VALID
+```
+
+Constraint validator artık hem `pg_get_constraintdef(..., false)` hem `pg_get_expr(conbin, conrelid, false)` çıktısını küçük harf, whitespace, parantez, identifier quote ve `text` cast farklarından arındırır. Exact tablo/ad/type/validated/no-inherit katalog sözleşmesi ile operand, literal ve null-safe distinct ilişkisi birlikte doğrulanır. Canonical `CREATE CONSTRAINT` DDL'i değişmemiştir.
+
+## 33. Sonraki aşama
 
 Güncellenmiş production preflight SQL'ini salt-okunur çalıştır ve `RECONCILIATION_READY=YES` sonucunu yeniden doğrula. Reconciliation retry bu görevde yapılmadı.

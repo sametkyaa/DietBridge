@@ -14,6 +14,7 @@ DECLARE
   v_function record;
   v_policy record;
   v_actual record;
+  v_constraint record;
   v_expression text;
   v_fragment text;
 BEGIN
@@ -197,24 +198,75 @@ BEGIN
     RAISE EXCEPTION 'Appointment ownership check found % incompatible rows; no row was changed.', v_count;
   END IF;
 
-  SELECT count(*)
-  INTO v_count
-  FROM pg_catalog.pg_constraint AS con
-  WHERE con.conrelid = to_regclass('public.dietitian_profiles')
-    AND con.conname = 'dietitian_profiles_verification_consistency_check'
-    AND con.contype = 'c'
-    AND con.convalidated
-    AND position('is_verified is not distinct from' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
-    AND position('verification_status' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
-    AND position('approved' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0;
+  SELECT
+    con.oid IS NOT NULL AS constraint_present,
+    coalesce(con.conrelid = to_regclass('public.dietitian_profiles'), false) AS correct_table,
+    coalesce(con.conname = 'dietitian_profiles_verification_consistency_check', false) AS correct_name,
+    coalesce(con.contype = 'c', false) AS check_type_matches,
+    coalesce(con.convalidated, false) AS validated_matches,
+    coalesce(NOT con.connoinherit, false) AS no_inherit_matches,
+    coalesce(con.conbin IS NOT NULL AND normalized.constraint_definition <> '' AND normalized.expression_definition <> '', false) AS expression_available,
+    coalesce(position('is_verified' IN normalized.constraint_definition) > 0 AND position('is_verified' IN normalized.expression_definition) > 0, false) AS contains_is_verified_operand,
+    coalesce(position('verification_status' IN normalized.constraint_definition) > 0 AND position('verification_status' IN normalized.expression_definition) > 0, false) AS contains_verification_status_operand,
+    coalesce(position('''approved''' IN normalized.constraint_definition) > 0 AND position('''approved''' IN normalized.expression_definition) > 0, false) AS contains_approved_literal,
+    coalesce(
+      (
+        normalized.constraint_definition ~ '^check\(*\(*is_verified\)*isnotdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)*$'
+        OR normalized.constraint_definition ~ '^check\(*not\(+\(*is_verified\)*isdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)+\)*$'
+      )
+      AND (
+        normalized.expression_definition ~ '^\(*\(*is_verified\)*isnotdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)*$'
+        OR normalized.expression_definition ~ '^\(*not\(+\(*is_verified\)*isdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)+\)*$'
+      ),
+      false
+    ) AS distinct_semantics_matches
+  INTO v_constraint
+  FROM (SELECT 1) AS seed
+  LEFT JOIN LATERAL (
+    SELECT candidate.*
+    FROM pg_catalog.pg_constraint AS candidate
+    WHERE candidate.conname = 'dietitian_profiles_verification_consistency_check'
+    ORDER BY (candidate.conrelid = to_regclass('public.dietitian_profiles')) DESC
+    LIMIT 1
+  ) AS con ON true
+  CROSS JOIN LATERAL (
+    SELECT
+      pg_catalog.regexp_replace(
+        pg_catalog.regexp_replace(pg_catalog.lower(coalesce(pg_catalog.pg_get_constraintdef(con.oid, false), '')), '::(pg_catalog\.)?text', '', 'g'),
+        '[[:space:]"]+', '', 'g'
+      ) AS constraint_definition,
+      pg_catalog.regexp_replace(
+        pg_catalog.regexp_replace(pg_catalog.lower(coalesce(pg_catalog.pg_get_expr(con.conbin, con.conrelid, false), '')), '::(pg_catalog\.)?text', '', 'g'),
+        '[[:space:]"]+', '', 'g'
+      ) AS expression_definition
+  ) AS normalized;
 
-  IF EXISTS (
-    SELECT 1
-    FROM pg_catalog.pg_constraint
-    WHERE conrelid = to_regclass('public.dietitian_profiles')
-      AND conname = 'dietitian_profiles_verification_consistency_check'
-  ) AND v_count <> 1 THEN
-    RAISE EXCEPTION 'Verification consistency constraint exists with unexpected semantics; reconciliation stopped.';
+  IF v_constraint.constraint_present AND (
+    NOT v_constraint.correct_table
+    OR NOT v_constraint.correct_name
+    OR NOT v_constraint.check_type_matches
+    OR NOT v_constraint.validated_matches
+    OR NOT v_constraint.no_inherit_matches
+    OR NOT v_constraint.expression_available
+    OR NOT v_constraint.contains_is_verified_operand
+    OR NOT v_constraint.contains_verification_status_operand
+    OR NOT v_constraint.contains_approved_literal
+    OR NOT v_constraint.distinct_semantics_matches
+  ) THEN
+    RAISE EXCEPTION USING MESSAGE = pg_catalog.format(
+      'Verification constraint precondition failed: constraint_present=%s, correct_table=%s, correct_name=%s, check_type_matches=%s, validated_matches=%s, no_inherit_matches=%s, expression_available=%s, contains_is_verified_operand=%s, contains_verification_status_operand=%s, contains_approved_literal=%s, distinct_semantics_matches=%s. Reconciliation stopped.',
+      v_constraint.constraint_present,
+      v_constraint.correct_table,
+      v_constraint.correct_name,
+      v_constraint.check_type_matches,
+      v_constraint.validated_matches,
+      v_constraint.no_inherit_matches,
+      v_constraint.expression_available,
+      v_constraint.contains_is_verified_operand,
+      v_constraint.contains_verification_status_operand,
+      v_constraint.contains_approved_literal,
+      v_constraint.distinct_semantics_matches
+    );
   END IF;
 
   IF EXISTS (
@@ -587,6 +639,7 @@ DECLARE
   v_function record;
   v_policy record;
   v_actual record;
+  v_constraint record;
   v_expression text;
   v_fragment text;
 BEGIN
@@ -726,18 +779,74 @@ BEGIN
     RAISE EXCEPTION 'Verification data postcondition found % incompatible rows; transaction rolled back.', v_count;
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_catalog.pg_constraint AS con
-    WHERE con.conrelid = to_regclass('public.dietitian_profiles')
-      AND con.conname = 'dietitian_profiles_verification_consistency_check'
-      AND con.contype = 'c'
-      AND con.convalidated
-      AND position('is_verified is not distinct from' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
-      AND position('verification_status' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
-      AND position('approved' IN pg_catalog.lower(pg_catalog.pg_get_constraintdef(con.oid, true))) > 0
-  ) THEN
-    RAISE EXCEPTION 'Verification constraint postcondition failed; transaction rolled back.';
+  SELECT
+    con.oid IS NOT NULL AS constraint_present,
+    coalesce(con.conrelid = to_regclass('public.dietitian_profiles'), false) AS correct_table,
+    coalesce(con.conname = 'dietitian_profiles_verification_consistency_check', false) AS correct_name,
+    coalesce(con.contype = 'c', false) AS check_type_matches,
+    coalesce(con.convalidated, false) AS validated_matches,
+    coalesce(NOT con.connoinherit, false) AS no_inherit_matches,
+    coalesce(con.conbin IS NOT NULL AND normalized.constraint_definition <> '' AND normalized.expression_definition <> '', false) AS expression_available,
+    coalesce(position('is_verified' IN normalized.constraint_definition) > 0 AND position('is_verified' IN normalized.expression_definition) > 0, false) AS contains_is_verified_operand,
+    coalesce(position('verification_status' IN normalized.constraint_definition) > 0 AND position('verification_status' IN normalized.expression_definition) > 0, false) AS contains_verification_status_operand,
+    coalesce(position('''approved''' IN normalized.constraint_definition) > 0 AND position('''approved''' IN normalized.expression_definition) > 0, false) AS contains_approved_literal,
+    coalesce(
+      (
+        normalized.constraint_definition ~ '^check\(*\(*is_verified\)*isnotdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)*$'
+        OR normalized.constraint_definition ~ '^check\(*not\(+\(*is_verified\)*isdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)+\)*$'
+      )
+      AND (
+        normalized.expression_definition ~ '^\(*\(*is_verified\)*isnotdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)*$'
+        OR normalized.expression_definition ~ '^\(*not\(+\(*is_verified\)*isdistinctfrom\(+\(*verification_status\)*=''approved''\)+\)+\)*$'
+      ),
+      false
+    ) AS distinct_semantics_matches
+  INTO v_constraint
+  FROM (SELECT 1) AS seed
+  LEFT JOIN LATERAL (
+    SELECT candidate.*
+    FROM pg_catalog.pg_constraint AS candidate
+    WHERE candidate.conname = 'dietitian_profiles_verification_consistency_check'
+    ORDER BY (candidate.conrelid = to_regclass('public.dietitian_profiles')) DESC
+    LIMIT 1
+  ) AS con ON true
+  CROSS JOIN LATERAL (
+    SELECT
+      pg_catalog.regexp_replace(
+        pg_catalog.regexp_replace(pg_catalog.lower(coalesce(pg_catalog.pg_get_constraintdef(con.oid, false), '')), '::(pg_catalog\.)?text', '', 'g'),
+        '[[:space:]"]+', '', 'g'
+      ) AS constraint_definition,
+      pg_catalog.regexp_replace(
+        pg_catalog.regexp_replace(pg_catalog.lower(coalesce(pg_catalog.pg_get_expr(con.conbin, con.conrelid, false), '')), '::(pg_catalog\.)?text', '', 'g'),
+        '[[:space:]"]+', '', 'g'
+      ) AS expression_definition
+  ) AS normalized;
+
+  IF NOT v_constraint.constraint_present
+     OR NOT v_constraint.correct_table
+     OR NOT v_constraint.correct_name
+     OR NOT v_constraint.check_type_matches
+     OR NOT v_constraint.validated_matches
+     OR NOT v_constraint.no_inherit_matches
+     OR NOT v_constraint.expression_available
+     OR NOT v_constraint.contains_is_verified_operand
+     OR NOT v_constraint.contains_verification_status_operand
+     OR NOT v_constraint.contains_approved_literal
+     OR NOT v_constraint.distinct_semantics_matches THEN
+    RAISE EXCEPTION USING MESSAGE = pg_catalog.format(
+      'Verification constraint postcondition failed: constraint_present=%s, correct_table=%s, correct_name=%s, check_type_matches=%s, validated_matches=%s, no_inherit_matches=%s, expression_available=%s, contains_is_verified_operand=%s, contains_verification_status_operand=%s, contains_approved_literal=%s, distinct_semantics_matches=%s. Transaction rolled back.',
+      v_constraint.constraint_present,
+      v_constraint.correct_table,
+      v_constraint.correct_name,
+      v_constraint.check_type_matches,
+      v_constraint.validated_matches,
+      v_constraint.no_inherit_matches,
+      v_constraint.expression_available,
+      v_constraint.contains_is_verified_operand,
+      v_constraint.contains_verification_status_operand,
+      v_constraint.contains_approved_literal,
+      v_constraint.distinct_semantics_matches
+    );
   END IF;
 
   IF EXISTS (

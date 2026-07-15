@@ -168,10 +168,23 @@ Data remediation: APPLIED AND PRESERVED
 Production reconciliation application: BLOCKED
 ```
 
-Data remediation daha önce başarıyla uygulandı. Güncel salt-okunur preflight `VERIFICATION_DATA_CONSISTENCY=MATCH`, `DATA_REMEDIATION_READY=NO` ve `RECONCILIATION_READY=YES` üretti. Ana reconciliation denemesi `handle_new_user()` generic function postcondition hatasında fail-closed durdu; transaction rollback olduğu için meal RPC, RLS, policy veya function değişikliği kalıcılaşmadı. Legacy policy kaldırılmadı.
+Data remediation daha önce başarıyla uygulandı ve geçerliliğini koruyor. Function validator düzeltmesinden sonraki retry 2, verification consistency constraint postcondition aşamasında fail-closed durdu. Transaction rollback olduğu için constraint, sync function/trigger, meal RPC, RLS veya yeni policy değişikliği kalıcılaşmadı; yeni policy sayısı `0`, legacy policy `PRESENT` kaldı.
 
-Validator düzeltmesi hardcoded Grup A/B body hash'lerini semantic invariant kontrolleriyle, exact `function_config` string karşılaştırmasını `proconfig` array sözleşmesiyle değiştirdi. Production reconciliation retry bekliyor.
+Constraint validator düzeltmesi `pg_get_constraintdef(..., false)` ve `pg_get_expr(..., false)` deparse kaynaklarını aynı normalize edilmiş null-safe semantic sözleşmeyle doğrular. Canonical constraint DDL'i değişmedi.
+
+```text
+Production reconciliation retry 2: FAILED CLOSED
+Failure point: verification consistency constraint postcondition
+Transaction: ROLLED BACK
+Constraint persisted: NO
+Sync function/trigger persisted: NO
+Meal RPC persisted: NO
+RLS changes persisted: NO
+New policy count persisted: 0
+Legacy policy: PRESENT
+Data remediation: VALID
+```
 
 ## 21. Sonraki aşama
 
-Güncellenmiş `production_pre_policy_removal_reconciliation_preflight.sql` dosyasını salt-okunur çalıştır ve `RECONCILIATION_READY=YES` sonucunu yeniden doğrula. Reconciliation retry için ayrıca açık uygulama adımı gerekir.
+Güncellenmiş `production_pre_policy_removal_reconciliation_preflight.sql` dosyasını salt-okunur çalıştır ve `RECONCILIATION_READY=YES` sonucunu yeniden doğrula. Production retry 3 bekliyor ve ayrıca açık uygulama adımı gerektiriyor.
