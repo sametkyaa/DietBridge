@@ -190,10 +190,10 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Cleanup bulgusu ve düzeltmesi:** İlk cleanup PARTIAL oldu; mobil kullanımının oluşturduğu manifest dışı `daily_logs.client_id` satırı `ON DELETE NO ACTION` bağıyla fixture Auth silmesini engelledi. Fixture cleanup scripti düzeltildi: yalnız manifest kullanıcılarına ait günlük logları Auth silmeden önce temizler, dar 404 `user_not_found` idempotency ve sınırlı retry uygular. `daily_logs` foreign key davranışı ayrı şema kararı/riskidir.
 - **Emülatör notu:** Network-offline davranışı emülatörde güvenilir kabul edilmedi; kabul sonucu fiziksel Android telefon testidir.
 - **Aşama 3E-2A — Migration hazırlığı:** Kullanıcı beyanına göre legacy mobile compatibility gerekli değildir; eski build dış dağıtıma çıkmadı. Exact `Clients can update own meal completion` policy’sini kaldıran fail-fast migration, salt-okunur catalog verification SQL’i ve staging regresyon runbook’u hazırlandı.
-- **Aşama durumları:** 3E-1C COMPLETED; 3E-2A COMPLETED; 3E-2B-1 COMPLETED; 3E-2B-2 COMPLETED; 3E-2B-3 COMPLETED; 3E-2B-4 COMPLETED; 3E-2C PENDING.
+- **Aşama durumları:** 3E-2B COMPLETED; 3E-2C-1 production rollout runbook/preflight hazırlandı; 3E-2C-2 production read-only identity/history/preflight PENDING; 3E-2C-3 production migration BLOCKED; 3E-2C-4 production postflight/smoke test BLOCKED; Aşama 3 devam ediyor.
 - **Staging sonucu:** Legacy policy staging’de kaldırıldı. Staging security harness 17/17 geçti. Fiziksel Android mobil regresyonu geçti. Staging cleanup Auth/public/Storage `0/0/0` tamamlandı.
 - **Production rollout blocker:** Production migration uygulanmadı. Production hedef doğrulaması, preflight, postflight katalog doğrulaması ve kontrollü rollout karar kapısı tamamlanmadan production security rollout blokludur.
-- **Sıradaki işlem:** Aşama 3E-2C — Production rollout karar kapısı, production preflight ve kontrollü legacy policy migration uygulaması.
+- **Sıradaki işlem:** Aşama 3E-2C-2 — Disposable çalışma alanında yalnız production kimliğini, remote migration history’yi, preflight SQL’i ve dry-run sonucunu doğrula.
 - **Durum:** Devam ediyor.
 
 ### Aşama 4 — Danışan yönetimi
@@ -426,7 +426,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
-| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | 3E-2B-4 staging rollout kaydı tamamlandı; 3E-2C production karar kapısı ve preflight bekliyor |
+| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | 3E-2C-1 production runbook/preflight hazır; 3E-2C-2 salt-okunur production preflight bekliyor |
 | 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
@@ -466,3 +466,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-14 | Aşama 3E-2B-2 | Eksik client own/foreign meals SELECT ve dietitian meal UPDATE regresyon harness’i ile saf değerlendirme testleri hazırlandı | Hazır; staging integration testi bekliyor | `codex/supabase-security` |
 | 2026-07-14 | Aşama 3E-2B-3 | Legacy client meals UPDATE policy yalnız staging’e uygulandı; remote history 9/9 eşleşti, security harness 17/17 ve fiziksel Android regresyonu geçti | Tamamlandı; production rollout bekliyor | `codex/supabase-security` |
 | 2026-07-14 | Aşama 3E-2B-4 | Staging policy rollout sonucu, runtime/CLI migration history ayrımı ve mobil regresyon kanıtları kaydedildi | Tamamlandı; 3E-2C production karar kapısı bekliyor | `codex/supabase-security` |
+| 2026-07-14 | Aşama 3E-2C-1 | Production rollout için disposable workdir, kimlik guard’ları, history/dry-run karar kapısı, rollback ve mutasyonsuz smoke test runbook’u hazırlandı | Hazır; 3E-2C-2 salt-okunur production preflight bekliyor | `codex/supabase-security` |
