@@ -60,7 +60,7 @@ Migration `applied` işaretlenmez. Bağımlılık sırasına göre güvenli forw
 
 ### Senaryo C — Migration kısmen uygulanmış
 
-Migration `applied` işaretlenmez ve orijinal SQL körlemesine çalıştırılmaz. Mevcut doğru nesnelere dokunmayan, drift'te fail-fast duran hedefli reconciliation migration hazırlanır. Bu görev migration oluşturmaz.
+Migration `applied` işaretlenmez ve orijinal SQL körlemesine çalıştırılmaz. Mevcut doğru nesnelere dokunmayan, drift'te fail-fast duran hedefli reconciliation paketi hazırlanır. Paket active migration zincirinin dışında kalır ve ayrı production onayı olmadan çalıştırılmaz.
 
 ### Senaryo D — Production sözleşmesi repository'den farklı
 
@@ -122,12 +122,36 @@ RPC uygulandıktan ve policy kaldırılmadan önce catalog, privilege ve body in
 
 Tablo mevcut çıkarsa exact count/version listesi, ayrı onaylı ve tablo varlığı doğrulanmış ikinci salt-okunur adımda alınmalıdır. Bu sınırlama `MANUAL_REVIEW` olarak görünür; dinamik SQL veya mutation ile aşılmaz.
 
-## 11. Son karar
+## 11. Production contract audit sonrası version sınıflandırması
+
+| Version | Audit sonucu | History adoption durumu |
+|---|---|---|
+| `20260713000000` | Tarihsel final state'ten kanıtlanamıyor | `MANUAL_REVIEW` |
+| `20260713000001` | Kritik örnek sözleşmeler büyük ölçüde `MATCH`, fakat migration'ın bütün 21 tablo/10 function/7 trigger/51 policy kapsamı tamamen kanıtlanmadı | `NOT YET ELIGIBLE` |
+| `20260713010000` | Function `search_path` drift'i var | `NOT ELIGIBLE` |
+| `20260713010100` | Verification consistency constraint eksik | `NOT ELIGIBLE` |
+| `20260713010200` | `handle_new_user` `search_path` drift'i var | `NOT ELIGIBLE` |
+| `20260713010300` | Üç tabloda RLS ve 11 policy eksik | `NOT ELIGIBLE` |
+| `20260713010400` | RPC tamamen eksik | `NOT ELIGIBLE` |
+| `20260713010500` | Trigger sözleşmesi `MATCH` | `CANDIDATE`; dependency ve tam migration incelemesi gerekir |
+| `20260714010000` | Legacy policy hâlâ mevcut ve RPC smoke testi yapılmadı | `BLOCKED` |
+
+Reconciliation başarıyla uygulansa bile toplu veya otomatik `migration repair` yapılmaz. Her version, postflight kanıtı ve tam migration sözleşmesi üzerinden ayrı yeniden sınıflandırılır.
+
+## 12. Hazırlanan pre-policy reconciliation paketi
+
+Paket active migration dizini dışında üç parçalıdır: salt-okunur preflight, transaction/fail-fast ana SQL ve salt-okunur postflight. Ana SQL yalnız audit ile doğrulanan drift kapsamını hedefler. Migration history, legacy client UPDATE policy'si, dört ekstra policy ve production satırları bu paketin değişiklik kapsamı dışındadır.
+
+Hazırlık durumu `PREPARED`, uygulama durumu `NOT APPLIED`dır. Bir sonraki kapı, production SQL Editor'da yalnız preflight SQL'inin salt-okunur çalıştırılmasıdır.
+
+## 13. Son karar
 
 ```text
 Production schema fully reconciled: NO
 Meal completion RPC available: NO
 Legacy policy removable: NO
 Production migration applied: NO
+Production reconciliation package prepared: YES
+Production reconciliation applied: NO
 Decision: NOT READY
 ```

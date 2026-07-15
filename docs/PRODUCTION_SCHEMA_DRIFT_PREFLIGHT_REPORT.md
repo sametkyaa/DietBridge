@@ -50,13 +50,37 @@ Doğrulanmış örnekler:
 ## 10. Production blocker
 
 - Migration history yok.
-- İlk sekiz migration'ın production sözleşmesi tam doğrulanmadı.
+- Verification consistency constraint eksik.
+- `dietitian_profiles`, `appointments` ve `chat_messages` tablolarında RLS kapalı.
+- `20260713010300` kapsamındaki 11 policy eksik.
+- Dört function'ın `search_path` sözleşmesi canonical hedeften farklı.
 - Meal completion RPC production'da yok.
+- Dört ekstra policy `EXTRA_POLICY_MANUAL_REVIEW` durumunda.
 - Legacy policy removal RPC'ye ve mobil production erişim kanıtına bağlı.
 
-## 11. İlk sekiz migration audit ihtiyacı
+## 11. İlk sekiz migration audit sonucu
 
-Baseline geniş ve idempotent değildir. Sonraki hardening migration'ları function body, trigger, constraint, grants ve policy semantiği taşır. Nesne varlığı üzerinden toplu history adoption güvenli değildir.
+Production salt-okunur contract audit'i tamamlandı. Sayısal sonuç:
+
+```text
+S01: history schema/table MISSING
+S02: 32 MATCH
+S03: 29 MATCH, 1 MISSING
+S04: 5 MATCH
+S05: 7 MATCH, 3 MISMATCH
+S06: 4 MISMATCH, 1 MISSING
+S07: 3 MATCH
+S08: birleşik sorgu runtime error; ayrıştırılmış ham katalog audit'i başarılı
+Expected policy: 41
+Expected policy present: 30
+Expected policy missing: 11
+Extra policy: 4
+S09: weight RPC grants 4 MATCH, meal RPC 4 MISSING
+S10: 2 MATCH, 1 NOT_APPLICABLE
+S11: RPC_READY_FOR_POLICY_REMOVAL=NO
+```
+
+Baseline geniş ve idempotent değildir. Nesne varlığı üzerinden toplu history adoption güvenli değildir.
 
 ## 12. History repair riski
 
@@ -72,7 +96,7 @@ Baseline geniş ve idempotent değildir. Sonraki hardening migration'ları funct
 
 History relation'ı var olmayabileceği için exact version listesi dinamik SQL kullanılmadan aynı hata-güvenli sorguda okunamaz; relation mevcut çıkarsa ayrı guarded read-only adım gerekir.
 
-### İlk production contract audit denemesi
+### Tamamlanan production contract audit
 
 İlk salt-okunur production çalıştırması sonuç üretmeden PostgreSQL runtime/catalog deparse hatasıyla durdu:
 
@@ -82,7 +106,9 @@ ERROR: 42P01: relation "own" does not exist
 
 Hata verification SQL'in Statement 08 policy contract bölümündeki `pg_policies` deparse yoluna daraltıldı. Dosyada `own` adlı relation, CTE veya identifier yoktu; `own` yalnız tek tırnaklı policy adı string'lerinde bulunuyordu. `pg_policies` görünümü kaldırılarak ham `pg_policy` metadata kontrolüne geçildi. Predicate gövdesi decompile edilmeden temel policy sözleşmesi doğrulanır; semantik predicate sonucu `MANUAL_REVIEW` olarak bırakılır.
 
-Production şeması veya verisi değişmedi, audit sonucu elde edilmedi. Düzeltilen SQL salt-okunur production retry için hazırlanmıştır; yeniden çalıştırma `PENDING` durumundadır.
+Birleşik Statement 08 aynı 42P01 hatasını yeniden üretse de policy adları/komutları, raw roller, `USING` varlığı ve `WITH CHECK` varlığı ham `pg_policy` katalog sorgularıyla ayrı ayrı başarıyla okundu. Audit sonucu bu ayrıştırılmış kanıtla tamamlandı; production şeması veya verisi değişmedi.
+
+Statement 08 artık expected-policy join veya predicate decompile yapmayan, kritik tablolarla sınırlı `MANUAL_REVIEW` inventory sorgusudur.
 
 ## 15. Uzlaştırma karar ağacı
 
@@ -93,19 +119,23 @@ Production şeması veya verisi değişmedi, audit sonucu elde edilmedi. Düzelt
 
 ## 16. Değiştirilen dosyalar
 
+- `supabase/reconciliation/production_pre_policy_removal_reconciliation.sql`
+- `supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql`
+- `supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql`
 - `supabase/verification/production_migration_history_reconciliation_verification.sql`
 - `docs/PRODUCTION_MIGRATION_HISTORY_RECONCILIATION_PLAN.md`
 - `docs/PRODUCTION_SCHEMA_DRIFT_PREFLIGHT_REPORT.md`
 - `docs/LEGACY_MEALS_UPDATE_POLICY_PRODUCTION_PREFLIGHT_REPORT.md`
+- `docs/PRODUCTION_PRE_POLICY_RECONCILIATION_PACKAGE_REPORT.md`
 - `docs/ROADMAP.md`
 
 ## 17. Statik doğrulamalar
 
-SQL read-only/mutation-token, statement isolation, relation/CTE graph, repository testleri, typecheck, lint, diff ve secret kontrolleri commit öncesinde çalıştırılır. Sonuçlar yalnız gerçek komut çıktısına göre görev raporunda kaydedilir.
+Preflight/postflight read-only taraması, ana SQL izin/yasak kapsam taraması, Statement 08 marker/statement kontrolleri, repository testleri, typecheck, lint, diff ve secret kontrolleri commit öncesinde çalıştırılır. Sonuçlar yalnız gerçek komut çıktısına göre görev raporunda kaydedilir.
 
 ## 18. Uygulanmayan işlemler
 
-İlk salt-okunur production contract audit denemesi kullanıcı tarafından Production SQL Editor'da çalıştırıldı ve 42P01 ile sonuçsuz durdu; DDL veya veri mutation'ı oluşmadı. Bu düzeltme görevinde Supabase login, project list, link, migration list, SQL Editor sorgusu, dry-run, `db push`, `migration repair`, migration/policy/RPC uygulaması, fixture ve kullanıcı oluşturma yapılmadı.
+Tamamlanan salt-okunur production contract audit kullanıcı tarafından Production SQL Editor'da yürütüldü; ayrıştırılmış katalog sorguları sonucu üretti ve DDL/veri mutation'ı oluşturmadı. Bu paket hazırlığında Supabase login, project list, link, migration list, SQL Editor sorgusu, dry-run, `db push`, `migration repair`, reconciliation/policy/RPC uygulaması, fixture veya kullanıcı oluşturma yapılmadı.
 
 ## 19. Sonuç
 
@@ -116,9 +146,11 @@ Production schema fully reconciled: NO
 Meal completion RPC available: NO
 Legacy policy removable: NO
 Production migration applied: NO
+Production reconciliation package prepared: YES
+Production reconciliation applied: NO
 Decision: NOT READY
 ```
 
 ## 20. Sonraki aşama
 
-Aşama 3E-2C-2B — Düzeltilen reconciliation verification SQL'ini Production SQL Editor'da yeniden salt-okunur çalıştır ve ilk sekiz migration'ı `MATCH`/`MISSING`/`MISMATCH`/`MANUAL_REVIEW` olarak sınıflandır. Yeniden çalıştırma `PENDING`dir.
+Aşama 3E-2C-2D — `production_pre_policy_removal_reconciliation_preflight.sql` dosyasını Production SQL Editor'da salt-okunur çalıştır. Ana reconciliation SQL'ini bu adımda çalıştırma.

@@ -40,7 +40,7 @@ Production salt-okunur preflight sonucu local migration sayısı `9`, remote mig
 
 ## 8. Preflight SQL
 
-[legacy_client_meals_update_policy_verification.sql](../supabase/verification/legacy_client_meals_update_policy_verification.sql) policy removal pre/post kontrolü için korunur. Production'daki ilk sekiz migration sözleşmesini sınıflandırmak üzere yeni [production_migration_history_reconciliation_verification.sql](../supabase/verification/production_migration_history_reconciliation_verification.sql) hazırlandı. Yeni SQL yalnız salt-okunur katalog sorguları kullanır ve `MATCH`, `MISSING`, `MISMATCH`, `NOT_APPLICABLE`, `MANUAL_REVIEW` durumlarını üretir.
+[legacy_client_meals_update_policy_verification.sql](../supabase/verification/legacy_client_meals_update_policy_verification.sql) policy removal pre/post kontrolü için korunur. İlk sekiz migration contract audit'i tamamlandı ve production `NOT READY` bulundu. Reconciliation başlangıç koşullarını yeniden doğrulayan [production_pre_policy_removal_reconciliation_preflight.sql](../supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql) yalnız salt-okunur katalog ve aggregate kontrolleri içerir; yalnız bütün güvenlik kapıları geçtiğinde `RECONCILIATION_READY=YES` üretir.
 
 ## 9. Dry-run karar kapısı
 
@@ -64,7 +64,7 @@ Rollback eski geniş client direct UPDATE erişimini yeniden açar ve `is_eaten`
 
 ## 14. STOP koşulları
 
-Ref/project adı uyuşmazlığı, staging ref eşitliği, GROUNDLESS seçimi, boş/uyuşmayan remote history, migration sözleşmesinde `MISSING`/`MISMATCH`/`MANUAL_REVIEW`, RPC eksikliği, beklenmeyen dry-run veya policy-RPC-RLS farkında production mutation durur.
+Ref/project adı uyuşmazlığı, staging ref eşitliği, GROUNDLESS seçimi, history durumunun değişmesi, `RECONCILIATION_READY=NO`, beklenmeyen function/constraint/policy/RLS drift'i veya legacy/ek policy envanter farkında production mutation durur. Paket hazırlığı production bağlantısı veya SQL çalıştırma yetkisi vermez.
 
 ## 15. Hazırlanan runbook
 
@@ -73,26 +73,30 @@ Ref/project adı uyuşmazlığı, staging ref eşitliği, GROUNDLESS seçimi, bo
 ## 16. Değiştirilen dosyalar
 
 - `docs/LEGACY_MEALS_UPDATE_POLICY_PRODUCTION_PREFLIGHT_REPORT.md`
+- `supabase/reconciliation/production_pre_policy_removal_reconciliation.sql`
+- `supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql`
+- `supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql`
 - `supabase/verification/production_migration_history_reconciliation_verification.sql`
 - `docs/PRODUCTION_MIGRATION_HISTORY_RECONCILIATION_PLAN.md`
 - `docs/PRODUCTION_SCHEMA_DRIFT_PREFLIGHT_REPORT.md`
+- `docs/PRODUCTION_PRE_POLICY_RECONCILIATION_PACKAGE_REPORT.md`
 - `docs/ROADMAP.md`
 
 ## 17. Statik doğrulamalar
 
-İlk production contract audit denemesi salt-okunur SQL runtime/catalog deparse hatasıyla sonuç üretmeden durdu:
+Birleşik Statement 08 salt-okunur SQL runtime/catalog deparse hatası verdi:
 
 ```text
 ERROR: 42P01: relation "own" does not exist
 ```
 
-Production şeması veya verisi değişmedi. Hata Statement 08'deki `pg_policies` deparse yoluna daraltıldı; ham `pg_policy` metadata kontrolüne geçilerek verification SQL düzeltildi. Audit sonucu elde edilmedi ve yeniden salt-okunur çalıştırma `PENDING`dir.
+Production şeması veya verisi değişmedi. Ayrıştırılmış ham `pg_policy` katalog sorguları başarıyla tamamlandı: beklenen 41 policy'nin 30'u mevcut, 11'i eksik ve 4 ek policy `EXTRA_POLICY_MANUAL_REVIEW` durumunda. Statement 08 expected-policy join ve predicate decompile içermeyen inventory sorgusuna dönüştürüldü.
 
-Düzeltilen verification SQL için read-only, statement isolation, relation/CTE graph, syntax, saf testler, typecheck, lint, diff ve secret kontrolleri commit öncesi çalıştırılacaktır.
+Reconciliation preflight/postflight read-only, ana SQL kapsam, Statement 08 marker/statement, syntax, saf testler, typecheck, lint, diff ve secret kontrolleri commit öncesi çalıştırılacaktır.
 
 ## 18. Uygulanmayan işlemler
 
-Bu 3E-2C-2A görevinde production veya staging’e bağlanılmadı; SQL çalıştırılmadı. Önceki salt-okunur preflight'ta production identity/history ve katalog okunmuştu. Production dry-run, `migration repair`, migration, policy/RPC değişikliği veya veri mutation'ı yapılmadı.
+Bu 3E-2C-2C paket hazırlığında production veya staging’e bağlanılmadı ve SQL çalıştırılmadı. Production dry-run, `migration repair`, reconciliation, migration, policy/RPC değişikliği veya veri mutation'ı yapılmadı. Legacy policy ve dört ek policy korunmuştur.
 
 ## 19. Production readiness kararı
 
@@ -111,13 +115,16 @@ Production migration applied: NO
 Production postflight executed: NO
 migration repair executed: NO
 Disposable workspace cleanup: PASS
+Production contract audit: COMPLETED / NOT READY
+Production reconciliation package: PREPARED
+Production reconciliation applied: NO
 Stage 3 complete: NO
 
 NOT READY FOR PRODUCTION MIGRATION
 ```
 
-Blocker'lar: migration history yok; ilk contract audit denemesi 42P01 ile sonuçsuz kaldı; ilk sekiz migration'ın production sözleşmesi tam doğrulanmadı; meal completion RPC production'da yok; policy removal RPC'ye bağımlı.
+Blocker'lar: migration history yok; verification consistency constraint eksik; üç kritik tabloda RLS kapalı; 11 kritik policy eksik; dört function search path drift'i var; meal completion RPC eksik; dört ek policy manual review bekliyor; production RPC smoke testi yapılmadı.
 
 ## 20. Sonraki aşama
 
-Aşama 3E-2C-2B — BLOCKED BY VERIFICATION SQL ERROR. Düzeltilen SQL'in production'da yeniden salt-okunur çalıştırılması `PENDING`dir; ardından ilk sekiz migration `MATCH`/`MISSING`/`MISMATCH`/`MANUAL_REVIEW` olarak sınıflandırılacaktır.
+Aşama 3E-2C-2D — Reconciliation preflight SQL'ini Production SQL Editor'da salt-okunur çalıştır. Reconciliation application, preflight sonucu ve ayrı açık onay gelene kadar `BLOCKED` kalır.

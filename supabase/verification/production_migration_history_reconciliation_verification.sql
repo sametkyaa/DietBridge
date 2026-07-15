@@ -386,108 +386,44 @@ FROM expected_triggers AS e
 LEFT JOIN actual_triggers AS a USING (schema_name, table_name, trigger_name)
 ORDER BY e.schema_name, e.table_name, e.trigger_name;
 
--- STATEMENT 08: critical policy contracts
--- Raw pg_policy metadata is used deliberately. pg_policies decompiles policy expressions
--- and caused the first production read-only audit to stop with SQLSTATE 42P01.
-WITH expected_policies (
-  migration_version, table_name, policy_name, command_name, using_required,
-  check_required, required_fragment
-) AS (
-  VALUES
-    ('20260713000001','profiles','Users can view own profile','SELECT',true,false,'auth.uid'),
-    ('20260713000001','profiles','Users can insert own profile','INSERT',false,true,'auth.uid'),
-    ('20260713000001','profiles','Users can update own profile','UPDATE',true,true,'auth.uid'),
-    ('20260713000001','profiles','Dietitians can view client profiles for linking','SELECT',true,false,'is_current_user_dietitian'),
-    ('20260713000001','client_profiles','Users can view own client profile','SELECT',true,false,'auth.uid'),
-    ('20260713000001','client_profiles','Users can insert own client profile','INSERT',false,true,'auth.uid'),
-    ('20260713000001','client_profiles','Users can update own client profile','UPDATE',true,true,'auth.uid'),
-    ('20260713000001','client_profiles','Dietitians can view assigned client profiles','SELECT',true,false,'dietitian_clients'),
-    ('20260713010300','dietitian_profiles','Dietitians can select own profile','SELECT',true,false,'auth.uid'),
-    ('20260713010300','dietitian_profiles','Clients can select active dietitian profile','SELECT',true,false,'dietitian_clients'),
-    ('20260713010300','dietitian_profiles','Dietitians can create own pending profile','INSERT',false,true,'auth.uid'),
-    ('20260713010300','dietitian_profiles','Dietitians can update own non-system profile fields','UPDATE',true,true,'auth.uid'),
-    ('20260713000001','dietitian_clients','dietitian_clients_select_own','SELECT',true,false,'auth.uid'),
-    ('20260713000001','dietitian_clients','dietitians_create_pending_client_request','INSERT',false,true,'auth.uid'),
-    ('20260713000001','dietitian_clients','clients_update_own_pending_request','UPDATE',true,true,'auth.uid'),
-    ('20260713000001','dietitian_clients','dietitians_remove_own_connection','UPDATE',true,true,'auth.uid'),
-    ('20260713000001','meal_plans','Clients can view own meal plans','SELECT',true,false,'auth.uid'),
-    ('20260713000001','meal_plans','Dietitians can insert own meal plans','INSERT',false,true,'dietitian_clients'),
-    ('20260713000001','meal_plans','Dietitians can update own meal plans','UPDATE',true,true,'auth.uid'),
-    ('20260713000001','meal_plans','Dietitians can delete own meal plans','DELETE',true,false,'auth.uid'),
-    ('20260713000001','meals','Clients can view meals of own plans','SELECT',true,false,'meal_plans'),
-    ('20260713000001','meals','Clients can update own meal completion','UPDATE',true,true,'meal_plans'),
-    ('20260713000001','meals','Dietitians can view meals of own plans','SELECT',true,false,'meal_plans'),
-    ('20260713000001','meals','Dietitians can insert meals into own plans','INSERT',false,true,'meal_plans'),
-    ('20260713000001','meals','Dietitians can update meals of own plans','UPDATE',true,true,'meal_plans'),
-    ('20260713000001','meals','Dietitians can delete meals of own plans','DELETE',true,false,'meal_plans'),
-    ('20260713000001','measurements','measurements_select_own','SELECT',true,false,'auth.uid'),
-    ('20260713000001','measurements','measurements_insert_own','INSERT',false,true,'auth.uid'),
-    ('20260713000001','measurements','measurements_update_own','UPDATE',true,true,'auth.uid'),
-    ('20260713000001','measurements','measurements_delete_own','DELETE',true,false,'auth.uid'),
-    ('20260713000001','measurements','Dietitians can view assigned client measurements','SELECT',true,false,'dietitian_clients'),
-    ('20260713000001','daily_logs','Users can view own daily logs','SELECT',true,false,'auth.uid'),
-    ('20260713000001','daily_logs','Users can insert own daily logs','INSERT',false,true,'auth.uid'),
-    ('20260713000001','daily_logs','Users can update own daily logs','UPDATE',true,true,'auth.uid'),
-    ('20260713010300','appointments','Dietitians can select active client appointments','SELECT',true,false,'dietitian_clients'),
-    ('20260713010300','appointments','Clients can select own active appointments','SELECT',true,false,'dietitian_clients'),
-    ('20260713010300','appointments','Dietitians can create active client appointments','INSERT',false,true,'dietitian_clients'),
-    ('20260713010300','appointments','Dietitians can update active client appointments','UPDATE',true,true,'dietitian_clients'),
-    ('20260713010300','appointments','Dietitians can delete active client appointments','DELETE',true,false,'dietitian_clients'),
-    ('20260713010300','chat_messages','Participants can select active relationship messages','SELECT',true,false,'dietitian_clients'),
-    ('20260713010300','chat_messages','Participants can send active relationship messages','INSERT',false,true,'sender_id')
-), policy_catalog AS (
-  SELECT
-    e.*,
-    p.oid AS policy_oid,
-    CASE p.polcmd
-      WHEN 'r' THEN 'SELECT'
-      WHEN 'a' THEN 'INSERT'
-      WHEN 'w' THEN 'UPDATE'
-      WHEN 'd' THEN 'DELETE'
-      WHEN '*' THEN 'ALL'
-      ELSE NULL
-    END::text AS actual_command,
-    (p.polroles = ARRAY[authenticated_role.oid]::oid[]) AS authenticated_only,
-    (p.polqual IS NOT NULL) AS using_present,
-    (p.polwithcheck IS NOT NULL) AS check_present
-  FROM expected_policies AS e
-  LEFT JOIN pg_catalog.pg_namespace AS n
-    ON n.nspname = 'public'
-  LEFT JOIN pg_catalog.pg_class AS c
-    ON c.relnamespace = n.oid
-   AND c.relname = e.table_name
-   AND c.relkind IN ('r','p')
-  LEFT JOIN pg_catalog.pg_policy AS p
-    ON p.polrelid = c.oid
-   AND p.polname = e.policy_name
-  LEFT JOIN pg_catalog.pg_roles AS authenticated_role
-    ON authenticated_role.rolname = 'authenticated'
-)
+-- STATEMENT 08: critical policy inventory
+-- Deliberately avoids expected-policy joins, view-based policy expansion and predicate decompilation.
 SELECT
   'S08'::text AS statement_id,
-  migration_version,
-  'POLICY-' || upper(replace(policy_name,' ','-')) AS check_id,
-  'policy'::text AS object_type,
-  'public.' || table_name || '.' || policy_name AS object_name,
-  CASE
-    WHEN policy_oid IS NULL THEN 'MISSING'
-    WHEN actual_command <> command_name
-      OR authenticated_only IS DISTINCT FROM true
-      OR using_present <> using_required
-      OR check_present <> check_required
-      THEN 'MISMATCH'
-    ELSE 'MANUAL_REVIEW'
-  END::text AS status,
-  'command=' || command_name || '; authenticated only; USING/WITH CHECK presence; semantic marker=' || required_fragment AS expected_summary,
-  CASE WHEN policy_oid IS NULL THEN 'missing' ELSE
-    'command=' || actual_command
-    || '; authenticated_only=' || authenticated_only::text
-    || '; using_present=' || using_present::text
-    || '; with_check_present=' || check_present::text
-    || '; predicate_semantics=manual_review'
-  END::text AS actual_summary
-FROM policy_catalog
-ORDER BY table_name, policy_name;
+  n.nspname::text AS schema_name,
+  c.relname::text AS table_name,
+  p.polname::text AS policy_name,
+  CASE p.polcmd
+    WHEN 'r' THEN 'SELECT'
+    WHEN 'a' THEN 'INSERT'
+    WHEN 'w' THEN 'UPDATE'
+    WHEN 'd' THEN 'DELETE'
+    WHEN '*' THEN 'ALL'
+    ELSE 'UNKNOWN'
+  END::text AS command,
+  (p.polroles = ARRAY[authenticated_role.oid]::oid[]) AS authenticated_only,
+  (p.polqual IS NOT NULL) AS using_present,
+  (p.polwithcheck IS NOT NULL) AS with_check_present,
+  'MANUAL_REVIEW'::text AS status
+FROM pg_catalog.pg_policy AS p
+JOIN pg_catalog.pg_class AS c ON c.oid = p.polrelid
+JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+LEFT JOIN pg_catalog.pg_roles AS authenticated_role
+  ON authenticated_role.rolname = 'authenticated'
+WHERE n.nspname = 'public'
+  AND c.relname IN (
+    'profiles',
+    'client_profiles',
+    'dietitian_profiles',
+    'dietitian_clients',
+    'meal_plans',
+    'meals',
+    'measurements',
+    'daily_logs',
+    'appointments',
+    'chat_messages'
+  )
+ORDER BY n.nspname, c.relname, p.polname;
 
 -- STATEMENT 09: function execute privileges
 -- has_function_privilege returns only booleans;
