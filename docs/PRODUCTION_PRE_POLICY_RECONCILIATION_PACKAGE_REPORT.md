@@ -255,4 +255,19 @@ Constraint validator artık hem `pg_get_constraintdef(..., false)` hem `pg_get_e
 
 ## 33. Sonraki aşama
 
-Güncellenmiş production preflight SQL'ini salt-okunur çalıştır ve `RECONCILIATION_READY=YES` sonucunu yeniden doğrula. Reconciliation retry bu görevde yapılmadı.
+Güncellenmiş production preflight ve reconciliation retry 3 kullanıcı tarafından tamamlandı. Salt-okunur postflight function, verification consistency, reconciliation ve RPC readiness kapılarını geçti; legacy policy korunuyor.
+
+```text
+Production reconciliation: COMPLETED
+Production postflight: PASSED
+RPC ready for smoke test: YES
+Production RPC smoke test: NOT RUN
+Legacy policy: PRESENT
+Policy removal allowed: NO
+```
+
+## 34. Production meal RPC smoke fixture paketi
+
+Production’a özel explicit-ID fixture aracı, network kullanmayan regresyon testleri ve [production smoke-test planı](PRODUCTION_MEAL_RPC_SMOKE_TEST_PLAN.md) hazırlandı. Araç iki disposable client için own, foreign, persistence ve anonymous RPC kontrollerini, fail-closed sıra kapılarını ve metadata/run-ID doğrulamalı cleanup modelini içerir. Paket hazırlanırken production veya staging’e bağlanılmadı ve smoke test çalıştırılmadı.
+
+Sıradaki işlem, ayrı manuel onayla production smoke-test planını uygulamak ve cleanup sonucunu doğrulamaktır. Fiziksel mobil production testi tamamlanmadan policy removal kapısı kapalıdır.

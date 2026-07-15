@@ -146,4 +146,17 @@ Data remediation: VALID
 Production reconciliation retry 3: PENDING
 ```
 
-Sonraki adım, normalize edilmiş constraint semantiğini kullanan güncellenmiş production preflight'i salt-okunur çalıştırıp `RECONCILIATION_READY=YES` sonucunu yeniden doğrulamaktır. Canonical constraint DDL'i ve legacy policy değiştirilmemiştir.
+Production reconciliation retry 3 ve salt-okunur postflight kullanıcı tarafından başarıyla tamamlandı. RPC production smoke testine hazırdır; smoke test henüz çalıştırılmamış, legacy policy korunmuş ve policy removal kapısı kapalı kalmıştır.
+
+```text
+Production reconciliation: COMPLETED
+Production postflight: PASSED
+RPC ready for smoke test: YES
+Production RPC smoke test: NOT RUN
+Legacy policy: PRESENT
+Policy removal allowed: NO
+```
+
+Production’a özel iki-client fixture lifecycle, own/foreign/persistence/anonymous kontrolleri, explicit-ID cleanup ve mobil fail-closed kapısı [PRODUCTION_MEAL_RPC_SMOKE_TEST_PLAN.md](PRODUCTION_MEAL_RPC_SMOKE_TEST_PLAN.md) içinde hazırlandı. Production veya staging’e bağlanılmadı; fixture/RPC çalıştırılmadı.
+
+Sonraki adım ayrı manuel onayla production smoke-test planını çalıştırmak, fixture cleanup’ını doğrulamak ve ardından fiziksel mobil production testini yürütmektir. Bu iki doğrulama tamamlanmadan legacy policy kaldırılamaz.
