@@ -74,9 +74,10 @@ Ref/project adı uyuşmazlığı, staging ref eşitliği, GROUNDLESS seçimi, hi
 
 - `docs/LEGACY_MEALS_UPDATE_POLICY_PRODUCTION_PREFLIGHT_REPORT.md`
 - `supabase/reconciliation/production_pre_policy_removal_reconciliation.sql`
+- `supabase/reconciliation/production_verification_consistency_data_remediation.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql`
-- `supabase/verification/production_migration_history_reconciliation_verification.sql`
+- `supabase/verification/production_verification_consistency_data_remediation_postflight.sql`
 - `docs/PRODUCTION_MIGRATION_HISTORY_RECONCILIATION_PLAN.md`
 - `docs/PRODUCTION_SCHEMA_DRIFT_PREFLIGHT_REPORT.md`
 - `docs/PRODUCTION_PRE_POLICY_RECONCILIATION_PACKAGE_REPORT.md`
@@ -123,8 +124,8 @@ Stage 3 complete: NO
 NOT READY FOR PRODUCTION MIGRATION
 ```
 
-Blocker'lar: migration history yok; verification consistency constraint eksik; üç kritik tabloda RLS kapalı; 11 kritik policy eksik; dört function search path drift'i var; meal completion RPC eksik; dört ek policy manual review bekliyor; production RPC smoke testi yapılmadı.
+Blocker'lar: migration history yok; verification sync function, trigger ve consistency constraint eksik; bir verification satırı `true + pending` biçiminde tutarsız; üç kritik tabloda RLS kapalı; 11 kritik policy eksik; dört function search path drift'i var; meal completion RPC eksik; dört ek policy manual review bekliyor; production RPC smoke testi yapılmadı.
 
 ## 20. Sonraki aşama
 
-Aşama 3E-2C-2D — Reconciliation preflight SQL'ini Production SQL Editor'da salt-okunur çalıştır. Reconciliation application, preflight sonucu ve ayrı açık onay gelene kadar `BLOCKED` kalır.
+3E-2C-2D salt-okunur preflight `VERIFICATION_DATA_CONSISTENCY=BLOCKED_1_ROWS` sonucu verdi. Güncellenmiş preflight ile önce `DATA_REMEDIATION_READY=YES` doğrulanmalıdır. Ayrı data remediation onay/application ve postflight tamamlanmadan reconciliation application `BLOCKED` kalır; legacy policy kaldırılmaz.

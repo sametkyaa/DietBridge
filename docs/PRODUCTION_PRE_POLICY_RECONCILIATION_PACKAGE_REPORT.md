@@ -18,7 +18,7 @@ Statement 02 toplam 32 sözleşmenin 32'sini `MATCH` buldu; `MISSING` ve `MISMAT
 
 ## 5. Constraint drift'i
 
-Statement 03 toplam 30 sözleşmede 29 `MATCH`, 1 `MISSING` buldu. Eksik nesne `public.dietitian_profiles.dietitian_profiles_verification_consistency_check` constraint'idir. Ana SQL önce yalnız uyumsuz satır sayısını kontrol eder, uyumsuzlukta veri değiştirmeden durur ve constraint'i canonical migration ile aynı, doğrulanmış CHECK olarak ekler. `NOT VALID` kullanılmaz.
+Statement 03 toplam 30 sözleşmede 29 `MATCH`, 1 `MISSING` buldu. Sonraki ayrıntılı production preflight, `20260713010100_verification_consistency.sql` sözleşmesinin yalnız constraint değil; `public.sync_dietitian_verification_fields()` function'ı, `trg_sync_dietitian_verification_fields` trigger'ı ve `dietitian_profiles_verification_consistency_check` constraint'iyle birlikte tamamen eksik olduğunu doğruladı. Ana SQL, verification verisi tutarlı değilse hiçbir şema değişikliği yapmadan fail-closed durur. Ayrı remediation tamamlandıktan sonra eksik üç nesneyi canonical migration ile birebir oluşturur; `NOT VALID` kullanılmaz.
 
 ## 6. Index sonuçları
 
@@ -34,7 +34,7 @@ Statement 05 toplam 10 tabloda 7 `MATCH`, 3 `MISMATCH` buldu. RLS kapalı tablol
 
 ## 9. Trigger sonuçları
 
-`auth.users.on_auth_user_created`, `profiles.trg_profiles_updated_at` ve `profiles.trg_protect_profile_system_fields` sözleşmeleri `MATCH`tır. Paket trigger oluşturmaz, değiştirmez veya kaldırmaz; ana SQL bu üçünü precondition olarak doğrular.
+`auth.users.on_auth_user_created`, `profiles.trg_profiles_updated_at` ve `profiles.trg_protect_profile_system_fields` sözleşmeleri `MATCH`tır. Ayrıntılı production preflight ayrıca `dietitian_profiles.trg_sync_dietitian_verification_fields` trigger'ının eksik olduğunu doğruladı. Ana SQL mevcut üç trigger'ı precondition olarak korur ve verification sync trigger'ını yalnız eksikse canonical tanımıyla oluşturur; aynı isimde drift varsa fail-fast durur.
 
 ## 10. Policy audit yöntemi
 
@@ -75,8 +75,9 @@ Statement 10 sonucu iki `MATCH`, bir `NOT_APPLICABLE`dır. Paket default privile
 
 ## 16. Reconciliation kapsamı
 
-- Dört function için canonical security/search path/execute sözleşmesi
-- Verification consistency CHECK constraint'i
+- Dört mevcut function için canonical security/search path/execute sözleşmesi
+- Eksik verification sync function'ı, `SECURITY INVOKER`, canonical search path ve PUBLIC/anon/authenticated execute revoke sözleşmesi
+- Eksik verification sync trigger'ı ve verification consistency CHECK constraint'i
 - Üç kritik tabloda RLS
 - Eksik 11 canonical policy
 - Meal completion RPC ve canonical execute grants
@@ -91,7 +92,7 @@ Ana SQL tek transaction içinde `lock_timeout='5s'` ve `statement_timeout='60s'`
 
 ## 19. Preflight SQL
 
-`supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql` yalnız `WITH ... SELECT` kullanır. Başlangıç nesnelerini, function fingerprint/search path drift'ini, aggregate consistency sayımlarını, RLS/policy/RPC/legacy/extra policy ve history durumunu kontrol eder. Kişisel veri veya satır içeriği döndürmez; final kapı `RECONCILIATION_READY`dır.
+`supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql` yalnız `WITH ... SELECT` kullanır. Başlangıç nesnelerini, verification function/trigger/constraint sözleşmesini, function fingerprint/search path drift'ini, aggregate consistency sayımlarını, RLS/policy/RPC/legacy/extra policy ve history durumunu kontrol eder. Kişisel veri veya satır içeriği döndürmez. `DATA_REMEDIATION_READY` yalnız doğrulanan tek `true + pending` drift'i için `YES`; `RECONCILIATION_READY` ise veri tutarlılığı sağlanana kadar `NO` üretir.
 
 ## 20. Ana reconciliation SQL
 
@@ -99,7 +100,7 @@ Ana SQL tek transaction içinde `lock_timeout='5s'` ve `statement_timeout='60s'`
 
 ## 21. Postflight SQL
 
-`supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql` yalnız katalog okur ve RPC'yi çağırmaz. Beklenen kapılar: `RECONCILIATION_APPLIED_SUCCESSFULLY=YES`, `RPC_READY_FOR_PRODUCTION_SMOKE_TEST=YES`, `LEGACY_POLICY_STILL_PRESENT=YES`, `POLICY_REMOVAL_ALLOWED=NO`.
+`supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql` yalnız katalog ve aggregate veri sayımları okur; RPC'yi çağırmaz. Beklenen kapılar: `VERIFICATION_CONSISTENCY_CONTRACT=YES`, `RECONCILIATION_APPLIED_SUCCESSFULLY=YES`, `RPC_READY_FOR_PRODUCTION_SMOKE_TEST=YES`, `LEGACY_POLICY_STILL_PRESENT=YES`, `POLICY_REMOVAL_ALLOWED=NO`.
 
 ## 22. Legacy policy koruma garantisi
 
@@ -112,9 +113,10 @@ History boşluğu nedeniyle hiçbir version toplu `applied` kabul edilmez. Recon
 ## 24. Değiştirilen dosyalar
 
 - `supabase/reconciliation/production_pre_policy_removal_reconciliation.sql`
+- `supabase/reconciliation/production_verification_consistency_data_remediation.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql`
-- `supabase/verification/production_migration_history_reconciliation_verification.sql`
+- `supabase/verification/production_verification_consistency_data_remediation_postflight.sql`
 - `docs/PRODUCTION_MIGRATION_HISTORY_RECONCILIATION_PLAN.md`
 - `docs/PRODUCTION_SCHEMA_DRIFT_PREFLIGHT_REPORT.md`
 - `docs/LEGACY_MEALS_UPDATE_POLICY_PRODUCTION_PREFLIGHT_REPORT.md`
@@ -128,12 +130,15 @@ Node.js: v24.18.0
 npm: 11.6.2
 git diff --check: PASS
 Preflight: 1 statement; yalnız WITH/SELECT; mutation/DDL token 0
-Postflight: 1 statement; yalnız WITH/SELECT; mutation/DDL token 0
-Ana SQL canonical function body hash: 2/2 MATCH
+Reconciliation postflight: 1 statement; yalnız WITH/SELECT; mutation/DDL token 0
+Data remediation postflight: 1 statement; yalnız WITH/SELECT; mutation/DDL token 0
+Data remediation: tam 1 hedefli `UPDATE public.dietitian_profiles`; yalnız `is_verified`; forbidden DML/kolon/auth/storage/history mutation 0
+Verification sync function canonical body MD5: 62139839251ae664d44b4f325a1737c3; byte match
+Ana SQL canonical function body hash: 3/3 MATCH
 Ana SQL canonical policy text: 11/11 MATCH
 Ana SQL canonical constraint text: MATCH
-Ana SQL forbidden top-level DML/DDL: 0
-Ana SQL policy removal: 0
+Ana SQL user-data UPDATE outside canonical stored function bodies: 0
+Ana SQL legacy/ek policy DROP veya ALTER: 0
 Ana SQL migration history mutation: 0
 General verification: 11 statement / 11 marker / 11 statement_id; yalnız WITH/SELECT
 Secret scan: 0
@@ -160,6 +165,38 @@ PRODUCTION RECONCILIATION NOT APPLIED
 LEGACY POLICY NOT REMOVED
 ```
 
-## 28. Sonraki aşama
+## 28. Yeni verification drift bulgusu
 
-Aşama 3E-2C-2D: production reconciliation preflight SQL'ini salt-okunur çalıştır. Ana reconciliation SQL'i ayrı açık onay gelmeden çalıştırılmaz.
+```text
+Verification sync function: MISSING
+Verification sync trigger: MISSING
+Verification consistency constraint: MISSING
+Verification inconsistent rows: 1
+Drift combination: true + pending
+Canonical source-of-truth: verification_status
+Canonical remediation result: false + pending
+DATA_REMEDIATION_REQUIRED: YES
+Production reconciliation application: BLOCKED
+```
+
+Ana reconciliation kullanıcı verisini sessizce düzeltmez. Ayrı remediation SQL'i yalnız doğrulanmış tek satırın `is_verified` mirror alanını canonical `verification_status` değerine getirir; beklenmeyen sayım veya kombinasyonda transaction rollback olur.
+
+## 29. Zorunlu production uygulama sırası
+
+1. Güncellenmiş salt-okunur preflight çalıştırılır.
+2. `DATA_REMEDIATION_READY=YES` doğrulanır.
+3. Ayrı data remediation SQL'i için manuel onay alınır.
+4. Data remediation SQL'i uygulanır.
+5. Salt-okunur data remediation postflight çalıştırılır.
+6. Güncellenmiş reconciliation preflight yeniden çalıştırılır.
+7. `RECONCILIATION_READY=YES` doğrulanır.
+8. Ana pre-policy reconciliation SQL'i uygulanır.
+9. Reconciliation postflight çalıştırılır.
+10. Production RPC smoke testi yapılır.
+11. Legacy policy removal değerlendirilir.
+
+Ana reconciliation SQL'i data remediation başarıyla tamamlanmadan çalışamaz.
+
+## 30. Sonraki aşama
+
+Güncellenmiş production preflight SQL'ini salt-okunur çalıştır. Data remediation ve ana reconciliation ayrı açık onay olmadan uygulanmaz.

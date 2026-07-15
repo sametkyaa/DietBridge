@@ -46,6 +46,40 @@ function_catalog AS (
   LEFT JOIN pg_catalog.pg_proc AS p ON p.oid = to_regprocedure(e.signature)
   LEFT JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
 ),
+verification_sync_function_catalog AS (
+  SELECT
+    p.oid,
+    p.proacl,
+    p.proowner,
+    p.prosecdef,
+    pg_catalog.pg_get_function_result(p.oid) AS actual_result,
+    r.rolname AS owner_name,
+    pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
+    pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+  FROM (SELECT 1) AS seed
+  LEFT JOIN pg_catalog.pg_proc AS p
+    ON p.oid = to_regprocedure('public.sync_dietitian_verification_fields()')
+  LEFT JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
+),
+verification_sync_trigger_catalog AS (
+  SELECT
+    t.oid,
+    t.tgenabled,
+    t.tgtype,
+    t.tgfoid
+  FROM (SELECT 1) AS seed
+  LEFT JOIN pg_catalog.pg_trigger AS t
+    ON t.tgrelid = to_regclass('public.dietitian_profiles')
+   AND t.tgname = 'trg_sync_dietitian_verification_fields'
+   AND NOT t.tgisinternal
+),
+verification_data AS (
+  SELECT count(*) AS inconsistent_count
+  FROM public.dietitian_profiles
+  WHERE verification_status IS NULL
+     OR verification_status NOT IN ('pending', 'approved', 'rejected')
+     OR is_verified IS DISTINCT FROM (verification_status = 'approved')
+),
 policy_catalog AS (
   SELECT
     e.*,
@@ -129,8 +163,76 @@ checks(sequence_no, check_group, check_id, object_name, status, is_match) AS (
 
   UNION ALL
   SELECT
+    15,
+    'VERIFICATION_CONSISTENCY',
+    'VERIFICATION_SYNC_FUNCTION',
+    'public.sync_dietitian_verification_fields()',
+    CASE
+      WHEN oid IS NOT NULL
+       AND NOT prosecdef
+       AND actual_result = 'trigger'
+       AND owner_name = 'postgres'
+       AND body_md5 = '62139839251ae664d44b4f325a1737c3'
+       AND function_config = 'search_path=pg_catalog, public'
+       AND NOT has_function_privilege('anon', oid, 'EXECUTE')
+       AND NOT has_function_privilege('authenticated', oid, 'EXECUTE')
+       AND NOT EXISTS (
+         SELECT 1
+         FROM pg_catalog.aclexplode(coalesce(proacl, pg_catalog.acldefault('f', proowner))) AS acl
+         WHERE acl.grantee = 0
+           AND acl.privilege_type = 'EXECUTE'
+       ) THEN 'MATCH'
+      ELSE 'MISSING_OR_MISMATCH'
+    END,
+    oid IS NOT NULL
+      AND NOT prosecdef
+      AND actual_result = 'trigger'
+      AND owner_name = 'postgres'
+      AND body_md5 = '62139839251ae664d44b4f325a1737c3'
+      AND function_config = 'search_path=pg_catalog, public'
+      AND NOT has_function_privilege('anon', oid, 'EXECUTE')
+      AND NOT has_function_privilege('authenticated', oid, 'EXECUTE')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_catalog.aclexplode(coalesce(proacl, pg_catalog.acldefault('f', proowner))) AS acl
+        WHERE acl.grantee = 0
+          AND acl.privilege_type = 'EXECUTE'
+      )
+  FROM verification_sync_function_catalog
+
+  UNION ALL
+  SELECT
+    16,
+    'VERIFICATION_CONSISTENCY',
+    'VERIFICATION_SYNC_TRIGGER',
+    'public.dietitian_profiles.trg_sync_dietitian_verification_fields',
+    CASE
+      WHEN oid IS NOT NULL
+       AND tgenabled <> 'D'
+       AND tgtype = 23
+       AND tgfoid = to_regprocedure('public.sync_dietitian_verification_fields()') THEN 'MATCH'
+      ELSE 'MISSING_OR_MISMATCH'
+    END,
+    oid IS NOT NULL
+      AND tgenabled <> 'D'
+      AND tgtype = 23
+      AND tgfoid = to_regprocedure('public.sync_dietitian_verification_fields()')
+  FROM verification_sync_trigger_catalog
+
+  UNION ALL
+  SELECT
+    17,
+    'VERIFICATION_CONSISTENCY',
+    'VERIFICATION_DATA_CONSISTENCY',
+    'public.dietitian_profiles aggregate only',
+    CASE WHEN inconsistent_count = 0 THEN 'MATCH' ELSE 'MISMATCH_' || inconsistent_count::text || '_ROWS' END,
+    inconsistent_count = 0
+  FROM verification_data
+
+  UNION ALL
+  SELECT
     20,
-    'CONSTRAINT',
+    'VERIFICATION_CONSISTENCY',
     'VERIFICATION_CONSTRAINT',
     'public.dietitian_profiles.dietitian_profiles_verification_consistency_check',
     CASE
@@ -251,6 +353,17 @@ checks(sequence_no, check_group, check_id, object_name, status, is_match) AS (
 ),
 gates(sequence_no, check_group, check_id, object_name, status, is_match) AS (
   SELECT * FROM checks
+
+  UNION ALL
+  SELECT
+    899,
+    'GATE',
+    'VERIFICATION_CONSISTENCY_CONTRACT',
+    'VERIFICATION_CONSISTENCY_CONTRACT',
+    CASE WHEN pg_catalog.bool_and(is_match) THEN 'YES' ELSE 'NO' END,
+    pg_catalog.bool_and(is_match)
+  FROM checks
+  WHERE check_group = 'VERIFICATION_CONSISTENCY'
 
   UNION ALL
   SELECT

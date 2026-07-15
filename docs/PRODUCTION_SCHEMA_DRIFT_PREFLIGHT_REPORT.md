@@ -50,7 +50,8 @@ Doğrulanmış örnekler:
 ## 10. Production blocker
 
 - Migration history yok.
-- Verification consistency constraint eksik.
+- Verification sync function, sync trigger ve consistency constraint eksik.
+- Verification alanlarında bir tutarsız satır vardır: `is_verified=true`, `verification_status=pending`.
 - `dietitian_profiles`, `appointments` ve `chat_messages` tablolarında RLS kapalı.
 - `20260713010300` kapsamındaki 11 policy eksik.
 - Dört function'ın `search_path` sözleşmesi canonical hedeften farklı.
@@ -120,9 +121,10 @@ Statement 08 artık expected-policy join veya predicate decompile yapmayan, krit
 ## 16. Değiştirilen dosyalar
 
 - `supabase/reconciliation/production_pre_policy_removal_reconciliation.sql`
+- `supabase/reconciliation/production_verification_consistency_data_remediation.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql`
-- `supabase/verification/production_migration_history_reconciliation_verification.sql`
+- `supabase/verification/production_verification_consistency_data_remediation_postflight.sql`
 - `docs/PRODUCTION_MIGRATION_HISTORY_RECONCILIATION_PLAN.md`
 - `docs/PRODUCTION_SCHEMA_DRIFT_PREFLIGHT_REPORT.md`
 - `docs/LEGACY_MEALS_UPDATE_POLICY_PRODUCTION_PREFLIGHT_REPORT.md`
@@ -148,9 +150,27 @@ Legacy policy removable: NO
 Production migration applied: NO
 Production reconciliation package prepared: YES
 Production reconciliation applied: NO
+Data remediation required: YES
+Data remediation applied: NO
 Decision: NOT READY
 ```
 
-## 20. Sonraki aşama
+## 20. Verification consistency düzeltme kapısı
 
-Aşama 3E-2C-2D — `production_pre_policy_removal_reconciliation_preflight.sql` dosyasını Production SQL Editor'da salt-okunur çalıştır. Ana reconciliation SQL'ini bu adımda çalıştırma.
+```text
+Verification sync function: MISSING
+Verification sync trigger: MISSING
+Verification consistency constraint: MISSING
+Verification inconsistent rows: 1
+Drift combination: true + pending
+Canonical source-of-truth: verification_status
+Canonical remediation result: false + pending
+DATA_REMEDIATION_REQUIRED: YES
+Production reconciliation application: BLOCKED
+```
+
+Ana reconciliation bu satırı değiştirmez ve veri tutarsızken fail-closed durur. Önce güncellenmiş preflight ile `DATA_REMEDIATION_READY=YES` doğrulanmalı, ayrı onaylı data remediation uygulanmalı ve salt-okunur remediation postflight geçmelidir.
+
+## 21. Sonraki aşama
+
+Güncellenmiş `production_pre_policy_removal_reconciliation_preflight.sql` dosyasını Production SQL Editor'da salt-okunur çalıştır. Data remediation veya ana reconciliation SQL'ini bu adımda çalıştırma.

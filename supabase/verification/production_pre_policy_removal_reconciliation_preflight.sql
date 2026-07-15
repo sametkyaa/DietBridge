@@ -130,6 +130,80 @@ rpc_catalog AS (
   JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
   WHERE p.oid = to_regprocedure('public.set_my_meal_completion(uuid,boolean)')
 ),
+verification_sync_function_catalog AS (
+  SELECT
+    p.oid,
+    p.proacl,
+    p.proowner,
+    p.prosecdef,
+    pg_catalog.pg_get_function_result(p.oid) AS actual_result,
+    r.rolname AS owner_name,
+    pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
+    pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+  FROM (SELECT 1) AS seed
+  LEFT JOIN pg_catalog.pg_proc AS p
+    ON p.oid = to_regprocedure('public.sync_dietitian_verification_fields()')
+  LEFT JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
+),
+verification_sync_trigger_catalog AS (
+  SELECT
+    t.oid,
+    t.tgenabled,
+    t.tgtype,
+    t.tgfoid
+  FROM (SELECT 1) AS seed
+  LEFT JOIN pg_catalog.pg_trigger AS t
+    ON t.tgrelid = to_regclass('public.dietitian_profiles')
+   AND t.tgname = 'trg_sync_dietitian_verification_fields'
+   AND NOT t.tgisinternal
+),
+verification_column_contract AS (
+  SELECT
+    count(a.attname) = 2
+      AND pg_catalog.bool_and(a.atttypid = expected.expected_type) AS columns_match
+  FROM (VALUES
+    ('is_verified', 'pg_catalog.bool'::pg_catalog.regtype),
+    ('verification_status', 'pg_catalog.text'::pg_catalog.regtype)
+  ) AS expected(column_name, expected_type)
+  LEFT JOIN pg_catalog.pg_attribute AS a
+    ON a.attrelid = to_regclass('public.dietitian_profiles')
+   AND a.attname = expected.column_name
+   AND a.attnum > 0
+   AND NOT a.attisdropped
+),
+verification_data AS (
+  SELECT
+    count(*) FILTER (
+      WHERE verification_status IS NULL
+         OR verification_status NOT IN ('pending', 'approved', 'rejected')
+         OR is_verified IS DISTINCT FROM (verification_status = 'approved')
+    ) AS inconsistent_count,
+    count(*) FILTER (
+      WHERE is_verified IS TRUE
+        AND verification_status = 'pending'
+    ) AS pending_true_count,
+    count(*) FILTER (
+      WHERE verification_status = 'approved'
+        AND is_verified IS TRUE
+    ) AS approved_true_count,
+    count(*) FILTER (
+      WHERE verification_status = 'pending'
+        AND is_verified IS FALSE
+    ) AS pending_false_count,
+    count(*) FILTER (
+      WHERE verification_status IS NULL
+         OR verification_status NOT IN ('pending', 'approved', 'rejected')
+    ) AS invalid_status_count,
+    count(*) FILTER (
+      WHERE (
+        verification_status IS NULL
+        OR verification_status NOT IN ('pending', 'approved', 'rejected')
+        OR is_verified IS DISTINCT FROM (verification_status = 'approved')
+      )
+      AND NOT (is_verified IS TRUE AND verification_status = 'pending')
+    ) AS other_inconsistent_count
+  FROM public.dietitian_profiles
+),
 checks(sequence_no, check_id, object_name, status, is_safe) AS (
   SELECT
     10,
@@ -178,7 +252,142 @@ checks(sequence_no, check_id, object_name, status, is_safe) AS (
 
   UNION ALL
   SELECT
+    35,
+    'VERIFICATION_COLUMN_CONTRACT',
+    'public.dietitian_profiles verification columns',
+    CASE WHEN columns_match THEN 'MATCH' ELSE 'MISSING_OR_MISMATCH' END,
+    columns_match
+  FROM verification_column_contract
+
+  UNION ALL
+  SELECT
+    36,
+    'VERIFICATION_SYNC_FUNCTION',
+    'public.sync_dietitian_verification_fields()',
+    CASE
+      WHEN oid IS NULL THEN 'EXPECTED_MISSING'
+      WHEN actual_result = 'trigger'
+       AND owner_name = 'postgres'
+       AND body_md5 = '62139839251ae664d44b4f325a1737c3' THEN 'MATCH'
+      ELSE 'MISMATCH'
+    END,
+    oid IS NULL OR (
+      actual_result = 'trigger'
+      AND owner_name = 'postgres'
+      AND body_md5 = '62139839251ae664d44b4f325a1737c3'
+    )
+  FROM verification_sync_function_catalog
+
+  UNION ALL
+  SELECT
+    37,
+    'VERIFICATION_SYNC_FUNCTION_SECURITY',
+    'public.sync_dietitian_verification_fields()',
+    CASE WHEN oid IS NULL THEN 'EXPECTED_MISSING' WHEN NOT prosecdef THEN 'MATCH' ELSE 'MISMATCH' END,
+    oid IS NULL OR NOT prosecdef
+  FROM verification_sync_function_catalog
+
+  UNION ALL
+  SELECT
+    38,
+    'VERIFICATION_SYNC_FUNCTION_SEARCH_PATH',
+    'public.sync_dietitian_verification_fields()',
+    CASE
+      WHEN oid IS NULL THEN 'EXPECTED_MISSING'
+      WHEN function_config = 'search_path=pg_catalog, public' THEN 'MATCH'
+      ELSE 'MISMATCH'
+    END,
+    oid IS NULL OR function_config = 'search_path=pg_catalog, public'
+  FROM verification_sync_function_catalog
+
+  UNION ALL
+  SELECT
+    39,
+    'VERIFICATION_SYNC_FUNCTION_EXECUTE_PUBLIC',
+    'public.sync_dietitian_verification_fields() -> PUBLIC',
+    CASE
+      WHEN oid IS NULL THEN 'EXPECTED_MISSING'
+      WHEN NOT EXISTS (
+        SELECT 1
+        FROM pg_catalog.aclexplode(coalesce(proacl, pg_catalog.acldefault('f', proowner))) AS acl
+        WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+      ) THEN 'MATCH'
+      ELSE 'MISMATCH'
+    END,
+    CASE
+      WHEN oid IS NULL THEN true
+      ELSE NOT EXISTS (
+        SELECT 1
+        FROM pg_catalog.aclexplode(coalesce(proacl, pg_catalog.acldefault('f', proowner))) AS acl
+        WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+      )
+    END
+  FROM verification_sync_function_catalog
+
+  UNION ALL
+  SELECT
     40,
+    'VERIFICATION_SYNC_FUNCTION_EXECUTE_ANON',
+    'public.sync_dietitian_verification_fields() -> anon',
+    CASE
+      WHEN oid IS NULL THEN 'EXPECTED_MISSING'
+      WHEN NOT has_function_privilege('anon', oid, 'EXECUTE') THEN 'MATCH'
+      ELSE 'MISMATCH'
+    END,
+    CASE WHEN oid IS NULL THEN true ELSE NOT has_function_privilege('anon', oid, 'EXECUTE') END
+  FROM verification_sync_function_catalog
+
+  UNION ALL
+  SELECT
+    41,
+    'VERIFICATION_SYNC_FUNCTION_EXECUTE_AUTHENTICATED',
+    'public.sync_dietitian_verification_fields() -> authenticated',
+    CASE
+      WHEN oid IS NULL THEN 'EXPECTED_MISSING'
+      WHEN NOT has_function_privilege('authenticated', oid, 'EXECUTE') THEN 'MATCH'
+      ELSE 'MISMATCH'
+    END,
+    CASE WHEN oid IS NULL THEN true ELSE NOT has_function_privilege('authenticated', oid, 'EXECUTE') END
+  FROM verification_sync_function_catalog
+
+  UNION ALL
+  SELECT
+    42,
+    'VERIFICATION_SYNC_TRIGGER',
+    'public.dietitian_profiles.trg_sync_dietitian_verification_fields',
+    CASE
+      WHEN oid IS NULL THEN 'EXPECTED_MISSING'
+      WHEN tgenabled <> 'D'
+       AND tgfoid = to_regprocedure('public.sync_dietitian_verification_fields()') THEN 'MATCH'
+      ELSE 'MISMATCH'
+    END,
+    oid IS NULL OR (
+      tgenabled <> 'D'
+      AND tgfoid = to_regprocedure('public.sync_dietitian_verification_fields()')
+    )
+  FROM verification_sync_trigger_catalog
+
+  UNION ALL
+  SELECT
+    43,
+    'VERIFICATION_SYNC_TRIGGER_TIMING',
+    'BEFORE FOR EACH ROW',
+    CASE WHEN oid IS NULL THEN 'EXPECTED_MISSING' WHEN (tgtype & 3) = 3 THEN 'MATCH' ELSE 'MISMATCH' END,
+    oid IS NULL OR (tgtype & 3) = 3
+  FROM verification_sync_trigger_catalog
+
+  UNION ALL
+  SELECT
+    44,
+    'VERIFICATION_SYNC_TRIGGER_EVENTS',
+    'INSERT OR UPDATE',
+    CASE WHEN oid IS NULL THEN 'EXPECTED_MISSING' WHEN tgtype = 23 THEN 'MATCH' ELSE 'MISMATCH' END,
+    oid IS NULL OR tgtype = 23
+  FROM verification_sync_trigger_catalog
+
+  UNION ALL
+  SELECT
+    45,
     'VERIFICATION_CONSTRAINT',
     'public.dietitian_profiles.dietitian_profiles_verification_consistency_check',
     CASE
@@ -202,19 +411,16 @@ checks(sequence_no, check_id, object_name, status, is_safe) AS (
 
   UNION ALL
   SELECT
-    41,
+    46,
     'VERIFICATION_DATA_CONSISTENCY',
     'public.dietitian_profiles aggregate only',
-    CASE WHEN count(*) = 0 THEN 'MATCH' ELSE 'BLOCKED_' || count(*)::text || '_ROWS' END,
-    count(*) = 0
-  FROM public.dietitian_profiles
-  WHERE verification_status IS NULL
-     OR verification_status NOT IN ('pending', 'approved', 'rejected')
-     OR is_verified IS DISTINCT FROM (verification_status = 'approved')
+    CASE WHEN inconsistent_count = 0 THEN 'MATCH' ELSE 'BLOCKED_' || inconsistent_count::text || '_ROWS' END,
+    inconsistent_count = 0
+  FROM verification_data
 
   UNION ALL
   SELECT
-    42,
+    47,
     'APPOINTMENT_OWNERSHIP_DATA',
     'public.appointments aggregate only',
     CASE WHEN count(*) = 0 THEN 'MATCH' ELSE 'BLOCKED_' || count(*)::text || '_ROWS' END,
@@ -379,6 +585,21 @@ checks(sequence_no, check_id, object_name, status, is_safe) AS (
 results(sequence_no, check_id, object_name, status) AS (
   SELECT sequence_no, check_id, object_name, status
   FROM checks
+
+  UNION ALL
+
+  SELECT
+    998,
+    'FINAL_GATE',
+    'DATA_REMEDIATION_READY',
+    CASE
+      WHEN (SELECT columns_match FROM verification_column_contract)
+       AND (SELECT inconsistent_count FROM verification_data) = 1
+       AND (SELECT pending_true_count FROM verification_data) = 1
+       AND (SELECT invalid_status_count FROM verification_data) = 0
+       AND (SELECT other_inconsistent_count FROM verification_data) = 0 THEN 'YES'
+      ELSE 'NO'
+    END
 
   UNION ALL
 

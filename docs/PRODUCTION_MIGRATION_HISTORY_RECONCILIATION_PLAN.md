@@ -129,7 +129,7 @@ Tablo mevcut çıkarsa exact count/version listesi, ayrı onaylı ve tablo varl�
 | `20260713000000` | Tarihsel final state'ten kanıtlanamıyor | `MANUAL_REVIEW` |
 | `20260713000001` | Kritik örnek sözleşmeler büyük ölçüde `MATCH`, fakat migration'ın bütün 21 tablo/10 function/7 trigger/51 policy kapsamı tamamen kanıtlanmadı | `NOT YET ELIGIBLE` |
 | `20260713010000` | Function `search_path` drift'i var | `NOT ELIGIBLE` |
-| `20260713010100` | Verification consistency constraint eksik | `NOT ELIGIBLE` |
+| `20260713010100` | Verification sync function, trigger ve consistency constraint eksik; bir `true + pending` satırı canonical mirror kuralıyla tutarsız | `NOT ELIGIBLE`; ayrı data remediation ve postflight zorunlu |
 | `20260713010200` | `handle_new_user` `search_path` drift'i var | `NOT ELIGIBLE` |
 | `20260713010300` | Üç tabloda RLS ve 11 policy eksik | `NOT ELIGIBLE` |
 | `20260713010400` | RPC tamamen eksik | `NOT ELIGIBLE` |
@@ -140,9 +140,9 @@ Reconciliation başarıyla uygulansa bile toplu veya otomatik `migration repair`
 
 ## 12. Hazırlanan pre-policy reconciliation paketi
 
-Paket active migration dizini dışında üç parçalıdır: salt-okunur preflight, transaction/fail-fast ana SQL ve salt-okunur postflight. Ana SQL yalnız audit ile doğrulanan drift kapsamını hedefler. Migration history, legacy client UPDATE policy'si, dört ekstra policy ve production satırları bu paketin değişiklik kapsamı dışındadır.
+Paket active migration dizini dışında beş parçalıdır: salt-okunur preflight, ayrı ve manuel onaylı verification data remediation SQL'i, salt-okunur remediation postflight, transaction/fail-fast ana reconciliation SQL'i ve salt-okunur reconciliation postflight. Ana reconciliation yalnız audit ile doğrulanan şema drift'ini hedefler ve production satırı değiştirmez. Migration history, legacy client UPDATE policy'si ve dört ekstra policy değişiklik kapsamı dışındadır.
 
-Hazırlık durumu `PREPARED`, uygulama durumu `NOT APPLIED`dır. Bir sonraki kapı, production SQL Editor'da yalnız preflight SQL'inin salt-okunur çalıştırılmasıdır.
+Hazırlık durumu `PREPARED`, uygulama durumu `NOT APPLIED`dır. Bir sonraki kapı, production SQL Editor'da güncellenmiş preflight SQL'inin salt-okunur çalıştırılmasıdır. Beklenen ara kapılar `DATA_REMEDIATION_READY=YES` ve `RECONCILIATION_READY=NO`dur. Remediation ayrı onay, uygulama ve postflight gerektirir; ana reconciliation bundan önce çalıştırılamaz.
 
 ## 13. Son karar
 

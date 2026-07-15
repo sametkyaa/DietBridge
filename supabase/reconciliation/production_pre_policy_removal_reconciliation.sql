@@ -69,6 +69,57 @@ BEGIN
     END IF;
   END LOOP;
 
+  IF to_regprocedure('public.sync_dietitian_verification_fields()') IS NOT NULL THEN
+    SELECT
+      p.oid,
+      p.proacl,
+      p.proowner,
+      p.prosecdef,
+      pg_catalog.pg_get_function_result(p.oid) AS result_type,
+      r.rolname AS owner_name,
+      pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
+      pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+    INTO STRICT v_actual
+    FROM pg_catalog.pg_proc AS p
+    JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
+    WHERE p.oid = to_regprocedure('public.sync_dietitian_verification_fields()');
+
+    IF v_actual.prosecdef
+       OR v_actual.result_type <> 'trigger'
+       OR v_actual.owner_name <> 'postgres'
+       OR v_actual.body_md5 <> '62139839251ae664d44b4f325a1737c3'
+       OR v_actual.function_config <> 'search_path=pg_catalog, public'
+       OR has_function_privilege('anon', v_actual.oid, 'EXECUTE')
+       OR has_function_privilege('authenticated', v_actual.oid, 'EXECUTE')
+       OR EXISTS (
+         SELECT 1
+         FROM pg_catalog.aclexplode(coalesce(v_actual.proacl, pg_catalog.acldefault('f', v_actual.proowner))) AS acl
+         WHERE acl.grantee = 0
+           AND acl.privilege_type = 'EXECUTE'
+       ) THEN
+      RAISE EXCEPTION 'Existing verification sync function differs from the canonical contract; reconciliation stopped.';
+    END IF;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = to_regclass('public.dietitian_profiles')
+      AND tgname = 'trg_sync_dietitian_verification_fields'
+      AND NOT tgisinternal
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = to_regclass('public.dietitian_profiles')
+      AND tgname = 'trg_sync_dietitian_verification_fields'
+      AND NOT tgisinternal
+      AND tgenabled <> 'D'
+      AND tgtype = 23
+      AND tgfoid = to_regprocedure('public.sync_dietitian_verification_fields()')
+  ) THEN
+    RAISE EXCEPTION 'Existing verification sync trigger differs from the canonical contract; reconciliation stopped.';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM pg_catalog.pg_constraint
@@ -336,6 +387,64 @@ GRANT EXECUTE ON FUNCTION public.save_my_current_weight(numeric) TO authenticate
 REVOKE EXECUTE ON FUNCTION public.set_profiles_updated_at() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.set_profiles_updated_at() TO service_role;
 
+-- Create the canonical verification mirror function only when it is missing.
+DO $verification_function$
+BEGIN
+  IF to_regprocedure('public.sync_dietitian_verification_fields()') IS NULL THEN
+    EXECUTE $ddl$
+      CREATE FUNCTION public.sync_dietitian_verification_fields()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      SET search_path = pg_catalog, public
+      AS $function$
+begin
+  if new.verification_status is null
+     or new.verification_status not in ('pending', 'approved', 'rejected') then
+    raise exception 'Geçersiz diyetisyen doğrulama durumu.' using errcode = '23514';
+  end if;
+  if auth.uid() is not null and auth.uid() = new.user_id then
+    if tg_op = 'INSERT' then
+      if new.verification_status is distinct from 'pending'
+         or new.is_verified is distinct from false then
+        raise exception 'Diyetisyen doğrulama alanları browser tarafından atanamaz.' using errcode = '42501';
+      end if;
+    elsif new.verification_status is distinct from old.verification_status
+       or new.is_verified is distinct from old.is_verified
+       or new.verified_at is distinct from old.verified_at
+       or new.rejection_reason is distinct from old.rejection_reason then
+      raise exception 'Diyetisyen doğrulama alanları browser tarafından değiştirilemez.' using errcode = '42501';
+    end if;
+  end if;
+  new.is_verified := (new.verification_status = 'approved');
+  return new;
+end;
+$function$
+    $ddl$;
+  END IF;
+END
+$verification_function$;
+
+REVOKE EXECUTE ON FUNCTION public.sync_dietitian_verification_fields() FROM PUBLIC, anon, authenticated;
+
+-- Create the canonical row-level verification trigger only when it is missing.
+DO $verification_trigger$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = to_regclass('public.dietitian_profiles')
+      AND tgname = 'trg_sync_dietitian_verification_fields'
+      AND NOT tgisinternal
+  ) THEN
+    EXECUTE $ddl$
+      CREATE TRIGGER trg_sync_dietitian_verification_fields
+      BEFORE INSERT OR UPDATE ON public.dietitian_profiles
+      FOR EACH ROW EXECUTE FUNCTION public.sync_dietitian_verification_fields()
+    $ddl$;
+  END IF;
+END
+$verification_trigger$;
+
 -- Add the canonical validated constraint only when it is missing.
 DO $constraint$
 BEGIN
@@ -493,6 +602,60 @@ BEGIN
       RAISE EXCEPTION 'Function postcondition failed for %; transaction rolled back.', v_function.signature;
     END IF;
   END LOOP;
+
+  SELECT
+    p.oid,
+    p.proacl,
+    p.proowner,
+    p.prosecdef,
+    pg_catalog.pg_get_function_result(p.oid) AS result_type,
+    r.rolname AS owner_name,
+    pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
+    pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+  INTO STRICT v_actual
+  FROM pg_catalog.pg_proc AS p
+  JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
+  WHERE p.oid = to_regprocedure('public.sync_dietitian_verification_fields()');
+
+  IF v_actual.prosecdef
+     OR v_actual.result_type <> 'trigger'
+     OR v_actual.owner_name <> 'postgres'
+     OR v_actual.body_md5 <> '62139839251ae664d44b4f325a1737c3'
+     OR v_actual.function_config <> 'search_path=pg_catalog, public'
+     OR has_function_privilege('anon', v_actual.oid, 'EXECUTE')
+     OR has_function_privilege('authenticated', v_actual.oid, 'EXECUTE')
+     OR EXISTS (
+       SELECT 1
+       FROM pg_catalog.aclexplode(coalesce(v_actual.proacl, pg_catalog.acldefault('f', v_actual.proowner))) AS acl
+       WHERE acl.grantee = 0
+         AND acl.privilege_type = 'EXECUTE'
+     ) THEN
+    RAISE EXCEPTION 'Verification sync function postcondition failed; transaction rolled back.';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = to_regclass('public.dietitian_profiles')
+      AND tgname = 'trg_sync_dietitian_verification_fields'
+      AND NOT tgisinternal
+      AND tgenabled <> 'D'
+      AND tgtype = 23
+      AND tgfoid = to_regprocedure('public.sync_dietitian_verification_fields()')
+  ) THEN
+    RAISE EXCEPTION 'Verification sync trigger postcondition failed; transaction rolled back.';
+  END IF;
+
+  SELECT count(*)
+  INTO v_count
+  FROM public.dietitian_profiles
+  WHERE verification_status IS NULL
+     OR verification_status NOT IN ('pending', 'approved', 'rejected')
+     OR is_verified IS DISTINCT FROM (verification_status = 'approved');
+
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'Verification data postcondition found % incompatible rows; transaction rolled back.', v_count;
+  END IF;
 
   IF NOT EXISTS (
     SELECT 1
