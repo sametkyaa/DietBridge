@@ -113,11 +113,9 @@ History boşluğu nedeniyle hiçbir version toplu `applied` kabul edilmez. Recon
 ## 24. Değiştirilen dosyalar
 
 - `supabase/reconciliation/production_pre_policy_removal_reconciliation.sql`
-- `supabase/reconciliation/production_verification_consistency_data_remediation.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql`
-- `supabase/verification/production_verification_consistency_data_remediation_postflight.sql`
-- `docs/PRODUCTION_MIGRATION_HISTORY_RECONCILIATION_PLAN.md`
+- `scripts/production-reconciliation-validator.test.mjs`
 - `docs/PRODUCTION_SCHEMA_DRIFT_PREFLIGHT_REPORT.md`
 - `docs/LEGACY_MEALS_UPDATE_POLICY_PRODUCTION_PREFLIGHT_REPORT.md`
 - `docs/PRODUCTION_PRE_POLICY_RECONCILIATION_PACKAGE_REPORT.md`
@@ -134,7 +132,12 @@ Reconciliation postflight: 1 statement; yalnız WITH/SELECT; mutation/DDL token 
 Data remediation postflight: 1 statement; yalnız WITH/SELECT; mutation/DDL token 0
 Data remediation: tam 1 hedefli `UPDATE public.dietitian_profiles`; yalnız `is_verified`; forbidden DML/kolon/auth/storage/history mutation 0
 Verification sync function canonical body MD5: 62139839251ae664d44b4f325a1737c3; byte match
-Ana SQL canonical function body hash: 3/3 MATCH
+Grup A/B canonical function bodies: 3/3 byte-for-byte MATCH
+Grup A/B postcondition hardcoded body MD5: 0
+Grup C baseline allowlist hash üretim modeli: 3/3 MATCH
+Semantic body contract marker setleri: MATCH
+Search path exact `proconfig` array entry ve duplicate/extra config koruması: MATCH
+Diagnostic invariant alanları: MATCH
 Ana SQL canonical policy text: 11/11 MATCH
 Ana SQL canonical constraint text: MATCH
 Ana SQL user-data UPDATE outside canonical stored function bodies: 0
@@ -144,6 +147,7 @@ General verification: 11 statement / 11 marker / 11 statement_id; yalnız WITH/S
 Secret scan: 0
 package.json/package-lock.json diff: 0
 node --check staging-security-tests.mjs: PASS
+production-reconciliation-validator.test.mjs: 8/8 PASS
 staging-security-tests.test.mjs: 8/8 PASS
 staging-mobile-meal-test-fixture.test.mjs: 5/5 PASS
 typecheck: PASS
@@ -153,11 +157,11 @@ Mobil repository: codex/meal-completion-rpc-cutover @ 73009da; temiz
 
 Ana SQL'deki `INSERT`/`UPDATE` metinleri yalnız canonical stored function gövdelerindedir; reconciliation sırasında function çağrılmaz. Function gövdeleri çıkarıldıktan sonra executable top-level forbidden DML sayısı sıfırdır.
 
-## 26. Uygulanmayan işlemler
+## 26. İlk paket hazırlığında uygulanmayan işlemler
 
 Production veya staging'e bağlanılmadı. SQL çalıştırılmadı. Reconciliation, migration, history repair, policy removal, RPC çağrısı, veri mutation'ı, fixture, kullanıcı veya deployment yapılmadı.
 
-## 27. Sonuç
+## 27. İlk paket hazırlığı sonucu
 
 ```text
 PRODUCTION RECONCILIATION PACKAGE PREPARED
@@ -197,6 +201,38 @@ Ana reconciliation kullanıcı verisini sessizce düzeltmez. Ayrı remediation S
 
 Ana reconciliation SQL'i data remediation başarıyla tamamlanmadan çalışamaz.
 
-## 30. Sonraki aşama
+## 30. Production reconciliation denemesi ve rollback
 
-Güncellenmiş production preflight SQL'ini salt-okunur çalıştır. Data remediation ve ana reconciliation ayrı açık onay olmadan uygulanmaz.
+Data remediation ayrı onayla daha önce başarıyla uygulanmış ve verification consistency postflight ile doğrulanmıştır. Sonraki salt-okunur preflight sonucu:
+
+```text
+VERIFICATION_DATA_CONSISTENCY=MATCH
+DATA_REMEDIATION_READY=NO
+RECONCILIATION_READY=YES
+```
+
+Ana reconciliation SQL'i production SQL Editor'da çalıştırıldı ancak generic function postcondition validator `public.handle_new_user()` için `P0001` üretti. SQL tek transaction içinde olduğu için bütün reconciliation değişiklikleri rollback oldu.
+
+```text
+Production reconciliation attempt: FAILED CLOSED
+Error: handle_new_user function postcondition
+Transaction result: ROLLED BACK
+Legacy policy removed: NO
+Meal RPC persisted: NO
+RLS/policy/function changes persisted: NO
+Data remediation: Daha önce başarıyla uygulanmış ve korunmuştur
+```
+
+## 31. Validator düzeltmesi
+
+Grup A/B function postcondition'ları hardcoded body MD5 yerine canonical semantic invariant'ları doğrular. Grup C, body değiştirilmediği için baseline `p.prosrc` byte modeliyle statik olarak kanıtlanmış allowlist hash'lerini korur. Search path kontrolü `proconfig` array'i üzerinde tam entry, tek search path ve tek canonical config şartlarını doğrular. Diagnostic exception her invariant sonucunu ayrı boolean olarak gösterir; function body veya kişisel veri içermez.
+
+```text
+3E-2C-2E reconciliation application: BLOCKED BY POSTCONDITION VALIDATOR
+3E-2C-2E-1 validator correction: PREPARED
+Production reconciliation retry: PENDING
+```
+
+## 32. Sonraki aşama
+
+Güncellenmiş production preflight SQL'ini salt-okunur çalıştır ve `RECONCILIATION_READY=YES` sonucunu yeniden doğrula. Reconciliation retry bu görevde yapılmadı.

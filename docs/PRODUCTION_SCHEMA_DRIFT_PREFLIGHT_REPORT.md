@@ -121,11 +121,9 @@ Statement 08 artık expected-policy join veya predicate decompile yapmayan, krit
 ## 16. Değiştirilen dosyalar
 
 - `supabase/reconciliation/production_pre_policy_removal_reconciliation.sql`
-- `supabase/reconciliation/production_verification_consistency_data_remediation.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql`
-- `supabase/verification/production_verification_consistency_data_remediation_postflight.sql`
-- `docs/PRODUCTION_MIGRATION_HISTORY_RECONCILIATION_PLAN.md`
+- `scripts/production-reconciliation-validator.test.mjs`
 - `docs/PRODUCTION_SCHEMA_DRIFT_PREFLIGHT_REPORT.md`
 - `docs/LEGACY_MEALS_UPDATE_POLICY_PRODUCTION_PREFLIGHT_REPORT.md`
 - `docs/PRODUCTION_PRE_POLICY_RECONCILIATION_PACKAGE_REPORT.md`
@@ -150,27 +148,30 @@ Legacy policy removable: NO
 Production migration applied: NO
 Production reconciliation package prepared: YES
 Production reconciliation applied: NO
-Data remediation required: YES
-Data remediation applied: NO
+Data remediation required: NO
+Data remediation applied: YES
 Decision: NOT READY
 ```
 
-## 20. Verification consistency düzeltme kapısı
+## 20. Verification consistency ve reconciliation uygulama sonucu
 
 ```text
 Verification sync function: MISSING
 Verification sync trigger: MISSING
 Verification consistency constraint: MISSING
-Verification inconsistent rows: 1
-Drift combination: true + pending
+Verification inconsistent rows before remediation: 1
+Drift combination before remediation: true + pending
 Canonical source-of-truth: verification_status
 Canonical remediation result: false + pending
-DATA_REMEDIATION_REQUIRED: YES
+DATA_REMEDIATION_REQUIRED: NO
+Data remediation: APPLIED AND PRESERVED
 Production reconciliation application: BLOCKED
 ```
 
-Ana reconciliation bu satırı değiştirmez ve veri tutarsızken fail-closed durur. Önce güncellenmiş preflight ile `DATA_REMEDIATION_READY=YES` doğrulanmalı, ayrı onaylı data remediation uygulanmalı ve salt-okunur remediation postflight geçmelidir.
+Data remediation daha önce başarıyla uygulandı. Güncel salt-okunur preflight `VERIFICATION_DATA_CONSISTENCY=MATCH`, `DATA_REMEDIATION_READY=NO` ve `RECONCILIATION_READY=YES` üretti. Ana reconciliation denemesi `handle_new_user()` generic function postcondition hatasında fail-closed durdu; transaction rollback olduğu için meal RPC, RLS, policy veya function değişikliği kalıcılaşmadı. Legacy policy kaldırılmadı.
+
+Validator düzeltmesi hardcoded Grup A/B body hash'lerini semantic invariant kontrolleriyle, exact `function_config` string karşılaştırmasını `proconfig` array sözleşmesiyle değiştirdi. Production reconciliation retry bekliyor.
 
 ## 21. Sonraki aşama
 
-Güncellenmiş `production_pre_policy_removal_reconciliation_preflight.sql` dosyasını Production SQL Editor'da salt-okunur çalıştır. Data remediation veya ana reconciliation SQL'ini bu adımda çalıştırma.
+Güncellenmiş `production_pre_policy_removal_reconciliation_preflight.sql` dosyasını salt-okunur çalıştır ve `RECONCILIATION_READY=YES` sonucunu yeniden doğrula. Reconciliation retry için ayrıca açık uygulama adımı gerekir.

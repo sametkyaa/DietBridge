@@ -54,7 +54,7 @@ function_catalog AS (
     pg_catalog.pg_get_function_result(p.oid) AS actual_result,
     r.rolname AS owner_name,
     pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
-    pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+    p.proconfig
   FROM required_functions AS rf
   LEFT JOIN pg_catalog.pg_proc AS p ON p.oid = to_regprocedure(rf.signature)
   LEFT JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
@@ -125,7 +125,7 @@ rpc_catalog AS (
     pg_catalog.pg_get_function_result(p.oid) AS actual_result,
     r.rolname AS owner_name,
     pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
-    pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+    p.proconfig
   FROM pg_catalog.pg_proc AS p
   JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
   WHERE p.oid = to_regprocedure('public.set_my_meal_completion(uuid,boolean)')
@@ -139,7 +139,7 @@ verification_sync_function_catalog AS (
     pg_catalog.pg_get_function_result(p.oid) AS actual_result,
     r.rolname AS owner_name,
     pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
-    pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+    p.proconfig
   FROM (SELECT 1) AS seed
   LEFT JOIN pg_catalog.pg_proc AS p
     ON p.oid = to_regprocedure('public.sync_dietitian_verification_fields()')
@@ -224,9 +224,20 @@ checks(sequence_no, check_id, object_name, status, is_safe) AS (
         OR actual_result <> expected_result
         OR owner_name <> 'postgres'
         OR NOT (body_md5 = ANY (allowed_body_md5s))
-        OR NOT (function_config = ANY (allowed_preflight_paths)) THEN 'MISMATCH'
+        OR pg_catalog.cardinality(coalesce(proconfig, ARRAY[]::text[])) <> 1
+        OR NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.unnest(coalesce(proconfig, ARRAY[]::text[])) AS config(value)
+          WHERE config.value = ANY (allowed_preflight_paths)
+        )
+        OR (
+          SELECT count(*)
+          FROM pg_catalog.unnest(coalesce(proconfig, ARRAY[]::text[])) AS config(value)
+          WHERE config.value LIKE 'search_path=%'
+        ) <> 1 THEN 'MISMATCH'
       WHEN body_md5 = canonical_body_md5
-       AND function_config = 'search_path=pg_catalog, public' THEN 'MATCH'
+       AND pg_catalog.cardinality(coalesce(proconfig, ARRAY[]::text[])) = 1
+       AND 'search_path=pg_catalog, public' = ANY (coalesce(proconfig, ARRAY[]::text[])) THEN 'MATCH'
       ELSE 'EXPECTED_FUNCTION_DRIFT'
     END,
     oid IS NOT NULL
@@ -234,7 +245,17 @@ checks(sequence_no, check_id, object_name, status, is_safe) AS (
       AND actual_result = expected_result
       AND owner_name = 'postgres'
       AND body_md5 = ANY (allowed_body_md5s)
-      AND function_config = ANY (allowed_preflight_paths)
+      AND pg_catalog.cardinality(coalesce(proconfig, ARRAY[]::text[])) = 1
+      AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.unnest(coalesce(proconfig, ARRAY[]::text[])) AS config(value)
+        WHERE config.value = ANY (allowed_preflight_paths)
+      )
+      AND (
+        SELECT count(*)
+        FROM pg_catalog.unnest(coalesce(proconfig, ARRAY[]::text[])) AS config(value)
+        WHERE config.value LIKE 'search_path=%'
+      ) = 1
   FROM function_catalog
 
   UNION ALL
@@ -294,10 +315,24 @@ checks(sequence_no, check_id, object_name, status, is_safe) AS (
     'public.sync_dietitian_verification_fields()',
     CASE
       WHEN oid IS NULL THEN 'EXPECTED_MISSING'
-      WHEN function_config = 'search_path=pg_catalog, public' THEN 'MATCH'
+      WHEN pg_catalog.cardinality(coalesce(proconfig, ARRAY[]::text[])) = 1
+       AND 'search_path=pg_catalog, public' = ANY (coalesce(proconfig, ARRAY[]::text[]))
+       AND (
+         SELECT count(*)
+         FROM pg_catalog.unnest(coalesce(proconfig, ARRAY[]::text[])) AS config(value)
+         WHERE config.value LIKE 'search_path=%'
+       ) = 1 THEN 'MATCH'
       ELSE 'MISMATCH'
     END,
-    oid IS NULL OR function_config = 'search_path=pg_catalog, public'
+    oid IS NULL OR (
+      pg_catalog.cardinality(coalesce(proconfig, ARRAY[]::text[])) = 1
+      AND 'search_path=pg_catalog, public' = ANY (coalesce(proconfig, ARRAY[]::text[]))
+      AND (
+        SELECT count(*)
+        FROM pg_catalog.unnest(coalesce(proconfig, ARRAY[]::text[])) AS config(value)
+        WHERE config.value LIKE 'search_path=%'
+      ) = 1
+    )
   FROM verification_sync_function_catalog
 
   UNION ALL
@@ -518,7 +553,13 @@ checks(sequence_no, check_id, object_name, status, is_safe) AS (
        AND actual_result = 'boolean'
        AND owner_name = 'postgres'
        AND body_md5 = '29ef449f3d82fbf463bbea6370eecf0f'
-       AND function_config = 'search_path=pg_catalog, public'
+       AND pg_catalog.cardinality(coalesce(proconfig, ARRAY[]::text[])) = 1
+       AND 'search_path=pg_catalog, public' = ANY (coalesce(proconfig, ARRAY[]::text[]))
+       AND (
+         SELECT count(*)
+         FROM pg_catalog.unnest(coalesce(proconfig, ARRAY[]::text[])) AS config(value)
+         WHERE config.value LIKE 'search_path=%'
+       ) = 1
        AND has_function_privilege('authenticated', oid, 'EXECUTE')
        AND has_function_privilege('service_role', oid, 'EXECUTE')
        AND NOT has_function_privilege('anon', oid, 'EXECUTE')
@@ -535,7 +576,13 @@ checks(sequence_no, check_id, object_name, status, is_safe) AS (
       AND actual_result = 'boolean'
       AND owner_name = 'postgres'
       AND body_md5 = '29ef449f3d82fbf463bbea6370eecf0f'
-      AND function_config = 'search_path=pg_catalog, public'
+      AND pg_catalog.cardinality(coalesce(proconfig, ARRAY[]::text[])) = 1
+      AND 'search_path=pg_catalog, public' = ANY (coalesce(proconfig, ARRAY[]::text[]))
+      AND (
+        SELECT count(*)
+        FROM pg_catalog.unnest(coalesce(proconfig, ARRAY[]::text[])) AS config(value)
+        WHERE config.value LIKE 'search_path=%'
+      ) = 1
       AND has_function_privilege('authenticated', oid, 'EXECUTE')
       AND has_function_privilege('service_role', oid, 'EXECUTE')
       AND NOT has_function_privilege('anon', oid, 'EXECUTE')

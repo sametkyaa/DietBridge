@@ -54,7 +54,7 @@ BEGIN
       pg_catalog.pg_get_function_result(p.oid) AS result_type,
       r.rolname AS owner_name,
       pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
-      pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+      p.proconfig
     INTO STRICT v_actual
     FROM pg_catalog.pg_proc AS p
     JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
@@ -64,7 +64,12 @@ BEGIN
        OR v_actual.result_type <> v_function.result_type
        OR v_actual.owner_name <> 'postgres'
        OR NOT (v_actual.body_md5 = ANY (v_function.allowed_body_md5s))
-       OR NOT (v_actual.function_config = ANY (v_function.allowed_paths)) THEN
+       OR pg_catalog.cardinality(coalesce(v_actual.proconfig, ARRAY[]::text[])) <> 1
+       OR NOT EXISTS (
+         SELECT 1
+         FROM pg_catalog.unnest(coalesce(v_actual.proconfig, ARRAY[]::text[])) AS config(value)
+         WHERE config.value = ANY (v_function.allowed_paths)
+       ) THEN
       RAISE EXCEPTION 'Unexpected function drift for %; reconciliation stopped.', v_function.signature;
     END IF;
   END LOOP;
@@ -77,8 +82,8 @@ BEGIN
       p.prosecdef,
       pg_catalog.pg_get_function_result(p.oid) AS result_type,
       r.rolname AS owner_name,
-      pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
-      pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+      pg_catalog.lower(p.prosrc) AS body_text,
+      p.proconfig
     INTO STRICT v_actual
     FROM pg_catalog.pg_proc AS p
     JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
@@ -87,8 +92,19 @@ BEGIN
     IF v_actual.prosecdef
        OR v_actual.result_type <> 'trigger'
        OR v_actual.owner_name <> 'postgres'
-       OR v_actual.body_md5 <> '62139839251ae664d44b4f325a1737c3'
-       OR v_actual.function_config <> 'search_path=pg_catalog, public'
+       OR position('new.verification_status not in (''pending'', ''approved'', ''rejected'')' IN v_actual.body_text) = 0
+       OR position('new.verified_at is distinct from old.verified_at' IN v_actual.body_text) = 0
+       OR position('new.rejection_reason is distinct from old.rejection_reason' IN v_actual.body_text) = 0
+       OR position('new.is_verified := (new.verification_status = ''approved'')' IN v_actual.body_text) = 0
+       OR position('return new' IN v_actual.body_text) = 0
+       OR position('approved_at' IN v_actual.body_text) > 0
+       OR pg_catalog.cardinality(coalesce(v_actual.proconfig, ARRAY[]::text[])) <> 1
+       OR NOT ('search_path=pg_catalog, public' = ANY (coalesce(v_actual.proconfig, ARRAY[]::text[])))
+       OR (
+         SELECT count(*)
+         FROM pg_catalog.unnest(coalesce(v_actual.proconfig, ARRAY[]::text[])) AS config(value)
+         WHERE config.value LIKE 'search_path=%'
+       ) <> 1
        OR has_function_privilege('anon', v_actual.oid, 'EXECUTE')
        OR has_function_privilege('authenticated', v_actual.oid, 'EXECUTE')
        OR EXISTS (
@@ -254,8 +270,8 @@ BEGIN
       p.prosecdef,
       pg_catalog.pg_get_function_result(p.oid) AS result_type,
       r.rolname AS owner_name,
-      pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
-      pg_catalog.array_to_string(p.proconfig, ',') AS function_config
+      pg_catalog.lower(p.prosrc) AS body_text,
+      p.proconfig
     INTO STRICT v_actual
     FROM pg_catalog.pg_proc AS p
     JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
@@ -264,8 +280,21 @@ BEGIN
     IF NOT v_actual.prosecdef
        OR v_actual.result_type <> 'boolean'
        OR v_actual.owner_name <> 'postgres'
-       OR v_actual.body_md5 <> '29ef449f3d82fbf463bbea6370eecf0f'
-       OR v_actual.function_config <> 'search_path=pg_catalog, public'
+       OR position('v_user_id uuid := auth.uid()' IN v_actual.body_text) = 0
+       OR position('update public.meals as m' IN v_actual.body_text) = 0
+       OR position('set is_eaten = p_is_eaten' IN v_actual.body_text) = 0
+       OR pg_catalog.regexp_count(v_actual.body_text, '\mset\M') <> 1
+       OR position('from public.meal_plans as mp' IN v_actual.body_text) = 0
+       OR position('mp.client_id = v_user_id' IN v_actual.body_text) = 0
+       OR position('v_updated_count <> 1' IN v_actual.body_text) = 0
+       OR position('return true' IN v_actual.body_text) = 0
+       OR pg_catalog.cardinality(coalesce(v_actual.proconfig, ARRAY[]::text[])) <> 1
+       OR NOT ('search_path=pg_catalog, public' = ANY (coalesce(v_actual.proconfig, ARRAY[]::text[])))
+       OR (
+         SELECT count(*)
+         FROM pg_catalog.unnest(coalesce(v_actual.proconfig, ARRAY[]::text[])) AS config(value)
+         WHERE config.value LIKE 'search_path=%'
+       ) <> 1
        OR NOT has_function_privilege('authenticated', v_actual.oid, 'EXECUTE')
        OR NOT has_function_privilege('service_role', v_actual.oid, 'EXECUTE')
        OR has_function_privilege('anon', v_actual.oid, 'EXECUTE')
@@ -564,74 +593,114 @@ BEGIN
   FOR v_function IN
     SELECT *
     FROM (VALUES
-      ('public.handle_new_user()', true, 'trigger', '65164cc6aed446272beabf721d44bd93', false),
-      ('public.protect_profile_system_fields()', false, 'trigger', 'd23346619753f0334ad8e518a6cf7628', false),
-      ('public.save_my_current_weight(numeric)', true, 'jsonb', 'f7caf0c59ea4ea12d8b5558799564ada', true),
-      ('public.set_profiles_updated_at()', false, 'trigger', '9b1889f56258bf9d6554213c05019c76', false),
-      ('public.set_my_meal_completion(uuid,boolean)', true, 'boolean', '29ef449f3d82fbf463bbea6370eecf0f', true)
-    ) AS expected(signature, security_definer, result_type, body_md5, authenticated_execute)
+      ('public.handle_new_user()', true, 'trigger', 'handle_new_user', ARRAY[]::text[], false, true),
+      ('public.protect_profile_system_fields()', false, 'trigger', 'allowed_hash', ARRAY['d23346619753f0334ad8e518a6cf7628']::text[], false, true),
+      ('public.save_my_current_weight(numeric)', true, 'jsonb', 'allowed_hash', ARRAY['f7caf0c59ea4ea12d8b5558799564ada']::text[], true, true),
+      ('public.set_profiles_updated_at()', false, 'trigger', 'allowed_hash', ARRAY['9b1889f56258bf9d6554213c05019c76']::text[], false, true),
+      ('public.set_my_meal_completion(uuid,boolean)', true, 'boolean', 'meal_completion', ARRAY[]::text[], true, true),
+      ('public.sync_dietitian_verification_fields()', false, 'trigger', 'verification_sync', ARRAY[]::text[], false, NULL::boolean)
+    ) AS expected(signature, security_definer, result_type, body_contract, allowed_body_md5s, authenticated_execute, service_role_execute)
   LOOP
     SELECT
-      p.oid,
-      p.proacl,
-      p.proowner,
-      p.prosecdef,
-      pg_catalog.pg_get_function_result(p.oid) AS result_type,
-      r.rolname AS owner_name,
-      pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
-      pg_catalog.array_to_string(p.proconfig, ',') AS function_config
-    INTO STRICT v_actual
-    FROM pg_catalog.pg_proc AS p
-    JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
-    WHERE p.oid = to_regprocedure(v_function.signature);
+      p.oid IS NOT NULL AS signature_present,
+      coalesce(p.prosecdef = v_function.security_definer, false) AS security_matches,
+      coalesce(pg_catalog.pg_get_function_result(p.oid) = v_function.result_type, false) AS result_type_matches,
+      coalesce(r.rolname = 'postgres', false) AS owner_matches,
+      coalesce(CASE v_function.body_contract
+        WHEN 'handle_new_user' THEN
+          position('new.raw_user_meta_data ->> ''account_type''' IN body.body_text) > 0
+          AND position('new.raw_user_meta_data ->> ''role''' IN body.body_text) > 0
+          AND position('v_account_type = ''client''' IN body.body_text) > 0
+          AND position('v_account_type = ''dietitian''' IN body.body_text) > 0
+          AND position('errcode = ''22023''' IN body.body_text) > 0
+          AND position('insert into public.profiles' IN body.body_text) > 0
+          AND position('insert into public.client_profiles' IN body.body_text) > 0
+          AND position('insert into public.dietitian_profiles' IN body.body_text) > 0
+          AND position('values (new.id, false, ''pending'', null, null)' IN body.body_text) > 0
+          AND position('on conflict (id) do nothing' IN body.body_text) > 0
+          AND position('on conflict (user_id) do nothing' IN body.body_text) > 0
+          AND position('return new' IN body.body_text) > 0
+        WHEN 'meal_completion' THEN
+          position('v_user_id uuid := auth.uid()' IN body.body_text) > 0
+          AND position('update public.meals as m' IN body.body_text) > 0
+          AND position('set is_eaten = p_is_eaten' IN body.body_text) > 0
+          AND pg_catalog.regexp_count(body.body_text, '\mset\M') = 1
+          AND position('from public.meal_plans as mp' IN body.body_text) > 0
+          AND position('mp.id = m.plan_id' IN body.body_text) > 0
+          AND position('mp.client_id = v_user_id' IN body.body_text) > 0
+          AND position('v_updated_count <> 1' IN body.body_text) > 0
+          AND position('return true' IN body.body_text) > 0
+        WHEN 'verification_sync' THEN
+          position('new.verification_status not in (''pending'', ''approved'', ''rejected'')' IN body.body_text) > 0
+          AND position('new.verified_at is distinct from old.verified_at' IN body.body_text) > 0
+          AND position('new.rejection_reason is distinct from old.rejection_reason' IN body.body_text) > 0
+          AND position('new.is_verified := (new.verification_status = ''approved'')' IN body.body_text) > 0
+          AND position('return new' IN body.body_text) > 0
+          AND position('approved_at' IN body.body_text) = 0
+        WHEN 'allowed_hash' THEN
+          pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) = ANY (v_function.allowed_body_md5s)
+        ELSE false
+      END, false) AS body_contract_matches,
+      coalesce(
+        pg_catalog.cardinality(coalesce(p.proconfig, ARRAY[]::text[])) = 1
+        AND 'search_path=pg_catalog, public' = ANY (coalesce(p.proconfig, ARRAY[]::text[]))
+        AND (
+          SELECT count(*)
+          FROM pg_catalog.unnest(coalesce(p.proconfig, ARRAY[]::text[])) AS config(value)
+          WHERE config.value LIKE 'search_path=%'
+        ) = 1,
+        false
+      ) AS search_path_matches,
+      coalesce(has_function_privilege('authenticated', p.oid, 'EXECUTE') = v_function.authenticated_execute, false) AS authenticated_execute_matches,
+      coalesce(
+        v_function.service_role_execute IS NULL
+        OR has_function_privilege('service_role', p.oid, 'EXECUTE') = v_function.service_role_execute,
+        false
+      ) AS service_role_execute_matches,
+      coalesce(NOT has_function_privilege('anon', p.oid, 'EXECUTE'), false) AS anon_execute_matches,
+      coalesce(
+        p.oid IS NOT NULL AND NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.aclexplode(coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner))) AS acl
+          WHERE acl.grantee = 0
+            AND acl.privilege_type = 'EXECUTE'
+        ),
+        false
+      ) AS public_execute_matches
+    INTO v_actual
+    FROM (SELECT 1) AS seed
+    LEFT JOIN pg_catalog.pg_proc AS p ON p.oid = to_regprocedure(v_function.signature)
+    LEFT JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
+    CROSS JOIN LATERAL (
+      SELECT pg_catalog.lower(coalesce(p.prosrc, '')) AS body_text
+    ) AS body;
 
-    IF v_actual.prosecdef <> v_function.security_definer
-       OR v_actual.result_type <> v_function.result_type
-       OR v_actual.owner_name <> 'postgres'
-       OR v_actual.body_md5 <> v_function.body_md5
-       OR v_actual.function_config <> 'search_path=pg_catalog, public'
-       OR has_function_privilege('authenticated', v_actual.oid, 'EXECUTE') <> v_function.authenticated_execute
-       OR NOT has_function_privilege('service_role', v_actual.oid, 'EXECUTE')
-       OR has_function_privilege('anon', v_actual.oid, 'EXECUTE')
-       OR EXISTS (
-         SELECT 1
-         FROM pg_catalog.aclexplode(coalesce(v_actual.proacl, pg_catalog.acldefault('f', v_actual.proowner))) AS acl
-         WHERE acl.grantee = 0
-           AND acl.privilege_type = 'EXECUTE'
-       ) THEN
-      RAISE EXCEPTION 'Function postcondition failed for %; transaction rolled back.', v_function.signature;
+    IF NOT v_actual.signature_present
+       OR NOT v_actual.security_matches
+       OR NOT v_actual.result_type_matches
+       OR NOT v_actual.owner_matches
+       OR NOT v_actual.body_contract_matches
+       OR NOT v_actual.search_path_matches
+       OR NOT v_actual.authenticated_execute_matches
+       OR NOT v_actual.service_role_execute_matches
+       OR NOT v_actual.anon_execute_matches
+       OR NOT v_actual.public_execute_matches THEN
+      RAISE EXCEPTION USING MESSAGE = pg_catalog.format(
+        'Function postcondition failed for %s: signature_present=%s, security_matches=%s, result_type_matches=%s, owner_matches=%s, body_contract_matches=%s, search_path_matches=%s, authenticated_execute_matches=%s, service_role_execute_matches=%s, anon_execute_matches=%s, public_execute_matches=%s. Transaction rolled back.',
+        v_function.signature,
+        v_actual.signature_present,
+        v_actual.security_matches,
+        v_actual.result_type_matches,
+        v_actual.owner_matches,
+        v_actual.body_contract_matches,
+        v_actual.search_path_matches,
+        v_actual.authenticated_execute_matches,
+        v_actual.service_role_execute_matches,
+        v_actual.anon_execute_matches,
+        v_actual.public_execute_matches
+      );
     END IF;
   END LOOP;
-
-  SELECT
-    p.oid,
-    p.proacl,
-    p.proowner,
-    p.prosecdef,
-    pg_catalog.pg_get_function_result(p.oid) AS result_type,
-    r.rolname AS owner_name,
-    pg_catalog.md5(pg_catalog.replace(p.prosrc, pg_catalog.chr(13) || pg_catalog.chr(10), pg_catalog.chr(10))) AS body_md5,
-    pg_catalog.array_to_string(p.proconfig, ',') AS function_config
-  INTO STRICT v_actual
-  FROM pg_catalog.pg_proc AS p
-  JOIN pg_catalog.pg_roles AS r ON r.oid = p.proowner
-  WHERE p.oid = to_regprocedure('public.sync_dietitian_verification_fields()');
-
-  IF v_actual.prosecdef
-     OR v_actual.result_type <> 'trigger'
-     OR v_actual.owner_name <> 'postgres'
-     OR v_actual.body_md5 <> '62139839251ae664d44b4f325a1737c3'
-     OR v_actual.function_config <> 'search_path=pg_catalog, public'
-     OR has_function_privilege('anon', v_actual.oid, 'EXECUTE')
-     OR has_function_privilege('authenticated', v_actual.oid, 'EXECUTE')
-     OR EXISTS (
-       SELECT 1
-       FROM pg_catalog.aclexplode(coalesce(v_actual.proacl, pg_catalog.acldefault('f', v_actual.proowner))) AS acl
-       WHERE acl.grantee = 0
-         AND acl.privilege_type = 'EXECUTE'
-     ) THEN
-    RAISE EXCEPTION 'Verification sync function postcondition failed; transaction rolled back.';
-  END IF;
 
   IF NOT EXISTS (
     SELECT 1

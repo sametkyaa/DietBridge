@@ -74,11 +74,9 @@ Ref/project adı uyuşmazlığı, staging ref eşitliği, GROUNDLESS seçimi, hi
 
 - `docs/LEGACY_MEALS_UPDATE_POLICY_PRODUCTION_PREFLIGHT_REPORT.md`
 - `supabase/reconciliation/production_pre_policy_removal_reconciliation.sql`
-- `supabase/reconciliation/production_verification_consistency_data_remediation.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_preflight.sql`
 - `supabase/verification/production_pre_policy_removal_reconciliation_postflight.sql`
-- `supabase/verification/production_verification_consistency_data_remediation_postflight.sql`
-- `docs/PRODUCTION_MIGRATION_HISTORY_RECONCILIATION_PLAN.md`
+- `scripts/production-reconciliation-validator.test.mjs`
 - `docs/PRODUCTION_SCHEMA_DRIFT_PREFLIGHT_REPORT.md`
 - `docs/PRODUCTION_PRE_POLICY_RECONCILIATION_PACKAGE_REPORT.md`
 - `docs/ROADMAP.md`
@@ -128,4 +126,12 @@ Blocker'lar: migration history yok; verification sync function, trigger ve consi
 
 ## 20. Sonraki aşama
 
-3E-2C-2D salt-okunur preflight `VERIFICATION_DATA_CONSISTENCY=BLOCKED_1_ROWS` sonucu verdi. Güncellenmiş preflight ile önce `DATA_REMEDIATION_READY=YES` doğrulanmalıdır. Ayrı data remediation onay/application ve postflight tamamlanmadan reconciliation application `BLOCKED` kalır; legacy policy kaldırılmaz.
+Verification data remediation daha önce başarıyla uygulanmış ve korunmuştur. Sonraki salt-okunur preflight `VERIFICATION_DATA_CONSISTENCY=MATCH`, `DATA_REMEDIATION_READY=NO` ve `RECONCILIATION_READY=YES` üretti. Ana reconciliation denemesi `handle_new_user()` function postcondition validator'ında fail-closed durdu ve transaction rollback oldu. Legacy policy kaldırılmadı; meal RPC, RLS, policy veya function değişikliği kalıcılaşmadı.
+
+```text
+3E-2C-2E reconciliation application: BLOCKED BY POSTCONDITION VALIDATOR
+3E-2C-2E-1 validator correction: PREPARED
+Production reconciliation retry: PENDING
+```
+
+Sonraki adım güncellenmiş production preflight'i salt-okunur çalıştırıp `RECONCILIATION_READY=YES` sonucunu yeniden doğrulamaktır.
