@@ -1,5 +1,6 @@
 
 import { supabase } from '../../../lib/supabaseClient';
+import { env } from '../../../lib/env';
 import { Appointment } from '../../../shared/types';
 import { APPOINTMENTS } from '../../../shared/constants';
 
@@ -21,14 +22,14 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
 
     if (error) {
       console.warn('Supabase fetch error:', error.message);
-      if (process.env.VITE_ENABLE_MOCK_DATA === 'true') {
+      if (env.enableMockData) {
         return getMockAppointments();
       }
       return [];
     }
 
     if (!data || data.length === 0) {
-      if (process.env.VITE_ENABLE_MOCK_DATA === 'true') {
+      if (env.enableMockData) {
         return getMockAppointments();
       }
       return [];
@@ -48,7 +49,7 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
     }));
   } catch (err: any) {
     console.warn('Network error in fetchAppointments:', err.message || err);
-    if (process.env.VITE_ENABLE_MOCK_DATA === 'true') {
+    if (env.enableMockData) {
       return getMockAppointments();
     }
     return [];

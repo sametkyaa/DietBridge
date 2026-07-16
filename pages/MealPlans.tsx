@@ -28,8 +28,16 @@ import {
 import { RECIPES, USER_AVATAR } from '../constants';
 import { Client, Recipe } from '../shared/types';
 import { fetchDietitianClients } from '../features/clients/services/clientService';
-import { createDailyMealPlan, mapMealTypeToDb, fetchWeeklyMealPlan } from '../features/meal-plans/services/mealPlanService';
+import {
+  createDailyMealPlan,
+  mapMealTypeToDb,
+  fetchWeeklyMealPlan,
+  getMealPlanErrorLogContext,
+  getMealPlanUserMessage,
+  type MealInput,
+} from '../features/meal-plans/services/mealPlanService';
 import { supabase } from '../lib/supabaseClient';
+import { isValidUuid } from '../shared/utils/uuid';
 
 // --- Extended Mock Data for Client Specifics ---
 const CLIENT_DETAILS: Record<string, { notes: string; likes: string[]; dislikes: string[]; allergies: string[] }> = {
@@ -66,8 +74,18 @@ interface MealRow {
 
 const LAST_MEAL_PLAN_CLIENT_KEY = 'dietbridge:lastMealPlanClientId';
 
+interface PlannedMealContent {
+  id: string;
+  name: string;
+  image: string | null;
+  calories: number;
+  macros: Recipe['macros'];
+  source?: 'manual' | 'recipe';
+  recipeId?: string | null;
+}
+
 // Plan State: { Day: { MealID: Content } }
-type PlanState = Record<string, Record<string, Recipe | string | null>>;
+type PlanState = Record<string, Record<string, PlannedMealContent | string | null>>;
 
 const MealPlans = () => {
   const navigate = useNavigate();
@@ -127,12 +145,17 @@ const MealPlans = () => {
 
   // Automatically select client if passed from navigation state or local storage
   useEffect(() => {
+    const storedClientId = localStorage.getItem(LAST_MEAL_PLAN_CLIENT_KEY);
+    if (storedClientId && !isValidUuid(storedClientId)) {
+      localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
+    }
+
     if (clients.length === 0) return;
 
     const navState = location.state as { clientId?: string } | null;
     
     // Priority 1: Navigation state
-    if (navState?.clientId) {
+    if (navState?.clientId && isValidUuid(navState.clientId)) {
       const client = clients.find(c => c.id === navState.clientId);
       if (client) {
         setSelectedClient(prev => {
@@ -157,6 +180,11 @@ const MealPlans = () => {
                 }
             }
         } else {
+            if (!isValidUuid(currentSelected.id)) {
+                localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
+                return null;
+            }
+
             const stillExists = clients.some(c => c.id === currentSelected.id);
             if (!stillExists) {
                 localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
@@ -275,27 +303,18 @@ const MealPlans = () => {
                 if (!newWeeklyPlan[dayName]) newWeeklyPlan[dayName] = {};
 
                 p.meals.forEach((m: any) => {
-                    let rowId = findRowId(m);
+                    const rowId = findRowId(m);
 
                     if (rowId) {
                          if (m.calories || m.macros || m.photo_url) {
-                             const category = m.type === 'breakfast' ? 'Kahvaltı' :
-                                              m.type === 'lunch' ? 'Öğle Yemeği' :
-                                              m.type === 'dinner' ? 'Akşam Yemeği' : 'Ara Öğün';
-
-                             const recipeObj: Recipe = {
+                             const recipeObj: PlannedMealContent = {
                                  id: m.id,
                                  name: m.title,
                                  calories: m.calories,
                                  macros: m.macros || { protein: 0, carbs: 0, fat: 0 },
                                  image: m.photo_url,
-                                 category: category,
-                                 prepTime: '15 dk',
-                                 ingredients: [],
-                                 instructions: [],
-                                 createdAt: new Date().toISOString(),
-                                 servings: 1,
-                                 cuisine: 'Genel'
+                                 source: m.source === 'manual' ? 'manual' : 'recipe',
+                                 recipeId: m.recipe_id ?? null,
                              };
                              newWeeklyPlan[dayName][rowId] = recipeObj;
                          } else {
@@ -410,7 +429,7 @@ const MealPlans = () => {
        setIsUploadingPhoto(false);
     }
 
-    const manualMeal: any = {
+    const manualMeal: PlannedMealContent = {
        id: `manual-${Date.now()}`,
        name: customMealText,
        calories: parseInt(customMealCalories) || 0,
@@ -420,7 +439,8 @@ const MealPlans = () => {
           fat: parseInt(customMealFat) || 0
        },
        image: photo_url,
-       source: 'manual'
+       source: 'manual',
+       recipeId: null,
     };
 
     setWeeklyPlan(prev => ({
@@ -555,10 +575,22 @@ const MealPlans = () => {
       return;
     }
 
+    if (!isValidUuid(selectedClient.id)) {
+      console.warn('[MealPlans] Geçersiz UUID alanı: meal_plans.client_id');
+      localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
+      setSelectedClient(null);
+      alert('Seçili danışan bilgisi geçersiz. Danışanı yeniden seçip tekrar deneyin.');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Kullanıcı oturumu bulunamadı.');
+      if (!user || !isValidUuid(user.id)) {
+        console.warn('[MealPlans] Geçersiz UUID alanı: meal_plans.dietitian_id');
+        alert('Oturum bilgisi doğrulanamadı. Lütfen yeniden giriş yapın.');
+        return;
+      }
 
       const [year, month, day] = weekStartDate.split('-').map(Number);
       const start = new Date(Date.UTC(year, month - 1, day));
@@ -571,19 +603,20 @@ const MealPlans = () => {
         const dayName = DAYS[i]; // 'Pazartesi', 'Salı', etc.
 
         // Collect meals for this day
-        const dayMeals = [];
+        const dayMeals: Omit<MealInput, 'plan_id'>[] = [];
         const dayPlan = weeklyPlan[dayName];
         
         if (dayPlan) {
-          for (const [mealId, content] of Object.entries(dayPlan)) {
+          for (const mealId of Object.keys(dayPlan)) {
+            const content = dayPlan[mealId];
             const mealRow = meals.find(m => m.id === mealId);
             if (!mealRow || !content) continue;
 
             const mealType = mapMealTypeToDb(mealRow.name);
             
-            let mealData: any = {
+            const mealData: Omit<MealInput, 'plan_id'> = {
               type: mealType,
-              title: typeof content === 'string' ? content : (content as any).name,
+              title: typeof content === 'string' ? content : content.name,
               is_eaten: false,
               sort_order: meals.findIndex(m => m.id === mealRow.id),
               time: mealRow.time,
@@ -591,12 +624,15 @@ const MealPlans = () => {
             };
 
             if (typeof content !== 'string') {
-              // It's a recipe or manual
-              mealData.calories = (content as any).calories;
-              mealData.macros = { ...mealData.macros, ...(content as any).macros };
-              mealData.photo_url = (content as any).image;
-              mealData.source = (content as any).source || 'recipe';
-              mealData.recipe_id = mealData.source === 'recipe' ? (content as any).id : null;
+              const hasPersistedRecipeId = Object.prototype.hasOwnProperty.call(content, 'recipeId');
+              const recipeId = hasPersistedRecipeId ? content.recipeId : content.id;
+
+              mealData.calories = content.calories;
+              mealData.macros = { ...mealData.macros, ...content.macros };
+              mealData.photo_url = content.image;
+              mealData.source = content.source || 'recipe';
+              mealData.recipe_id =
+                mealData.source === 'recipe' && isValidUuid(recipeId) ? recipeId : null;
             } else {
               mealData.source = 'manual';
             }
@@ -615,9 +651,9 @@ const MealPlans = () => {
       }
 
       alert('Haftalık plan başarıyla kaydedildi!');
-    } catch (error: any) {
-      console.error('Plan kaydedilirken hata:', error);
-      alert('Plan kaydedilirken bir hata oluştu: ' + (error.message || error));
+    } catch (error: unknown) {
+      console.error('Plan kaydedilirken hata:', getMealPlanErrorLogContext(error));
+      alert(getMealPlanUserMessage(error));
     } finally {
       setIsSaving(false);
     }

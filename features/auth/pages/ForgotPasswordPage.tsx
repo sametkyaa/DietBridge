@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../lib/supabaseClient';
 import { APP_LOGO } from '../../../shared/constants';
 import { ArrowLeft, Mail, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -14,8 +14,8 @@ const ForgotPasswordPage = () => {
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email.trim()) {
-      setError('Lütfen e-posta adresinizi girin.');
+    if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setError('Lütfen geçerli bir e-posta adresi girin.');
       return;
     }
 
@@ -23,17 +23,22 @@ const ForgotPasswordPage = () => {
     setError(null);
     setSuccess(false);
 
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
 
-    if (resetError) {
-      // Show generic error or map it to Turkish
+      if (resetError) {
+        setError('Şifre sıfırlama işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.');
+      } else {
+        setSuccess(true);
+      }
+    } catch (resetException) {
+      console.error('Password reset request failed:', resetException);
       setError('Şifre sıfırlama işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.');
-    } else {
-      setSuccess(true);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -69,7 +74,7 @@ const ForgotPasswordPage = () => {
           <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 p-6 rounded-xl text-center space-y-4">
             <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500" />
             <p className="font-medium text-sm leading-relaxed">
-              Şifre sıfırlama bağlantısı <strong>{email}</strong> adresine gönderildi. 
+              Şifre sıfırlama isteğiniz alındı. Hesabınız varsa e-posta kutunuza bir bağlantı gönderilecektir.
               Lütfen e-posta kutunuzu (ve spam klasörünü) kontrol edin.
             </p>
           </div>

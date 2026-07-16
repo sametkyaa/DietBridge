@@ -25,5 +25,31 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "index.tsx",
+    "App.tsx",
+    "constants.ts",
+    "types.ts",
+    "features/**/*.ts",
+    "features/**/*.tsx",
+    "pages/**/*.ts",
+    "pages/**/*.tsx",
+    "shared/**/*.ts",
+    "shared/**/*.tsx",
+    "lib/**/*.ts",
+    "vite.config.ts",
+    "vite-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src",
+    "components",
+    "context",
+    "services",
+    "migrated_prompt_history",
+    "*.js",
+    "*.cjs"
+  ]
 }

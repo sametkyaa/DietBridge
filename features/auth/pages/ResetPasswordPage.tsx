@@ -14,6 +14,7 @@ const ResetPasswordPage = () => {
   const [isValidSession, setIsValidSession] = useState<boolean | null>(null);
 
   useEffect(() => {
+    let active = true;
     // 1. Check URL parameters for errors (Supabase recovery errors often come in hash or search)
     const hashStr = window.location.hash;
     const searchStr = window.location.search;
@@ -35,32 +36,25 @@ const ResetPasswordPage = () => {
       return;
     }
 
-    // 2. Check for an active session or a PASSWORD_RECOVERY event
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setIsValidSession(true);
-      } else if (isValidSession === null) {
-        // If we don't have a session immediately and no error, we might still be processing the recovery hash.
-        // Wait for onAuthStateChange to confirm.
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+    // A normal authenticated session is not sufficient for password recovery.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (!active) return;
+      if (event === 'PASSWORD_RECOVERY') {
         setIsValidSession(true);
         setError(null);
       } else if (event === 'SIGNED_OUT') {
-        // Only set to false if we haven't already marked it valid during this render cycle
-        if (!isValidSession) {
-           setIsValidSession(false);
-        }
+        setIsValidSession(false);
       }
+    });
+
+    void supabase.auth.getSession().catch((sessionError: unknown) => {
+      console.error('Password recovery session check failed:', sessionError);
     });
 
     // Fallback: If after 2 seconds we still don't have a valid session and no error, mark as invalid
     const timeout = setTimeout(() => {
       setIsValidSession(current => {
-        if (current === null && !errorCode) {
+        if (active && current === null && !errorCode) {
           setError('Geçerli bir şifre sıfırlama oturumu bulunamadı. Lütfen tekrar şifre sıfırlama bağlantısı isteyin.');
           return false;
         }
@@ -69,6 +63,7 @@ const ResetPasswordPage = () => {
     }, 2000);
 
     return () => {
+      active = false;
       subscription.unsubscribe();
       clearTimeout(timeout);
     };
@@ -91,22 +86,28 @@ const ResetPasswordPage = () => {
     setError(null);
     setSuccess(false);
 
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
 
-    if (updateError) {
-      setError('Şifre güncellenirken bir hata oluştu: ' + updateError.message);
-      setLoading(false);
-    } else {
+      if (updateError) {
+        setError('Şifre güncellenirken bir hata oluştu. Lütfen tekrar deneyin.');
+        return;
+      }
+
       setSuccess(true);
-      // Optional: Sign out so they have to log in with new password explicitly
-      await supabase.auth.signOut();
-      
-      // Redirect after showing success
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) console.error('Password recovery sign-out failed:', signOutError);
+
       setTimeout(() => {
         navigate('/login');
       }, 3000);
+    } catch (updateException) {
+      console.error('Password update failed:', updateException);
+      setError('Şifre güncellenirken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setLoading(false);
     }
   };
 

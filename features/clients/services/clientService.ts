@@ -2,6 +2,7 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { Client } from '../../../shared/types';
 import { USER_AVATAR } from '../../../shared/constants';
+import { isValidUuid } from '../../../shared/utils/uuid';
 
 export function resolveProfilePhotoUrl(
   storedValue: string | null | undefined
@@ -42,6 +43,33 @@ const ALCOHOL_LABELS: Record<string, string> = {
   does_not_use: 'Kullanmıyor',
   occasionally: 'Ara Sıra',
 };
+
+interface ClientBaseProfileRow {
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+}
+
+interface ClientDetailsProfileRow {
+  goal: string | null;
+  diet_start_date: string | null;
+  current_weight: number | null;
+  compliance_score: number | null;
+  start_weight: number | null;
+  target_weight: number | null;
+  height_cm: number | null;
+  last_lab_date: string | null;
+  activity_level: string | null;
+  sleep_hours: number | string | null;
+  smoking_status: string | null;
+  alcohol_use: string | null;
+  daily_water_goal_ml: number | null;
+  food_intolerances: unknown;
+  chronic_conditions: unknown;
+  medications: unknown;
+  blood_type: string | null;
+}
 
 
 /**
@@ -103,7 +131,7 @@ export const fetchDietitianClients = async (): Promise<Client[]> => {
     }
 
     // Map Supabase DB shape to App UI shape
-    return data.map((item: any) => {
+    const clients = data.map((item: any) => {
       const client = item.client;
       // client_profiles is likely an array due to the join, even if 1:1 logically
       const profile = Array.isArray(client.client_profiles) 
@@ -120,13 +148,16 @@ export const fetchDietitianClients = async (): Promise<Client[]> => {
         ? client.client_medications.map((m: any) => m.medications_catalog?.name).filter(Boolean)
         : [];
 
+      const status: Client['status'] =
+        item.status === 'active' ? 'Aktif' : item.status === 'pending' ? 'Onay Bekliyor' : 'Pasif';
+
       return {
         id: client.id,
         name: client.full_name || 'İsimsiz Danışan',
         email: client.email || '',
         avatar: resolveProfilePhotoUrl(client.avatar_url) || USER_AVATAR,
         profilePhotoUrl: resolveProfilePhotoUrl(client.avatar_url),
-        status: item.status === 'active' ? 'Aktif' : item.status === 'pending' ? 'Onay Bekliyor' : 'Pasif',
+        status,
         goal: profile.goal || 'Sağlıklı Yaşam',
         startDate: profile.diet_start_date ? new Date(profile.diet_start_date).toLocaleDateString('tr-TR') : '-',
         duration: '1 Ay', // Calculated or static
@@ -145,6 +176,13 @@ export const fetchDietitianClients = async (): Promise<Client[]> => {
         smokingStatus: SMOKING_LABELS[profile.smoking_status] || profile.smoking_status,
         alcoholUse: ALCOHOL_LABELS[profile.alcohol_use] || profile.alcohol_use,
       };
+    });
+
+    return clients.filter((client) => {
+      if (isValidUuid(client.id)) return true;
+
+      console.warn('[clientService] Geçersiz UUID alanı: profiles.id');
+      return false;
     });
   } catch (err: any) {
     console.error('Network error or exception in fetchDietitianClients:', err.message || err);
@@ -241,8 +279,8 @@ export const fetchClientDetails = async (clientId: string): Promise<Client | nul
        console.warn("Client profile not found or error:", clientProfileError);
     }
 
-    const clientData = userProfile || {};
-    const profile = clientProfile || {};
+    const clientData = (userProfile ?? {}) as Partial<ClientBaseProfileRow>;
+    const profile = (clientProfile ?? {}) as Partial<ClientDetailsProfileRow>;
 
     const bloodType = profile.blood_type || undefined;
     const chronicConditions = normalizeMultiValue(profile.chronic_conditions);
