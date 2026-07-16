@@ -160,3 +160,25 @@ Policy removal allowed: NO
 Production’a özel iki-client fixture lifecycle, own/foreign/persistence/anonymous kontrolleri, explicit-ID cleanup ve mobil fail-closed kapısı [PRODUCTION_MEAL_RPC_SMOKE_TEST_PLAN.md](PRODUCTION_MEAL_RPC_SMOKE_TEST_PLAN.md) içinde hazırlandı. Production veya staging’e bağlanılmadı; fixture/RPC çalıştırılmadı.
 
 Sonraki adım ayrı manuel onayla production smoke-test planını çalıştırmak, fixture cleanup’ını doğrulamak ve ardından fiziksel mobil production testini yürütmektir. Bu iki doğrulama tamamlanmadan legacy policy kaldırılamaz.
+
+## 20. Production CLI smoke ve fiziksel mobil ilk deneme sonucu
+
+Production CLI RPC smoke testleri own, foreign, persistence ve anonymous kapsamlarında geçti. Client A’nın kendi meal completion değeri kalıcılaştı; Client B meal çağrısı `42501` ile reddedildi ve satır değişmedi. Bu nedenle RPC defekti gözlenmedi.
+
+İlk fiziksel mobil production denemesi, eski fixture’da disposable diyetisyen ve aktif `dietitian_clients` ilişkisi bulunmadığı için mobil uygulamanın beklenen aktif bağlantı kapısında durdu. Mobil uygulama defekti kanıtlanmadı. Eski fixture cleanup’ı geçti, kalan fixture kaydı `0` ve manifest kaldırıldı.
+
+```text
+Production CLI RPC smoke tests: PASSED
+First physical mobile attempt: BLOCKED BY INCOMPLETE FIXTURE
+RPC defect observed: NO
+Mobile app defect proven: NO
+Blocker: missing active dietitian_clients fixture relation
+Old fixture cleanup: PASSED
+Remaining old fixture records: 0
+Legacy policy: PRESENT
+Production mobile-ready fixture correction: PREPARED
+Physical mobile retry: PENDING
+Policy removal: BLOCKED
+```
+
+Mobil uyumlu fixture düzeltmesi bir onaylı disposable diyetisyen, iki aktif client ilişkisi ve aynı diyetisyene bağlı planlar için statik olarak hazırlandı. Fiziksel retry ve üç manuel mobil kapı tamamlanmadan `POLICY_REMOVAL_ALLOWED=YES` üretilemez; bu görevde legacy policy kaldırılmadı.

@@ -16,12 +16,17 @@ export const FIXTURE_TYPE = 'production_meal_rpc_smoke';
 export const PRODUCTION_ACK = 'I_UNDERSTAND_THIS_WRITES_DISPOSABLE_TEST_DATA';
 export const EXIT = { OK: 0, INVALID: 2, ENVIRONMENT: 3, NETWORK: 4, SECURITY: 11, CLEANUP: 20, MANIFEST: 30, ORDER: 31 };
 
-const COMMANDS = new Set(['preflight', 'setup', 'status', 'own-check', 'foreign-check', 'persistence-check', 'anonymous-check', 'cleanup']);
+const COMMANDS = new Set(['preflight', 'setup', 'status', 'own-check', 'foreign-check', 'persistence-check', 'anonymous-check', 'mobile-confirm', 'cleanup']);
 const CHECK_ORDER = ['own', 'foreign', 'persistence', 'anonymous'];
+const MOBILE_ACKNOWLEDGMENTS = {
+  mobile_own_toggle_passed: ['DIETBRIDGE_MOBILE_OWN_TOGGLE_ACK', 'PASS'],
+  mobile_persistence_passed: ['DIETBRIDGE_MOBILE_PERSISTENCE_ACK', 'PASS'],
+  mobile_foreign_access_not_exposed: ['DIETBRIDGE_MOBILE_FOREIGN_NOT_EXPOSED_ACK', 'PASS'],
+};
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function usage() {
-  console.log('Usage: node .\\scripts\\production-meal-rpc-smoke-fixture.mjs <preflight|setup|status|own-check|foreign-check|persistence-check|anonymous-check|cleanup>');
+  console.log('Usage: node .\\scripts\\production-meal-rpc-smoke-fixture.mjs <preflight|setup|status|own-check|foreign-check|persistence-check|anonymous-check|mobile-confirm|cleanup>');
 }
 
 function fail(code, message) {
@@ -140,7 +145,7 @@ function newPassword() {
 function newManifest() {
   const runId = `prod-rpc-${new Date().toISOString().replace(/[-:.TZ]/g, '')}-${randomBytes(6).toString('hex')}`;
   return {
-    version: 1,
+    version: 2,
     fixtureType: FIXTURE_TYPE,
     runId,
     createdAt: new Date().toISOString(),
@@ -149,32 +154,50 @@ function newManifest() {
       a: { userId: null, email: `dietbridge-production-rpc-a-${randomUUID()}@example.invalid`, password: newPassword() },
       b: { userId: null, email: `dietbridge-production-rpc-b-${randomUUID()}@example.invalid`, password: newPassword() },
     },
-    ids: { users: [], profiles: [], clientProfiles: [], plans: [], meals: [], mealA: null, mealB: null },
-    expected: { planOwners: {}, mealPlans: {}, mealTitles: {}, mealAState: false },
+    dietitian: {
+      d: { userId: null, email: `dietbridge-production-rpc-d-${randomUUID()}@example.invalid`, password: newPassword() },
+    },
+    ids: {
+      users: [], profiles: [], clientProfiles: [], dietitianProfiles: [], dietitianClientConnections: [],
+      plans: [], meals: [], mealA: null, mealB: null,
+    },
+    expected: {
+      connectionClients: {}, connectionDietitians: {}, planOwners: {}, planDietitians: {},
+      mealPlans: {}, mealTitles: {}, mealAState: false,
+    },
     checks: { own: false, foreign: false, persistence: false, anonymous: false },
     mobile: { mobile_own_toggle_passed: false, mobile_persistence_passed: false, mobile_foreign_access_not_exposed: false },
   };
 }
 
 function validateManifest(manifest) {
-  const valid = manifest?.version === 1
+  const valid = manifest?.version === 2
     && manifest?.fixtureType === FIXTURE_TYPE
     && typeof manifest?.runId === 'string'
     && manifest?.clients?.a && manifest?.clients?.b
+    && manifest?.dietitian?.d
     && Array.isArray(manifest?.ids?.users)
     && Array.isArray(manifest?.ids?.profiles)
     && Array.isArray(manifest?.ids?.clientProfiles)
+    && Array.isArray(manifest?.ids?.dietitianProfiles)
+    && Array.isArray(manifest?.ids?.dietitianClientConnections)
     && Array.isArray(manifest?.ids?.plans)
     && Array.isArray(manifest?.ids?.meals)
-    && manifest?.expected?.planOwners && manifest?.expected?.mealPlans && manifest?.expected?.mealTitles
+    && manifest?.expected?.connectionClients && manifest?.expected?.connectionDietitians
+    && manifest?.expected?.planOwners && manifest?.expected?.planDietitians
+    && manifest?.expected?.mealPlans && manifest?.expected?.mealTitles
     && CHECK_ORDER.every((check) => typeof manifest?.checks?.[check] === 'boolean')
     && Object.values(manifest.mobile ?? {}).length === 3
     && Object.values(manifest.mobile ?? {}).every((value) => typeof value === 'boolean');
   if (!valid) fail(EXIT.MANIFEST, 'Production fixture manifest is missing or invalid.');
-  for (const id of [...manifest.ids.users, ...manifest.ids.profiles, ...manifest.ids.clientProfiles, ...manifest.ids.plans, ...manifest.ids.meals]) {
+  for (const id of [
+    ...manifest.ids.users, ...manifest.ids.profiles, ...manifest.ids.clientProfiles,
+    ...manifest.ids.dietitianProfiles, ...manifest.ids.dietitianClientConnections,
+    ...manifest.ids.plans, ...manifest.ids.meals,
+  ]) {
     if (!UUID_PATTERN.test(id)) fail(EXIT.MANIFEST, 'Production fixture manifest contains an invalid explicit ID.');
   }
-  for (const identity of Object.values(manifest.clients)) {
+  for (const identity of [...Object.values(manifest.clients), ...Object.values(manifest.dietitian)]) {
     if (identity.userId !== null && (!UUID_PATTERN.test(identity.userId) || !manifest.ids.users.includes(identity.userId))) {
       fail(EXIT.MANIFEST, 'Production fixture identity does not match explicit user IDs.');
     }
@@ -228,14 +251,13 @@ async function exactCount(admin, table, column, ids) {
   return count ?? 0;
 }
 
-async function createFixtureUser(admin, manifest, key, label) {
-  const identity = manifest.clients[key];
+async function createFixtureUser(admin, manifest, identity, label, accountType) {
   const { data, error } = await admin.auth.admin.createUser({
     email: identity.email,
     password: identity.password,
     email_confirm: true,
     user_metadata: {
-      account_type: 'client',
+      account_type: accountType,
       full_name: `Disposable ${label}`,
       dietbridge_fixture_type: FIXTURE_TYPE,
       dietbridge_fixture_run_id: manifest.runId,
@@ -246,22 +268,68 @@ async function createFixtureUser(admin, manifest, key, label) {
   identity.userId = data.user.id;
   manifest.ids.users.push(data.user.id);
   manifest.ids.profiles.push(data.user.id);
-  manifest.ids.clientProfiles.push(data.user.id);
+  if (accountType === 'client') manifest.ids.clientProfiles.push(data.user.id);
+  if (accountType === 'dietitian') manifest.ids.dietitianProfiles.push(data.user.id);
   writeManifest(manifest);
 
   const profile = await exactRow(admin, 'profiles', data.user.id, 'id,role');
-  const clientProfile = assertNoError(await admin.from('client_profiles').select('user_id').eq('user_id', data.user.id).maybeSingle(), `${label} client profile read`);
-  if (profile?.role !== 'client' || clientProfile?.user_id !== data.user.id) fail(EXIT.SECURITY, `${label} onboarding trigger contract failed.`);
+  const subtypeTable = accountType === 'client' ? 'client_profiles' : 'dietitian_profiles';
+  const subtypeProfile = assertNoError(
+    await admin.from(subtypeTable).select('user_id').eq('user_id', data.user.id).maybeSingle(),
+    `${label} subtype profile read`,
+  );
+  if (profile?.role !== accountType || subtypeProfile?.user_id !== data.user.id) fail(EXIT.SECURITY, `${label} onboarding trigger contract failed.`);
+}
+
+async function approveFixtureDietitian(admin, manifest) {
+  const dietitianId = manifest.dietitian.d.userId;
+  const verifiedAt = new Date().toISOString();
+  const updated = assertNoError(await admin.from('dietitian_profiles')
+    .update({ verification_status: 'approved', verified_at: verifiedAt, rejection_reason: null })
+    .eq('user_id', dietitianId)
+    .select('user_id,verification_status,is_verified,verified_at,rejection_reason')
+    .single(), 'Dietitian verification update');
+  const persisted = assertNoError(await admin.from('dietitian_profiles')
+    .select('user_id,verification_status,is_verified,verified_at,rejection_reason')
+    .eq('user_id', dietitianId).single(), 'Dietitian verification persistence read');
+  for (const row of [updated, persisted]) {
+    if (row?.user_id !== dietitianId || row.verification_status !== 'approved' || row.is_verified !== true
+      || !row.verified_at || row.rejection_reason !== null) {
+      fail(EXIT.SECURITY, 'Dietitian verification trigger contract failed.');
+    }
+  }
+}
+
+async function createActiveConnection(admin, manifest, key, label) {
+  const clientId = manifest.clients[key].userId;
+  const dietitianId = manifest.dietitian.d.userId;
+  const acceptedAt = new Date().toISOString();
+  const connection = assertNoError(await admin.from('dietitian_clients')
+    .insert({ dietitian_id: dietitianId, client_id: clientId, status: 'active', accepted_at: acceptedAt })
+    .select('id,dietitian_id,client_id,status,created_at,accepted_at').single(), `${label} active connection creation`);
+  if (connection?.dietitian_id !== dietitianId || connection?.client_id !== clientId
+    || connection.status !== 'active' || !connection.created_at || !connection.accepted_at) {
+    fail(EXIT.SECURITY, `${label} active connection contract failed.`);
+  }
+  manifest.ids.dietitianClientConnections.push(connection.id);
+  manifest.expected.connectionClients[connection.id] = clientId;
+  manifest.expected.connectionDietitians[connection.id] = dietitianId;
+  writeManifest(manifest);
 }
 
 async function createPlanAndMeal(admin, manifest, key, label) {
   const clientId = manifest.clients[key].userId;
+  const dietitianId = manifest.dietitian.d.userId;
   const notes = `${FIXTURE_TYPE}:${manifest.runId}:${key}`;
   const plan = assertNoError(await admin.from('meal_plans')
-    .insert({ client_id: clientId, dietitian_id: null, plan_date: manifest.planDate, notes })
-    .select('id').single(), `${label} meal plan creation`);
+    .insert({ client_id: clientId, dietitian_id: dietitianId, plan_date: manifest.planDate, notes })
+    .select('id,client_id,dietitian_id').single(), `${label} meal plan creation`);
+  if (plan?.client_id !== clientId || plan?.dietitian_id !== dietitianId) {
+    fail(EXIT.SECURITY, `${label} meal plan ownership contract failed.`);
+  }
   manifest.ids.plans.push(plan.id);
   manifest.expected.planOwners[plan.id] = clientId;
+  manifest.expected.planDietitians[plan.id] = dietitianId;
   writeManifest(manifest);
 
   const title = `${FIXTURE_TYPE}:${manifest.runId}:${key}`;
@@ -283,7 +351,9 @@ async function verifyFixtureOwnership(admin, manifest) {
     if (error?.status === 404 && error?.code === 'user_not_found') continue;
     assertNoError({ error }, 'Fixture Auth metadata verification', EXIT.CLEANUP);
     const metadata = data?.user?.user_metadata ?? {};
-    if (metadata.dietbridge_fixture_type !== FIXTURE_TYPE || metadata.dietbridge_fixture_run_id !== manifest.runId) {
+    const expectedAccountType = userId === manifest.dietitian.d.userId ? 'dietitian' : 'client';
+    if (metadata.dietbridge_fixture_type !== FIXTURE_TYPE || metadata.dietbridge_fixture_run_id !== manifest.runId
+      || metadata.account_type !== expectedAccountType) {
       fail(EXIT.CLEANUP, 'Fixture Auth metadata mismatch; cleanup stopped fail-closed.');
     }
     presentAuthIds.add(userId);
@@ -297,9 +367,26 @@ async function verifyFixtureOwnership(admin, manifest) {
     const row = assertNoError(await admin.from('client_profiles').select('user_id').eq('user_id', userId).maybeSingle(), 'Client profile ownership verification', EXIT.CLEANUP);
     if (row && !presentAuthIds.has(userId)) fail(EXIT.CLEANUP, 'Orphan client profile cannot be proven as fixture-owned.');
   }
+  for (const userId of manifest.ids.dietitianProfiles) {
+    const row = assertNoError(await admin.from('dietitian_profiles')
+      .select('user_id,verification_status,is_verified,verified_at,rejection_reason')
+      .eq('user_id', userId).maybeSingle(), 'Dietitian profile ownership verification', EXIT.CLEANUP);
+    if (row && !presentAuthIds.has(userId)) fail(EXIT.CLEANUP, 'Orphan dietitian profile cannot be proven as fixture-owned.');
+  }
+  for (const connectionId of manifest.ids.dietitianClientConnections) {
+    const connection = await exactRow(admin, 'dietitian_clients', connectionId, 'id,dietitian_id,client_id,status,created_at,accepted_at');
+    if (connection && (connection.dietitian_id !== manifest.expected.connectionDietitians[connectionId]
+      || connection.client_id !== manifest.expected.connectionClients[connectionId]
+      || connection.status !== 'active' || !connection.created_at || !connection.accepted_at
+      || !presentAuthIds.has(connection.dietitian_id) || !presentAuthIds.has(connection.client_id))) {
+      fail(EXIT.CLEANUP, 'Dietitian-client fixture marker mismatch; cleanup stopped fail-closed.');
+    }
+  }
   for (const planId of manifest.ids.plans) {
-    const plan = await exactRow(admin, 'meal_plans', planId, 'id,client_id,notes');
-    if (plan && (plan.client_id !== manifest.expected.planOwners[planId] || plan.notes !== `${FIXTURE_TYPE}:${manifest.runId}:${plan.client_id === manifest.clients.a.userId ? 'a' : 'b'}`)) {
+    const plan = await exactRow(admin, 'meal_plans', planId, 'id,client_id,dietitian_id,notes');
+    if (plan && (plan.client_id !== manifest.expected.planOwners[planId]
+      || plan.dietitian_id !== manifest.expected.planDietitians[planId]
+      || plan.notes !== `${FIXTURE_TYPE}:${manifest.runId}:${plan.client_id === manifest.clients.a.userId ? 'a' : 'b'}`)) {
       fail(EXIT.CLEANUP, 'Meal plan fixture marker mismatch; cleanup stopped fail-closed.');
     }
   }
@@ -320,7 +407,9 @@ export async function deleteExplicitFixtures(admin, manifest, { verifyOwnership 
   await verifyOwnership(admin, manifest);
   for (const id of manifest.ids.meals) await deleteOne(admin, 'meals', 'id', id);
   for (const id of manifest.ids.plans) await deleteOne(admin, 'meal_plans', 'id', id);
+  for (const id of manifest.ids.dietitianClientConnections) await deleteOne(admin, 'dietitian_clients', 'id', id);
   for (const id of manifest.ids.clientProfiles) await deleteOne(admin, 'client_profiles', 'user_id', id);
+  for (const id of manifest.ids.dietitianProfiles) await deleteOne(admin, 'dietitian_profiles', 'user_id', id);
   for (const id of manifest.ids.profiles) await deleteOne(admin, 'profiles', 'id', id);
   for (const id of manifest.ids.users) {
     const { error } = await admin.auth.admin.deleteUser(id);
@@ -332,25 +421,97 @@ export async function deleteExplicitFixtures(admin, manifest, { verifyOwnership 
 
 async function explicitStatus(admin, manifest) {
   let authUsers = 0;
+  let dietitianAuthUsers = 0;
   for (const id of manifest.ids.users) {
     const { data, error } = await admin.auth.admin.getUserById(id);
-    if (!error && data?.user) authUsers += 1;
+    if (!error && data?.user) {
+      authUsers += 1;
+      if (id === manifest.dietitian.d.userId) dietitianAuthUsers += 1;
+    }
     else if (!(error?.status === 404 && error?.code === 'user_not_found')) assertNoError({ error }, 'Auth explicit status');
   }
-  return {
+  const dietitianProfile = manifest.dietitian.d.userId
+    ? assertNoError(await admin.from('dietitian_profiles')
+      .select('user_id,verification_status,is_verified,verified_at,rejection_reason')
+      .eq('user_id', manifest.dietitian.d.userId).maybeSingle(), 'Dietitian profile explicit status')
+    : null;
+  let activeConnections = 0;
+  for (const id of manifest.ids.dietitianClientConnections) {
+    const row = await exactRow(admin, 'dietitian_clients', id, 'id,dietitian_id,client_id,status,created_at,accepted_at');
+    if (row?.dietitian_id === manifest.expected.connectionDietitians[id]
+      && row?.client_id === manifest.expected.connectionClients[id]
+      && row.status === 'active' && row.created_at && row.accepted_at) activeConnections += 1;
+  }
+  let readyPlans = 0;
+  for (const id of manifest.ids.plans) {
+    const row = await exactRow(admin, 'meal_plans', id, 'id,client_id,dietitian_id');
+    if (row?.client_id === manifest.expected.planOwners[id]
+      && row?.dietitian_id === manifest.expected.planDietitians[id]) readyPlans += 1;
+  }
+  const counts = {
     authUsers,
+    dietitianAuthUsers,
     profiles: await exactCount(admin, 'profiles', 'id', manifest.ids.profiles),
     clientProfiles: await exactCount(admin, 'client_profiles', 'user_id', manifest.ids.clientProfiles),
+    dietitianProfiles: await exactCount(admin, 'dietitian_profiles', 'user_id', manifest.ids.dietitianProfiles),
+    dietitianClientConnections: await exactCount(admin, 'dietitian_clients', 'id', manifest.ids.dietitianClientConnections),
     plans: await exactCount(admin, 'meal_plans', 'id', manifest.ids.plans),
     meals: await exactCount(admin, 'meals', 'id', manifest.ids.meals),
   };
+  const dietitianReady = dietitianProfile?.user_id === manifest.dietitian.d.userId
+    && dietitianProfile.verification_status === 'approved' && dietitianProfile.is_verified === true
+    && Boolean(dietitianProfile.verified_at) && dietitianProfile.rejection_reason === null;
+  return {
+    ...counts,
+    activeConnections,
+    readyPlans,
+    mobileFixtureReady: authUsers === 3 && counts.profiles === 3 && counts.clientProfiles === 2
+      && counts.dietitianProfiles === 1 && dietitianReady
+      && counts.dietitianClientConnections === 2 && activeConnections === 2
+      && counts.plans === 2 && readyPlans === 2 && counts.meals === 2,
+  };
 }
 
-function printGates(manifest) {
-  const passed = CHECK_ORDER.every((check) => manifest.checks[check]);
-  console.log(`RPC_SMOKE_TESTS_PASSED=${passed ? 'YES' : 'NO'}`);
-  console.log('MOBILE_PRODUCTION_TEST_PENDING=YES');
-  console.log('POLICY_REMOVAL_ALLOWED=NO');
+export function evaluatePolicyGates(manifest, fixtureStateValid = false) {
+  const rpcSmokeTestsPassed = CHECK_ORDER.every((check) => manifest.checks[check] === true);
+  const mobileProductionTestPassed = Object.values(manifest.mobile).every((value) => value === true);
+  return {
+    rpcSmokeTestsPassed,
+    mobileProductionTestPassed,
+    policyRemovalAllowed: rpcSmokeTestsPassed && mobileProductionTestPassed && fixtureStateValid === true,
+  };
+}
+
+function printGates(manifest, fixtureStateValid = false) {
+  const gates = evaluatePolicyGates(manifest, fixtureStateValid);
+  console.log(`RPC_SMOKE_TESTS_PASSED=${gates.rpcSmokeTestsPassed ? 'YES' : 'NO'}`);
+  console.log(`MOBILE_PRODUCTION_TEST_PASSED=${gates.mobileProductionTestPassed ? 'YES' : 'NO'}`);
+  console.log(`MOBILE_PRODUCTION_TEST_PENDING=${gates.mobileProductionTestPassed ? 'NO' : 'YES'}`);
+  console.log(`POLICY_REMOVAL_ALLOWED=${gates.policyRemovalAllowed ? 'YES' : 'NO'}`);
+}
+
+export function applyMobileConfirmation(manifest, acknowledgments, write = writeManifest) {
+  validateManifest(manifest);
+  if (!CHECK_ORDER.every((check) => manifest.checks[check] === true)) {
+    fail(EXIT.ORDER, 'Mobile confirmation blocked until all CLI RPC checks pass.');
+  }
+  for (const [, [environmentName, expectedValue]] of Object.entries(MOBILE_ACKNOWLEDGMENTS)) {
+    if (acknowledgments?.[environmentName] !== expectedValue) {
+      fail(EXIT.SECURITY, 'Mobile confirmation acknowledgment is missing or invalid.');
+    }
+  }
+  for (const mobileCheck of Object.keys(MOBILE_ACKNOWLEDGMENTS)) manifest.mobile[mobileCheck] = true;
+  write(manifest);
+  return manifest;
+}
+
+function mobileConfirm() {
+  const manifest = readManifest();
+  applyMobileConfirmation(manifest, process.env);
+  console.log('mobile_confirmation=PASS');
+  console.log('mobile_own_toggle_passed=YES');
+  console.log('mobile_persistence_passed=YES');
+  console.log('mobile_foreign_access_not_exposed=YES');
 }
 
 async function setup(settings) {
@@ -359,12 +520,18 @@ async function setup(settings) {
   const manifest = newManifest();
   writeManifest(manifest);
   try {
-    await createFixtureUser(admin, manifest, 'a', 'Client A');
-    await createFixtureUser(admin, manifest, 'b', 'Client B');
+    await createFixtureUser(admin, manifest, manifest.dietitian.d, 'Dietitian D', 'dietitian');
+    await approveFixtureDietitian(admin, manifest);
+    await createFixtureUser(admin, manifest, manifest.clients.a, 'Client A', 'client');
+    await createFixtureUser(admin, manifest, manifest.clients.b, 'Client B', 'client');
+    await createActiveConnection(admin, manifest, 'a', 'Client A');
+    await createActiveConnection(admin, manifest, 'b', 'Client B');
     await createPlanAndMeal(admin, manifest, 'a', 'Client A');
     await createPlanAndMeal(admin, manifest, 'b', 'Client B');
     console.log('setup=PASS');
+    console.log('fixture_dietitians=1');
     console.log('fixture_clients=2');
+    console.log('fixture_active_connections=2');
     console.log('fixture_meal_plans=2');
     console.log('fixture_meals=2');
     console.log('manifest_written=YES');
@@ -387,9 +554,14 @@ async function status(settings) {
     requireProductionGuard(settings);
     console.log('manifest_present=NO');
     console.log('auth_users_present_count=0');
+    console.log('dietitian_auth_users_present_count=0');
     console.log('profiles_present_count=0');
     console.log('client_profiles_present_count=0');
+    console.log('dietitian_profiles_present_count=0');
+    console.log('dietitian_client_connections_present_count=0');
+    console.log('active_connections_present_count=0');
     console.log('meal_plans_present_count=0');
+    console.log('meal_plans_with_expected_dietitian_count=0');
     console.log('meals_present_count=0');
     console.log('own_check_completed=NO');
     console.log('foreign_check_completed=NO');
@@ -397,22 +569,32 @@ async function status(settings) {
     console.log('anonymous_check_completed=NO');
     console.log('cleanup_required=NO');
     console.log('RPC_SMOKE_TESTS_PASSED=NO');
+    console.log('MOBILE_PRODUCTION_TEST_PASSED=NO');
     console.log('MOBILE_PRODUCTION_TEST_PENDING=YES');
     console.log('POLICY_REMOVAL_ALLOWED=NO');
     return;
   }
   const manifest = readManifest();
   const { admin } = createClients(settings);
+  await verifyFixtureOwnership(admin, manifest);
   const counts = await explicitStatus(admin, manifest);
   console.log('manifest_present=YES');
   console.log(`auth_users_present_count=${counts.authUsers}`);
+  console.log(`dietitian_auth_users_present_count=${counts.dietitianAuthUsers}`);
   console.log(`profiles_present_count=${counts.profiles}`);
   console.log(`client_profiles_present_count=${counts.clientProfiles}`);
+  console.log(`dietitian_profiles_present_count=${counts.dietitianProfiles}`);
+  console.log(`dietitian_client_connections_present_count=${counts.dietitianClientConnections}`);
+  console.log(`active_connections_present_count=${counts.activeConnections}`);
   console.log(`meal_plans_present_count=${counts.plans}`);
+  console.log(`meal_plans_with_expected_dietitian_count=${counts.readyPlans}`);
   console.log(`meals_present_count=${counts.meals}`);
+  console.log(`mobile_fixture_ready=${counts.mobileFixtureReady ? 'YES' : 'NO'}`);
   for (const check of CHECK_ORDER) console.log(`${check}_check_completed=${manifest.checks[check] ? 'YES' : 'NO'}`);
-  console.log(`cleanup_required=${Object.values(counts).some((count) => count > 0) ? 'YES' : 'NO'}`);
-  printGates(manifest);
+  const cleanupRequired = ['authUsers', 'profiles', 'clientProfiles', 'dietitianProfiles', 'dietitianClientConnections', 'plans', 'meals']
+    .some((key) => counts[key] > 0);
+  console.log(`cleanup_required=${cleanupRequired ? 'YES' : 'NO'}`);
+  printGates(manifest, counts.mobileFixtureReady);
 }
 
 async function authenticatedClient(clients, identity) {
@@ -513,7 +695,8 @@ async function cleanup(settings) {
   const { admin } = createClients(settings);
   await deleteExplicitFixtures(admin, manifest);
   const counts = await explicitStatus(admin, manifest);
-  if (Object.values(counts).some((count) => count !== 0)) fail(EXIT.CLEANUP, 'Explicit fixture records remain after cleanup.');
+  if (['authUsers', 'profiles', 'clientProfiles', 'dietitianProfiles', 'dietitianClientConnections', 'plans', 'meals']
+    .some((key) => counts[key] !== 0)) fail(EXIT.CLEANUP, 'Explicit fixture records remain after cleanup.');
   rmSync(MANIFEST_PATH, { force: true });
   console.log('cleanup=PASS');
   console.log('remaining_fixture_records=0');
@@ -543,6 +726,10 @@ async function main() {
   }
   if (command === 'preflight') {
     preflight();
+    return;
+  }
+  if (command === 'mobile-confirm') {
+    mobileConfirm();
     return;
   }
   const settings = loadSettings();

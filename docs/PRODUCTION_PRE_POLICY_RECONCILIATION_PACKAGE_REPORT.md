@@ -271,3 +271,27 @@ Policy removal allowed: NO
 Production’a özel explicit-ID fixture aracı, network kullanmayan regresyon testleri ve [production smoke-test planı](PRODUCTION_MEAL_RPC_SMOKE_TEST_PLAN.md) hazırlandı. Araç iki disposable client için own, foreign, persistence ve anonymous RPC kontrollerini, fail-closed sıra kapılarını ve metadata/run-ID doğrulamalı cleanup modelini içerir. Paket hazırlanırken production veya staging’e bağlanılmadı ve smoke test çalıştırılmadı.
 
 Sıradaki işlem, ayrı manuel onayla production smoke-test planını uygulamak ve cleanup sonucunu doğrulamaktır. Fiziksel mobil production testi tamamlanmadan policy removal kapısı kapalıdır.
+
+## 35. Production CLI smoke sonucu ve mobil fixture düzeltmesi
+
+Production reconciliation ve postflight sonrasında kullanıcı tarafından çalıştırılan own, foreign, persistence ve anonymous CLI RPC kontrollerinin tamamı geçti. RPC’nin kendi satırını güncellediği, Client B satırını değiştiremediği, yalnız completion alanının değiştiği ve anonymous çağrının reddedildiği doğrulandı.
+
+İlk fiziksel mobil deneme Client A oturumunu açtı ancak eski fixture `dietitian_clients.status=active` ilişkisi üretmediği için uygulamanın aktif diyetisyen kapısında durdu. Bu sonuç RPC defekti değildir ve mobil uygulama defekti kanıtlamaz. Eski fixture cleanup’ı `PASS`, kalan kayıt sayısı `0` ve manifest kaldırma sonucu `YES` olarak tamamlandı.
+
+Mobil uyumlu revizyon bir disposable onaylı diyetisyen, iki disposable client, aynı diyetisyene ait iki aktif ilişki, iki plan ve iki meal sözleşmesini hazırlar. Canonical verification trigger’ı kullanılır, manifest yeni explicit ID ve sahiplik haritalarını taşır, cleanup ilişkileri ve diyetisyen profilini profiles/Auth öncesinde siler. Ağsız `mobile-confirm` yalnız dört CLI kontrolü tamamlandıktan ve üç exact manuel mobil `PASS` onayı verildikten sonra yerel manifesti günceller.
+
+```text
+Production CLI RPC smoke tests: PASSED
+First physical mobile attempt: BLOCKED BY INCOMPLETE FIXTURE
+RPC defect observed: NO
+Mobile app defect proven: NO
+Blocker: missing active dietitian_clients fixture relation
+Old fixture cleanup: PASSED
+Remaining old fixture records: 0
+Legacy policy: PRESENT
+Production mobile-ready fixture correction: PREPARED
+Physical mobile retry: PENDING
+Policy removal: BLOCKED
+```
+
+Bu düzeltme hazırlanırken production veya staging’e bağlanılmadı; fixture, RPC, SQL, migration veya policy mutation çalıştırılmadı.
