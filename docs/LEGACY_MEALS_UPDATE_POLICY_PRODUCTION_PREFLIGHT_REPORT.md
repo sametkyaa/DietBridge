@@ -182,3 +182,24 @@ Policy removal: BLOCKED
 ```
 
 Mobil uyumlu fixture düzeltmesi bir onaylı disposable diyetisyen, iki aktif client ilişkisi ve aynı diyetisyene bağlı planlar için statik olarak hazırlandı. Fiziksel retry ve üç manuel mobil kapı tamamlanmadan `POLICY_REMOVAL_ALLOWED=YES` üretilemez; bu görevde legacy policy kaldırılmadı.
+
+## 21. Güncel production readiness ve history adoption blocker
+
+Önceki `RPC MISSING`, `reconciliation NOT APPLIED`, `physical mobile PENDING` ve `POLICY_REMOVAL_ALLOWED=NO` ifadeleri ait oldukları tarihsel aşamaları belgelemeye devam eder. Güncel source of truth:
+
+```text
+Production reconciliation: APPLIED SUCCESSFULLY
+Verification consistency contract: PASS
+RPC production smoke tests: PASSED
+Physical Android production smoke: PASSED
+Fixture cleanup: PASSED
+Remaining fixture records: 0
+Legacy policy: STILL PRESENT
+Policy removal functional gate before cleanup: PASSED
+Remote migration history: EMPTY
+Migration history adoption: BLOCKER
+```
+
+Mobil uyumlu fixture retry’da Client A own toggle, restart sonrası persistence ve Client B meal’ının görünmemesi geçti; cleanup bütün disposable kayıtları kaldırdı. Legacy policy’nin kaldırılmasına kalan tek rollout blocker, ilk sekiz local version’ın güvenli ve ayrı ayrı production history’ye adopt edilmesidir.
+
+`20260713000000` tarihsel default-privilege prelude olduğundan final state ile otomatik `MATCH` kabul edilmez. Ayrı risk acceptance olmadan adoption yapılamaz. `20260714010000` history’ye önceden applied yazılmayacak; ilk sekiz remote history ile eşleştiğinde dry-run’da tek pending migration olmalı ve yalnız gerçek migration push ile uygulanmalıdır.

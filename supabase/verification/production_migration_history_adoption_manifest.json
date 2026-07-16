@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "production_state_basis": {
+    "reconciliation_applied": true,
+    "rpc_smoke_passed": true,
+    "mobile_smoke_passed": true,
+    "fixture_cleanup_passed": true,
+    "legacy_policy_present": true,
+    "remote_history_empty": true
+  },
+  "migrations": [
+    {
+      "version": "20260713000000",
+      "filename": "20260713000000_staging_default_table_privileges.sql",
+      "sha256": "38678e843c01f48218c8835f93b63a07ef91ecb98cfb93c55d0d169e378abe35",
+      "classification": "SUPERSEDED_MANUAL_REVIEW",
+      "history_adoption_eligible": false,
+      "manual_approval_required": true,
+      "reason": "Final catalog state cannot prove the historical pre-baseline default-privilege ordering; a dedicated risk acceptance is required before this version can be adopted individually."
+    },
+    {
+      "version": "20260713000001",
+      "filename": "20260713000001_production_public_baseline.sql",
+      "sha256": "68d99574628b599756ce604f670d9f3e51983eedbfc4fb7b18d57a444e99c698",
+      "classification": "MATCH_VIA_RECONCILIATION",
+      "history_adoption_eligible": true,
+      "manual_approval_required": true,
+      "reason": "The foundational public schema contract is present; later intentional hardening and the applied reconciliation account for the dependency-ordered final-state differences."
+    },
+    {
+      "version": "20260713010000",
+      "filename": "20260713010000_function_security_hardening.sql",
+      "sha256": "f8979f0942614cf8de83974373eb22134847b2053e0dee612afecd0172b26ef4",
+      "classification": "MATCH_VIA_RECONCILIATION",
+      "history_adoption_eligible": true,
+      "manual_approval_required": true,
+      "reason": "The production reconciliation normalized the audited function search_path and execute contracts while its postflight verified the final function security surface."
+    },
+    {
+      "version": "20260713010100",
+      "filename": "20260713010100_verification_consistency.sql",
+      "sha256": "ed9985b473bc34fe60fbfff03720652f87a80a1d64882665c382204c5e6b85cc",
+      "classification": "MATCH_VIA_RECONCILIATION",
+      "history_adoption_eligible": true,
+      "manual_approval_required": true,
+      "reason": "Reconciliation installed the canonical verification function, trigger and validated consistency constraint after the separately completed data remediation."
+    },
+    {
+      "version": "20260713010200",
+      "filename": "20260713010200_auth_onboarding_hardening.sql",
+      "sha256": "f141578443637b8fd903bdfef533f2e9a7c12d88b7c759d4163e2f653f42e6df",
+      "classification": "MATCH_VIA_RECONCILIATION",
+      "history_adoption_eligible": true,
+      "manual_approval_required": true,
+      "reason": "Reconciliation replaced handle_new_user with the canonical allowlisted body and restored the reviewed search_path and execute contract."
+    },
+    {
+      "version": "20260713010300",
+      "filename": "20260713010300_critical_table_rls.sql",
+      "sha256": "d0d265526d60a0245bef8a7661eaa9c6bf4b90fba5b0ba0efff8a1cc90f6a72c",
+      "classification": "MATCH_VIA_RECONCILIATION",
+      "history_adoption_eligible": true,
+      "manual_approval_required": true,
+      "reason": "Reconciliation installed the eleven canonical policies, three RLS enablements and the reviewed dietitian-profile system-field protection contract."
+    },
+    {
+      "version": "20260713010400",
+      "filename": "20260713010400_meal_completion_rpc.sql",
+      "sha256": "15dd1e62db814ec9c06b7580c5a8e9e9c48b0d63327402d35ad5665ebec74eba",
+      "classification": "MATCH_VIA_RECONCILIATION",
+      "history_adoption_eligible": true,
+      "manual_approval_required": true,
+      "reason": "Reconciliation installed the canonical RPC body, security/search_path and execute grants; CLI and physical mobile production smoke tests passed."
+    },
+    {
+      "version": "20260713010500",
+      "filename": "20260713010500_ensure_auth_user_onboarding_trigger.sql",
+      "sha256": "41b21526f679f8f9150f1c972f2f188cc30cd7f37e9a51daa6c6615efd116ce4",
+      "classification": "MATCH",
+      "history_adoption_eligible": true,
+      "manual_approval_required": true,
+      "reason": "The enabled auth.users AFTER INSERT FOR EACH ROW trigger targeting public.handle_new_user matched before and after reconciliation."
+    },
+    {
+      "version": "20260714010000",
+      "filename": "20260714010000_remove_legacy_client_meals_update_policy.sql",
+      "sha256": "a40f47953190a83970340bd18b82c87948c9176356fbce63103c2e09dd1e52f6",
+      "classification": "MISSING",
+      "history_adoption_eligible": false,
+      "manual_approval_required": true,
+      "reason": "The exact legacy policy is still present; this version must remain pending and may only be applied by the real migration push after all eight prior versions are adopted."
+    }
+  ],
+  "bulk_repair_allowed": false,
+  "policy_removal_version": "20260714010000"
+}

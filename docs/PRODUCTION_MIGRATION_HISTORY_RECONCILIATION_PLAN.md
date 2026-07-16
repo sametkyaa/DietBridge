@@ -1,16 +1,179 @@
-# DietBridge — Production Migration History Uzlaştırma Planı
+# DietBridge — Production Migration History Adoption Planı
 
-## 1. Amaç ve karar sınırı
+## 1. Amaç ve güncel durum
 
-Production şeması mevcut olmasına rağmen `supabase_migrations.schema_migrations` bulunmamaktadır. Bu plan, repository'deki ilk sekiz active migration'ın production'daki kalıcı sözleşmeleriyle salt okunur biçimde karşılaştırılmasını ve her version için ayrı adoption kararı verilmesini tanımlar.
-
-Bu belge migration uygulamaz, history oluşturmaz ve `migration repair` çalıştırmaz. Production'daki doğrulanmış mevcut karar `NOT READY FOR PRODUCTION MIGRATION`dır.
-
-## 2. Doğrulanmış başlangıç durumu
+Bu plan, remote migration history’si boş olan ancak canonical reconciliation ile güncel local zincirin final sözleşmesine getirilmiş production şemasını yeniden uygulamadan version bazlı history adoption kararını tanımlar.
 
 ```text
 Production project identity: PASS
 Production/staging separation: PASS
+Production reconciliation: APPLIED SUCCESSFULLY
+Reconciliation postflight: PASS
+Verification consistency contract: PASS
+Meal completion RPC: PRESENT AND MATCH
+RPC production smoke tests: PASSED
+Physical Android production smoke: PASSED
+Fixture cleanup: PASSED
+Remaining fixture records: 0
+Legacy policy: STILL PRESENT
+Policy removal functional gate before cleanup: PASSED
+Remote migration history: EMPTY
+Local migrations: 9
+Migration history adoption: BLOCKER
+```
+
+Bu görev yalnız repository içindeki migration, reconciliation, verification ve kullanıcı tarafından doğrulanmış sanitized production sonuçlarını statik olarak uzlaştırır. Production veya staging’e bağlanmaz ve history mutation çalıştırmaz.
+
+## 2. Karar standardı
+
+Sınıflandırma yalnız şu değerlerden biridir:
+
+```text
+MATCH
+MATCH_VIA_RECONCILIATION
+SUPERSEDED_MANUAL_REVIEW
+MISSING
+MISMATCH
+NOT_APPLICABLE
+```
+
+Bir version’ın yalnız bazı nesnelerinin varlığı yeterli değildir. Değerlendirme; schema/table/type, kolon/default/nullability, PK/FK/UNIQUE/CHECK, index, function signature/body/security/search_path/owner, execute grants, trigger timing/event/level/target/enabled state, RLS, policy command/roles/USING/WITH CHECK, table/schema/default privileges ve dependency order kapsamını içerir.
+
+## 3. Version bazlı sonuç matrisi
+
+| Version | Sınıf | `history_adoption_eligible` | Deterministic reason |
+|---|---|---:|---|
+| `20260713000000` | `SUPERSEDED_MANUAL_REVIEW` | `NO` | Prelude’nun baseline’dan önce çalıştığı final katalogdan kanıtlanamaz; ayrı tarihsel risk acceptance zorunlu |
+| `20260713000001` | `MATCH_VIA_RECONCILIATION` | `YES` | 3 type, 21 table, 58 constraint, 21 index, 10 function, 7 trigger, 51 policy, 18 RLS ve privilege temeli mevcut; sonraki hardening/reconciliation final-state farklarını açıklıyor |
+| `20260713010000` | `MATCH_VIA_RECONCILIATION` | `YES` | Audited function search_path/execute drift’i reconciliation ile canonical final sözleşmeye getirildi ve postflight geçti |
+| `20260713010100` | `MATCH_VIA_RECONCILIATION` | `YES` | Ayrı veri remediation sonrası canonical function, BEFORE INSERT/UPDATE trigger ve validated consistency CHECK reconciliation ile kuruldu |
+| `20260713010200` | `MATCH_VIA_RECONCILIATION` | `YES` | `handle_new_user()` canonical allowlist body/security/search_path/execute sözleşmesi reconciliation ile kuruldu |
+| `20260713010300` | `MATCH_VIA_RECONCILIATION` | `YES` | 11 critical policy, 3 RLS enablement ve dietitian system-field guard reconciliation ile canonical hale getirildi |
+| `20260713010400` | `MATCH_VIA_RECONCILIATION` | `YES` | Canonical own-meal RPC ve grant sözleşmesi reconciliation ile kuruldu; CLI ve fiziksel mobil production testleri geçti |
+| `20260713010500` | `MATCH` | `YES` | Enabled `auth.users` AFTER INSERT FOR EACH ROW trigger hedefi `public.handle_new_user()` olarak reconciliation öncesi/sonrası eşleşti |
+| `20260714010000` | `MISSING` | `NO` | Exact legacy policy hâlâ mevcut; migration gerçek push için pending kalmalı ve history’ye önceden alınmamalı |
+
+Eligibility history mutation yetkisi değildir. İlk sekiz version’ın her biri ayrı manuel approval, backup/restore point ve mutation sonrası remote list kontrolü gerektirir.
+
+## 4. Kalıcı sözleşme envanteri
+
+### `20260713000000` — Default privilege prelude
+
+- **Privilege:** `public` şemasında gelecekte oluşturulacak tablolar için anon/authenticated default table privilege’larını revoke eder.
+- **Tarihsel bağımlılık:** Baseline restore’dan önce çalışmalıdır.
+- **Final-state sınırı:** Sonraki baseline kendi default table grants’lerini yeniden tanımlar; bu nedenle tarihsel uygulama sırası final ACL’den türetilemez.
+- **Karar:** `SUPERSEDED_MANUAL_REVIEW`; otomatik `MATCH` veya bulk adoption yasak.
+
+### `20260713000001` — Production public baseline
+
+- **Schema/type/table:** 3 enum, 21 public tablo; kolon type/default/nullability sözleşmeleri.
+- **Constraint/index:** 58 PK/FK/UNIQUE/CHECK, 21 index.
+- **Function/trigger:** 10 function ve 7 trigger; signature, owner, security, body ve başlangıç search_path/grant yüzeyi.
+- **RLS/policy:** 18 RLS-enabled tablo ve 51 policy.
+- **Privilege:** schema usage, tablo/sequence/function grants ve 12 default privilege statement.
+- **Dependency:** Bütün sonraki hardening migration’larının temelidir. Sonraki migration’ın bilinçli olarak değiştirdiği function/grant/policy alanları baseline mismatch sayılmaz; final zincir semantiği esas alınır.
+
+### `20260713010000` — Function security hardening
+
+- `is_current_user_dietitian()` canonical SECURITY DEFINER body ve `pg_catalog, public` search_path.
+- Dokuz mevcut function için fixed search_path; browser-callable helper/RPC’lerde dar grant, trigger/internal function’larda PUBLIC/anon/authenticated execute revoke.
+- Reconciliation audited drift bulunan function’ları canonical hale getirdi; diğer kalıcı contract’lar postflight başlangıç/precondition sözleşmesiyle korundu.
+
+### `20260713010100` — Verification consistency
+
+- `sync_dietitian_verification_fields()` non-definer trigger function, fixed search_path ve direct execute revoke.
+- `trg_sync_dietitian_verification_fields`: BEFORE INSERT OR UPDATE, FOR EACH ROW, enabled, doğru target/function.
+- `dietitian_profiles_verification_consistency_check`: validated, no-inherit olmayan canonical null-safe CHECK.
+- `verification_status` source of truth, `is_verified` mirror; browser escalation reddedilir.
+
+### `20260713010200` — Auth onboarding hardening
+
+- `handle_new_user()` SECURITY DEFINER, trigger return, owner `postgres`, fixed search_path.
+- Metadata yalnız `client`/`dietitian`; profile ve subtype satırları fail-closed oluşturulur.
+- Dietitian `pending/false` başlar; PUBLIC/anon/authenticated execute kapalı, service role korunur.
+
+### `20260713010300` — Critical RLS
+
+- `protect_dietitian_profile_system_fields()` ve BEFORE INSERT/UPDATE row trigger.
+- `dietitian_profiles` için 4, `appointments` için 5, `chat_messages` için 2 canonical policy.
+- Policy’lerde authenticated role, doğru command, USING/WITH CHECK ve active relationship/owner/sender semantiği.
+- Üç tabloda RLS enabled.
+
+### `20260713010400` — Meal completion RPC
+
+- `set_my_meal_completion(uuid,boolean) returns boolean`.
+- SECURITY DEFINER, owner `postgres`, fixed search_path.
+- `auth.uid()` ile plan client ownership; yalnız `meals.is_eaten` update; tam bir satır dışında `42501`.
+- authenticated/service_role execute açık; anon/PUBLIC kapalı.
+- Production own/foreign/persistence/anonymous CLI ve fiziksel Android own/persistence/foreign-not-exposed kanıtları `PASS`.
+
+### `20260713010500` — Auth trigger assurance
+
+- `auth.users.on_auth_user_created` AFTER INSERT, FOR EACH ROW, enabled.
+- Target `public.handle_new_user()`.
+- Eksikse oluşturur; drift/disabled target’ı değiştirmeden fail-fast durur.
+
+### `20260714010000` — Legacy policy removal
+
+- Precondition yalnız exact `Clients can update own meal completion` UPDATE/authenticated/USING/WITH CHECK sözleşmesini kabul eder.
+- Kalıcı etki yalnız bu policy’nin kaldırılmasıdır.
+- Şu anda policy `PRESENT`; migration `MISSING`/pending ve adoption için uygun değildir.
+
+## 5. `20260713000000` özel kararı
+
+Dört seçenek değerlendirilmiştir:
+
+1. **Ayrı manuel risk acceptance ile applied adoption — önerilen.** Final state prelude’nun tarihsel çalışmasını kanıtlamaz. Bu belirsizlik açıkça kabul edilir, version tek başına history’ye alınır ve hemen list kontrolü yapılır.
+2. **Superseded/NOT_APPLICABLE bırakma — önerilmez.** Remote/local exact version hedefini ve tek pending migration durumunu engeller.
+3. **Yeni production baseline/history — önerilmez.** Mevcut staging/local dokuz-version zinciriyle yeni ayrışma yaratır.
+4. **Local zinciri değiştirmeden başka yöntem — uygun güvenli alternatif bulunmadı.** Supabase history modeli exact eşleşme için version kaydı gerektirir.
+
+Seçenek 1’in önerilmesi mevcut anda eligibility vermez. İmzalı risk acceptance oluşana kadar:
+
+```text
+20260713000000 history_adoption_eligible=NO
+POLICY REMOVAL BLOCKED
+```
+
+## 6. Adoption kararı
+
+### Mevcut durumda uygun
+
+Her biri ayrı approval ile: `20260713000001`, `20260713010000`, `20260713010100`, `20260713010200`, `20260713010300`, `20260713010400`, `20260713010500`.
+
+### Mevcut durumda uygun değil
+
+- `20260713000000`: tarihsel risk acceptance bekliyor.
+- `20260714010000`: history adoption yapılmayacak; gerçek pending migration olarak push bekliyor.
+
+Bu nedenle ilk sekiz version otomatik veya toplu biçimde repair edilemez. `20260713000000` kararı tamamlanmadan policy removal blokludur.
+
+## 7. Hedef history
+
+Policy kaldırma öncesi remote:
+
+```text
+20260713000000
+20260713000001
+20260713010000
+20260713010100
+20260713010200
+20260713010300
+20260713010400
+20260713010500
+```
+
+Local-only pending: `20260714010000`.
+
+Dry-run yalnız bu exact `8 remote / 9 local` durumda tek pending migration göstermelidir. Push sonrasında hedef `9 local / 9 remote / exact version match`tir.
+
+## 8. Tarihsel kayıt
+
+Önceki salt-okunur audit sırasında migration history/scheme yoktu; verification function/trigger/constraint, 11 critical policy, üç RLS enablement, function search_path hardening ve meal completion RPC eksik/drifted olarak kaydedildi. İlk reconciliation denemeleri function ve constraint validator’larında fail-closed rollback oldu. Ayrı verification data remediation ve validator düzeltmelerinden sonra reconciliation retry 3 başarıyla uygulandı; postflight bütün canonical kapıları geçti. Sonraki production CLI ve fiziksel mobil smoke testleri geçti; fixture tamamen temizlendi. Bu tarihsel `MISSING`, `NOT READY`, `NOT RUN` ve rollback sonuçları olay anı için geçerlidir; güncel kararın yerine geçmez.
+
+İlk audit snapshot’ı:
+
+```text
 Production remote migration history: EMPTY
 supabase_migrations schema: MISSING
 Legacy client direct UPDATE policy: PRESENT
@@ -21,137 +184,29 @@ Production dry-run executed: NO
 migration repair executed: NO
 ```
 
-## 3. İlk sekiz migration sözleşmesi
+İlk version sınıflandırması da tarihsel kanıt olarak korunur:
 
-| Version | Amaç | Oluşturulan/değiştirilen nesneler | Güvenlik sözleşmesi | Tekrar uygulanma riski |
-|---|---|---|---|---|
-| `20260713000000` | Baseline restore öncesinde geniş default table privilege mirasını kapatmak | `postgres` rolünün `public` tablo default ACL'i | Yeni tablolar anon/authenticated geniş yetkiyi otomatik almamalı | Sonraki baseline default grant'leri bu nihai durumu ezdiği için tarihsel uygulama final katalogdan kanıtlanamaz; tekrar uygulama gelecekteki tabloların erişimini değiştirir |
-| `20260713000001` | Production `public` şema baseline'ı | 3 enum, 21 tablo, PK/FK/UNIQUE/CHECK, indexler, 10 function, 7 trigger, 51 policy, RLS ve grants/default privileges | Şema, sahiplik, RLS ve Data API erişim yüzeyi birlikte kurulmalıdır | **Yüksek:** enum/constraint/policy çakışması; bazı tablolar `IF NOT EXISTS` olsa da zincir idempotent değildir; mevcut production verisi/şeması üzerinde körlemesine çalıştırılamaz |
-| `20260713010000` | Function search path ve execute yüzeyi hardening | `is_current_user_dietitian()` replace; dokuz function search path/execute düzeni | Güvenlik helper'ı verified dietitian kontrolü yapar; browser rolleri yalnız gerekli RPC/helper'ları çağırır | DDL çoğunlukla yeniden çalışır ancak function gövdesini/grant'leri yeniden yazar; tam sözleşme doğrulanmadan history adoption yapılamaz |
-| `20260713010100` | Verification alanı tutarlılığı | `sync_dietitian_verification_fields()`, trigger ve CHECK constraint | `verification_status` kanonik; `is_verified` mirror; browser escalation reddedilir | **İdempotent değil:** function/trigger/constraint mevcutsa hata; tutarsız production verisinde fail-closed durur |
-| `20260713010200` | Auth onboarding hardening | `handle_new_user()` replace ve direct execute revoke | Yalnız `client` veya `dietitian`; dietitian pending/false başlar; profile hataları yutulmaz | Replace yeniden çalışabilir ancak onboarding davranışını değiştirir; yalnız function varlığı tam sözleşmeyi kanıtlamaz |
-| `20260713010300` | Kritik tablo RLS ve sistem alanı koruması | `protect_dietitian_profile_system_fields()`, trigger, 11 policy, `dietitian_profiles`/`appointments`/`chat_messages` RLS | Verified dietitian, aktif ilişki, sender/owner ve system-field guard'ları | **İdempotent değil:** hedef tablolarda herhangi bir policy varsa fail-fast; mevcut policy/trigger ile çakışır; veri önkoşulu vardır |
-| `20260713010400` | Dar meal completion RPC | `set_my_meal_completion(uuid,boolean)` ve execute grants | SECURITY DEFINER + sabit search path + `auth.uid()` sahipliği; yalnız `is_eaten`; anon/PUBLIC kapalı, authenticated açık | **İdempotent değil:** RPC varsa fail-fast. Production'da eksik olduğu doğrulandığından applied işaretlenemez |
-| `20260713010500` | Auth onboarding trigger'ını garanti etmek | Eksikse `auth.users.on_auth_user_created` | AFTER INSERT FOR EACH ROW, enabled ve hedef `handle_new_user()` | Tam eşleşen trigger varsa idempotent; drift/disabled/farklı function varsa fail-fast |
-
-Dokuzuncu migration `20260714010000`, legacy `Clients can update own meal completion` policy'sini kaldırır. `20260713010400` RPC sözleşmesi ve mobil production RPC erişimi doğrulanmadan uygulanamaz veya applied işaretlenemez.
-
-## 4. Tam uygulanmışlığın kanıt standardı
-
-Bir nesnenin yalnız var olması migration'ın tamamının uygulandığını kanıtlamaz. Her version için ilgili tablo/kolon/default, constraint/index, function body/security/search path/owner/execute, trigger timing/event/target, policy command/role/USING/WITH CHECK ve RLS sözleşmelerinin tamamı `MATCH` olmalıdır.
-
-Özellikle:
-
-- `20260713000000` etkisi sonraki baseline default grant'leri tarafından supersede edildiği için final state'ten tek başına ispatlanamaz.
-- `20260713000001` 21 tablonun varlığıyla kanıtlanamaz; tüm bağımlı nesneler ve ACL'ler gerekir.
-- `20260713010000`, `10200` için function varlığı yeterli değildir; gövde ve grants doğrulanmalıdır.
-- `20260713010100`, `10300`, `10500` için function + trigger + constraint/policy/RLS bütünü gerekir.
-- `20260713010400` için signature, SECURITY DEFINER, fixed search path, body ve execute sözleşmesi birlikte gerekir.
-
-## 5. Karar ağacı
-
-### Senaryo A — Migration sözleşmesi tamamen eşleşiyor
-
-Tüm kontroller `MATCH` ise migration SQL'i tekrar çalıştırılmaz. O version'ın history'ye `applied` olarak alınması değerlendirilebilir; ancak `migration repair` otomatik çalıştırılmaz. Her version için ayrı manuel onay, backup/restore noktası ve iki kişilik karar kapısı gerekir.
-
-### Senaryo B — Migration tamamen eksik
-
-Migration `applied` işaretlenmez. Bağımlılık sırasına göre güvenli forward uygulama planlanır. Eksik RPC için bu senaryo geçerlidir.
-
-### Senaryo C — Migration kısmen uygulanmış
-
-Migration `applied` işaretlenmez ve orijinal SQL körlemesine çalıştırılmaz. Mevcut doğru nesnelere dokunmayan, drift'te fail-fast duran hedefli reconciliation paketi hazırlanır. Paket active migration zincirinin dışında kalır ve ayrı production onayı olmadan çalıştırılmaz.
-
-### Senaryo D — Production sözleşmesi repository'den farklı
-
-Production rollout durur. Drift raporu ve şema kararı tamamlanmadan history, policy, trigger, grant veya function değiştirilmez.
-
-## 6. `migration repair` güvenlik planı
-
-Resmî [Supabase database migrations dokümantasyonuna](https://supabase.com/docs/guides/deployment/database-migrations) göre `migration repair` SQL uygulamaz; remote history kaydını değiştirir. Bu nedenle yanlış `applied` kaydı sonraki `db push` kararını tehlikeli biçimde etkiler.
-
-Kurallar:
-
-- Remote history boş diye ilk sekiz version topluca `applied` işaretlenemez.
-- Her version bağımsız doğrulanır.
-- `MISSING`, `MISMATCH`, `MANUAL_REVIEW` veya kısmi sözleşme applied işaretlenemez.
-- `20260713010400`, RPC production'da eksik olduğu için applied işaretlenemez.
-- `20260714010000`, legacy policy mevcut ve RPC eksik olduğu için applied işaretlenemez.
-- `20260713000000` superseded tarihsel etki nedeniyle yalnız final-state audit ile otomatik adopted edilemez.
-
-Bir version için repair ancak bütün sözleşmeler `MATCH`, production backup/restore noktası hazır, history/list doğrulaması tamamlanmış ve iki kişilik manuel karar kapısı geçmişse önerilebilir. Komut bu belgede kasıtlı olarak çalıştırılabilir değerle verilmez; version placeholder'ı ayrı mutation görevinde doldurulur.
-
-## 7. Hedefli reconciliation seçenekleri
-
-| Seçenek | Uygun durum | Risk/karar |
+| Version | Önceki audit sonucu | Önceki karar |
 |---|---|---|
-| Orijinal migration'ı tekrar çalıştırma | Yalnız tamamen eksik ve veri/lock etkisi ayrıca kabul edilmişse | CREATE çakışması, duplicate policy/trigger, grant drift'i, production veri etkisi ve zincirin yarıda kalması riski yüksek |
-| History repair | Yalnız bütün sözleşmeleri tam `MATCH` version | Şemayı değiştirmez; yanlış adoption sonraki push sırasını bozar |
-| Yeni reconciliation migration | Kısmi ancak hedef state kesin belirlenmişse | Tercih edilen yaklaşım: doğru nesneye dokunmaz, eksik nesneyi fail-fast guard ile ekler, drift'te durur |
-| Yeni production baseline | History tamamen yok ve çok sayıda kısmi migration varsa | Repository/staging history ile ayrışma yaratabilir; ayrı mimari karar ve rollout gerekir |
+| `20260713000000` | Tarihsel final state’ten kanıtlanamıyor | `MANUAL_REVIEW` |
+| `20260713000001` | Kritik örnekler büyük ölçüde match, tam kapsam henüz kanıtlanmamıştı | `NOT YET ELIGIBLE` |
+| `20260713010000` | Function search_path drift’i | `NOT ELIGIBLE` |
+| `20260713010100` | Function/trigger/constraint eksik ve bir tutarsız verification satırı | `NOT ELIGIBLE` |
+| `20260713010200` | `handle_new_user` search_path drift’i | `NOT ELIGIBLE` |
+| `20260713010300` | Üç RLS ve 11 policy eksik | `NOT ELIGIBLE` |
+| `20260713010400` | RPC eksik | `NOT ELIGIBLE` |
+| `20260713010500` | Auth trigger sözleşmesi eşleşiyor | `CANDIDATE` |
+| `20260714010000` | Legacy policy mevcut, RPC smoke henüz yapılmamıştı | `BLOCKED` |
 
-## 8. Güvenli production sırası
+Bu snapshot sonrasında data remediation ve reconciliation gerçekten uygulandığı için güncel version sınıfları Bölüm 3’teki sonuçlardır.
 
-1. İlk sekiz migration için salt-okunur contract audit.
-2. Her version'ı `MATCH`, `MISSING`, `MISMATCH`, `MANUAL_REVIEW` olarak sınıflandır.
-3. Tam eşleşen version'lar için ayrı history adoption kararı ver.
-4. Kısmi/eksik version'lar için hedefli reconciliation veya forward migration kararı al.
-5. Eksik meal completion RPC'yi ayrı onaylı production migration'ıyla ekle.
-6. RPC catalog ve function privilege postflight yap.
-7. Açıkça ayrılmış test hesabı varsa own/foreign RPC smoke testi yap; yoksa veri mutation testi yapma.
-8. Mobil production client'ın RPC endpoint'ine eriştiğini doğrula.
-9. Yalnız bundan sonra legacy policy removal migration'ını değerlendir.
-10. Policy/RPC/RLS postflight, history doğrulaması ve mutasyonsuz application smoke testi yap.
-
-## 9. Production Meal Completion RPC Rollout
-
-Ön koşullar:
-
-- `public.meals`, `public.meal_plans` ve `meals_plan_id_fkey` sözleşmeleri doğrulanmış olmalı.
-- Client ve dietitian SELECT policy'leri mevcut olmalı.
-- RPC SQL'i repository'deki `20260713010400` ile eşleşmeli.
-- SECURITY DEFINER kullanımı, `pg_catalog, public` search path ve `auth.uid()` sahiplik kontrolü birlikte doğrulanmalı.
-- Function yalnız `is_eaten` alanını güncellemeli.
-- PUBLIC/anon execute kapalı, authenticated execute açık olmalı.
-
-RPC uygulandıktan ve policy kaldırılmadan önce catalog, privilege ve body invariant sonuçları `MATCH` olmalıdır. Gerçek kullanıcı verisi kullanılmaz. Ayrı production test hesabı yoksa own/foreign mutation testi yapılmaz; staging fiziksel cihaz kanıtı korunur fakat production doğrulaması gibi sunulmaz.
-
-## 10. Verification SQL ve history sınırlaması
-
-[`production_migration_history_reconciliation_verification.sql`](../supabase/verification/production_migration_history_reconciliation_verification.sql) yalnız katalog ve information schema okur. `supabase_migrations.schema_migrations` eksikken hata vermemek için relation satırlarına doğrudan referans vermez.
-
-Tablo mevcut çıkarsa exact count/version listesi, ayrı onaylı ve tablo varlığı doğrulanmış ikinci salt-okunur adımda alınmalıdır. Bu sınırlama `MANUAL_REVIEW` olarak görünür; dinamik SQL veya mutation ile aşılmaz.
-
-## 11. Production contract audit sonrası version sınıflandırması
-
-| Version | Audit sonucu | History adoption durumu |
-|---|---|---|
-| `20260713000000` | Tarihsel final state'ten kanıtlanamıyor | `MANUAL_REVIEW` |
-| `20260713000001` | Kritik örnek sözleşmeler büyük ölçüde `MATCH`, fakat migration'ın bütün 21 tablo/10 function/7 trigger/51 policy kapsamı tamamen kanıtlanmadı | `NOT YET ELIGIBLE` |
-| `20260713010000` | Function `search_path` drift'i var | `NOT ELIGIBLE` |
-| `20260713010100` | Verification sync function, trigger ve consistency constraint eksik; bir `true + pending` satırı canonical mirror kuralıyla tutarsız | `NOT ELIGIBLE`; ayrı data remediation ve postflight zorunlu |
-| `20260713010200` | `handle_new_user` `search_path` drift'i var | `NOT ELIGIBLE` |
-| `20260713010300` | Üç tabloda RLS ve 11 policy eksik | `NOT ELIGIBLE` |
-| `20260713010400` | RPC tamamen eksik | `NOT ELIGIBLE` |
-| `20260713010500` | Trigger sözleşmesi `MATCH` | `CANDIDATE`; dependency ve tam migration incelemesi gerekir |
-| `20260714010000` | Legacy policy hâlâ mevcut ve RPC smoke testi yapılmadı | `BLOCKED` |
-
-Reconciliation başarıyla uygulansa bile toplu veya otomatik `migration repair` yapılmaz. Her version, postflight kanıtı ve tam migration sözleşmesi üzerinden ayrı yeniden sınıflandırılır.
-
-## 12. Hazırlanan pre-policy reconciliation paketi
-
-Paket active migration dizini dışında beş parçalıdır: salt-okunur preflight, ayrı ve manuel onaylı verification data remediation SQL'i, salt-okunur remediation postflight, transaction/fail-fast ana reconciliation SQL'i ve salt-okunur reconciliation postflight. Ana reconciliation yalnız audit ile doğrulanan şema drift'ini hedefler ve production satırı değiştirmez. Migration history, legacy client UPDATE policy'si ve dört ekstra policy değişiklik kapsamı dışındadır.
-
-Hazırlık durumu `PREPARED`, uygulama durumu `NOT APPLIED`dır. Bir sonraki kapı, production SQL Editor'da güncellenmiş preflight SQL'inin salt-okunur çalıştırılmasıdır. Beklenen ara kapılar `DATA_REMEDIATION_READY=YES` ve `RECONCILIATION_READY=NO`dur. Remediation ayrı onay, uygulama ve postflight gerektirir; ana reconciliation bundan önce çalıştırılamaz.
-
-## 13. Son karar
+## 9. Son karar
 
 ```text
-Production schema fully reconciled: NO
-Meal completion RPC available: NO
-Legacy policy removable: NO
-Production migration applied: NO
-Production reconciliation package prepared: YES
-Production reconciliation applied: NO
-Decision: NOT READY
+LOCAL_MIGRATION_CHAIN_VALID=YES
+RECONCILIATION_EQUIVALENCE_VALID=YES
+HISTORY_ADOPTION_PLAN_COMPLETE=YES
+AUTOMATIC_BULK_REPAIR_ALLOWED=NO
+POLICY_REMOVAL_MIGRATION_READY_AFTER_ADOPTION=YES
+CURRENT_POLICY_REMOVAL_STATUS=BLOCKED_BY_HISTORY_ADOPTION
 ```

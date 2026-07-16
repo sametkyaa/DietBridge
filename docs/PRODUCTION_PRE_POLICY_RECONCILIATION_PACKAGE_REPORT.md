@@ -295,3 +295,24 @@ Policy removal: BLOCKED
 ```
 
 Bu düzeltme hazırlanırken production veya staging’e bağlanılmadı; fixture, RPC, SQL, migration veya policy mutation çalıştırılmadı.
+
+## 36. Güncel production sonucu ve migration history adoption
+
+Önceki bölümde `PENDING` olan fiziksel mobil retry daha sonra kullanıcı tarafından tamamlandı. Own toggle, persistence ve foreign meal not-exposed kontrolleri geçti; fixture cleanup `PASS`, kalan kayıt sayısı `0` oldu.
+
+```text
+Production reconciliation: APPLIED SUCCESSFULLY
+Reconciliation postflight: PASS
+RPC production smoke tests: PASSED
+Physical Android production smoke: PASSED
+Fixture cleanup: PASSED
+Remaining fixture records: 0
+Legacy policy: STILL PRESENT
+Policy removal functional gate before cleanup: PASSED
+Remote migration history: EMPTY
+Migration history adoption: BLOCKER
+```
+
+Reconciliation SQL’i migration history’yi ve exact legacy policy’yi korudu. İlk yedi pre-policy version reconcile edilmiş final state üzerinden adoption adayıdır; auth trigger assurance version’ı doğrudan `MATCH`tir. Tarihsel default-privilege prelude `20260713000000` ise final katalogdan sırası kanıtlanamadığı için `SUPERSEDED_MANUAL_REVIEW` ve ayrı risk acceptance gerektirir. Policy-removal version `20260714010000` gerçek migration push’a kadar pending kalacaktır.
+
+Bu adoption paketi hazırlanırken production/staging bağlantısı, CLI network komutu, SQL, history mutation, migration push veya policy removal yapılmadı.
