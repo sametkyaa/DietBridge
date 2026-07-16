@@ -190,12 +190,22 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Cleanup bulgusu ve düzeltmesi:** İlk cleanup PARTIAL oldu; mobil kullanımının oluşturduğu manifest dışı `daily_logs.client_id` satırı `ON DELETE NO ACTION` bağıyla fixture Auth silmesini engelledi. Fixture cleanup scripti düzeltildi: yalnız manifest kullanıcılarına ait günlük logları Auth silmeden önce temizler, dar 404 `user_not_found` idempotency ve sınırlı retry uygular. `daily_logs` foreign key davranışı ayrı şema kararı/riskidir.
 - **Emülatör notu:** Network-offline davranışı emülatörde güvenilir kabul edilmedi; kabul sonucu fiziksel Android telefon testidir.
 - **Aşama 3E-2A — Migration hazırlığı:** Kullanıcı beyanına göre legacy mobile compatibility gerekli değildir; eski build dış dağıtıma çıkmadı. Exact `Clients can update own meal completion` policy’sini kaldıran fail-fast migration, salt-okunur catalog verification SQL’i ve staging regresyon runbook’u hazırlandı.
-- **Aşama durumları:** 3E-2C-2A COMPLETED; 3E-2C-2B production read-only contract audit COMPLETED / NOT READY; 3E-2C-2C pre-policy reconciliation package PREPARED; 3E-2C-2D preflight execution COMPLETED; 3E-2C-2D-1 verification data remediation package PREPARED; 3E-2C-2D-2 data remediation application COMPLETED; 3E-2C-2E reconciliation application COMPLETED; 3E-2C-2E-1 function validator correction COMPLETED; 3E-2C-2E-2 constraint validator correction COMPLETED; production reconciliation retry 3 COMPLETED; production postflight PASSED; 3E-2C-2F production CLI RPC smoke tests PASSED; physical Android production smoke PASSED; fixture cleanup PASSED / remaining `0`; migration history adoption package PREPARED; 3E-2C-3 legacy policy removal BLOCKED BY HISTORY ADOPTION; Aşama 3 devam ediyor.
+- **Aşama durumları (kapanış öncesi tarihsel kayıt):** 3E-2C-2A COMPLETED; 3E-2C-2B production read-only contract audit COMPLETED / NOT READY; 3E-2C-2C pre-policy reconciliation package PREPARED; 3E-2C-2D preflight execution COMPLETED; 3E-2C-2D-1 verification data remediation package PREPARED; 3E-2C-2D-2 data remediation application COMPLETED; 3E-2C-2E reconciliation application COMPLETED; 3E-2C-2E-1 function validator correction COMPLETED; 3E-2C-2E-2 constraint validator correction COMPLETED; production reconciliation retry 3 COMPLETED; production postflight PASSED; 3E-2C-2F production CLI RPC smoke tests PASSED; physical Android production smoke PASSED; fixture cleanup PASSED / remaining `0`; migration history adoption package PREPARED; 3E-2C-3 legacy policy removal BLOCKED BY HISTORY ADOPTION. Güncel tamamlanma durumu aşağıdaki kapanış kaydındadır.
 - **Staging sonucu:** Legacy policy staging’de kaldırıldı. Staging security harness 17/17 geçti. Fiziksel Android mobil regresyonu geçti. Staging cleanup Auth/public/Storage `0/0/0` tamamlandı.
 - **Production mobil ilk deneme:** Production CLI RPC smoke kontrolleri geçti; RPC defekti gözlenmedi. İlk fiziksel mobil deneme, eski fixture’da aktif `dietitian_clients` ilişkisi bulunmadığı için beklenen UI kapısında durdu; mobil uygulama defekti kanıtlanmadı. Eski fixture cleanup `PASS`, kalan kayıt `0` ve legacy policy `PRESENT` durumundadır.
-- **Production rollout blocker:** Production reconciliation, CLI RPC ve fiziksel Android own/persistence/foreign-not-exposed kontrolleri geçti; fixture cleanup `PASS`, kalan kayıt `0` ve functional policy-removal gate test öncesinde `YES` oldu. Legacy policy hâlâ mevcut. Tek kalan blocker, boş remote history’ye ilk sekiz migration’ın version bazlı adoption’ıdır; `20260713000000` ayrı tarihsel risk acceptance gerektirir.
-- **Sıradaki işlem:** Ayrı production mutation görevinde backup/restore point ve her version için ayrı manuel approval ile history adoption runbook’unu uygula. Remote ilk sekiz version ile birebir eşleşmeden policy-removal dry-run/push çalıştırma; `20260714010000` yalnız gerçek migration push için pending kalmalıdır.
-- **Durum:** Devam ediyor.
+- **Production rollout blocker (kapanış öncesi tarihsel kayıt):** Production reconciliation, CLI RPC ve fiziksel Android own/persistence/foreign-not-exposed kontrolleri geçti; fixture cleanup `PASS`, kalan kayıt `0` ve functional policy-removal gate test öncesinde `YES` oldu. Legacy policy hâlâ mevcuttu. Tek kalan blocker, boş remote history’ye ilk sekiz migration’ın version bazlı adoption’ıydı; `20260713000000` ayrı tarihsel risk acceptance gerektiriyordu.
+- **Kapanış öncesi sıradaki işlem (tarihsel kayıt):** Ayrı production mutation görevinde backup/restore point ve her version için ayrı manuel approval ile history adoption runbook’unu uygulamak; remote ilk sekiz version birebir eşleşmeden policy-removal dry-run/push çalıştırmamak ve `20260714010000` sürümünü gerçek migration push için pending bırakmak planlanmıştı.
+- **Aşama 3 kapanışı — 2026-07-16:**
+  - History adoption blocker kapatıldı. Production migration history, dokuz active local migration ile `9/9 Local–Remote` eşleşecek şekilde doğrulandı; ilk sekiz migration için kontrollü history adoption tamamlandı.
+  - `20260714010000_remove_legacy_client_meals_update_policy.sql` production’a history adoption olarak değil gerçek migration olarak uygulandı. Eski `Clients can update own meal completion` policy’si kaldırıldı ve legacy policy kaldırma kontrolü `PASS` oldu.
+  - `set_my_meal_completion` RPC güvenlik sözleşmesi `PASS` oldu: owner `postgres`, `security_definer = true`, authenticated execute `true`, anon execute `false`, service_role execute `true`, `search_path = pg_catalog, public`.
+  - Kritik RLS sözleşmesi `PASS` oldu; `appointments`, `chat_messages`, `dietitian_profiles`, `meal_plans` ve `meals` tablolarında RLS’nin açık olduğu doğrulandı.
+  - Fiziksel Android production testi geçti. Production fixture cleanup sonucu `PASS`, kalan fixture kayıt sayısı `0` oldu.
+  - Gerçek production danışanına beslenme planı başarıyla kaydedildi ve plan mobil uygulamada görünür oldu. Mobilde `Öğünü yedim → Geri Al` ile `Geri Al → Öğünü yedim` geçişleri başarılı, kalıcı ve yeniden açılış sonrasında tutarlı bulundu.
+  - Plan kaydındaki `meals.recipe_id = "1"` UUID hatası giderildi.
+  - Kalite doğrulamaları: typecheck başarılı; lint `0 error, 61 warning`; production build başarılı.
+  - PR #1 `main` branch’ine merge edildi. Merge commit: `a9f0a5874b7b367656a09736de682403aeabb149`.
+- **Durum:** Tamamlandı.
 
 ### Aşama 4 — Danışan yönetimi
 
@@ -209,7 +219,8 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Diyetisyen yalnızca kendi danışanını görür; ekleme ve ölçüm verisi kalıcıdır; yenilemede kaybolmaz; hata sahte başarı üretmez.
 - **Manuel doğrulama:** Boş liste, arama, pending/active ilişki, yetkisiz URL, profil fotoğrafı ve ölçüm geçmişi.
 - **Teslim çıktıları:** Güvenli danışan akışı ve test kanıtları.
-- **Durum:** Bekliyor.
+- **Başlangıç tarihi:** 2026-07-16.
+- **Durum:** Devam ediyor.
 
 ### Aşama 5 — Beslenme planı ve öğün yönetimi
 
@@ -427,8 +438,8 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 0 | Proje yönetimi ve kurallar | Tamamlandı | `codex/project-governance` | 2026-07-12 | 2026-07-12 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu ve doğrulandı |
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
-| 3 | Supabase ve RLS | Devam ediyor | `codex/supabase-security` | 2026-07-13 |  | Reconciliation, RPC ve fiziksel mobil smoke PASSED; cleanup `0`; history adoption package PREPARED; policy removal BLOCKED BY HISTORY ADOPTION |
-| 4 | Danışan yönetimi | Bekliyor | `codex/client-management` |  |  |  |
+| 3 | Supabase ve RLS | Tamamlandı | `codex/supabase-security` | 2026-07-13 | 2026-07-16 | Production history `9/9` eşleşti; kontrollü adoption ve gerçek policy-removal migration’ı tamamlandı; RPC/RLS/mobil/cleanup/plan senkronizasyon kapıları geçti; PR #1 `main`e merge edildi |
+| 4 | Danışan yönetimi | Devam ediyor | `codex/client-management` | 2026-07-16 |  | Salt-okunur kickoff kod ve veri akışı denetimi başlatıldı |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
 | 7 | Randevular | Bekliyor | `codex/appointments` |  |  |  |
@@ -484,3 +495,10 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-16 | Aşama 3E-2C-2F | Production CLI RPC smoke testleri geçti; ilk fiziksel mobil denemenin eksik aktif diyetisyen ilişkisi nedeniyle durduğu kaydedildi ve fixture mobil uyumlu modelle genişletildi | MOBILE-READY FIXTURE PREPARED; physical mobile retry PENDING; policy removal BLOCKED | `codex/supabase-security` |
 | 2026-07-16 | Aşama 3E-2C-2F | Fiziksel Android production own toggle, persistence ve foreign-not-exposed testleri geçti; fixture cleanup `PASS`, remaining `0` doğrulandı | Functional gate PASSED; legacy policy PRESENT; history adoption BLOCKER | `codex/supabase-security` |
 | 2026-07-16 | Aşama 3E-2C-2G | Dokuz local migration hash’i, version bazlı contract/adoption matrisi, ağsız validator ve kontrollü history adoption runbook’u hazırlandı | PREPARED; no history mutation; automatic bulk repair forbidden | `codex/supabase-security` |
+| 2026-07-16 | Aşama 3E-2C-3 | İlk sekiz migration için kontrollü production history adoption tamamlandı; Local–Remote migration history `9/9` eşleşti | Tamamlandı; history adoption blocker kapandı | `codex/supabase-security` |
+| 2026-07-16 | Aşama 3E-2C-3 | `20260714010000_remove_legacy_client_meals_update_policy.sql` production’a gerçek migration olarak uygulandı; eski client meals UPDATE policy’si kaldırıldı | Policy removal `PASS` | `codex/supabase-security` |
+| 2026-07-16 | Aşama 3E-2C-3 | Meal completion RPC güvenlik sözleşmesi, kritik RLS sözleşmesi ve fiziksel Android production doğrulamaları tamamlandı; fixture cleanup `PASS`, kalan `0` | Tamamlandı | `codex/supabase-security` |
+| 2026-07-16 | Aşama 3E-2C-3 | Gerçek production danışanına plan kaydı, mobil görünürlük ve iki yönlü kalıcı meal completion senkronizasyonu doğrulandı | Tamamlandı | `codex/supabase-security` |
+| 2026-07-16 | Aşama 3 | PR #1 `main` branch’ine `a9f0a5874b7b367656a09736de682403aeabb149` merge commit’iyle alındı | Merge tamamlandı | PR #1 / `main` |
+| 2026-07-16 | Aşama 3 | Supabase şema, migration, RLS, RPC ve production mobil uyumluluk kapıları tamamlandı | Tamamlandı | `codex/supabase-security` |
+| 2026-07-16 | Aşama 4 | Danışan yönetimi kickoff denetimi başlatıldı | Devam ediyor | `codex/client-management` |
