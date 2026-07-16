@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, MapPin, Phone, Calendar, Weight, Activity, TrendingUp, TrendingDown, Droplets, Utensils, FileText, HeartPulse, Pill, Moon, Coffee, Stethoscope, Clock, Trash2 } from 'lucide-react';
-import { fetchClientDetails, removeClient, fetchClientMeasurements, fetchClientDailyLogs, Measurement, DailyLog } from '../features/clients/services/clientService';
+import { fetchClientDetails, removeClient, fetchClientMeasurements, fetchClientDailyLogs, Measurement, DailyLog, PendingClientSummary } from '../features/clients/services/clientService';
 import { Client } from '../shared/types';
 import { supabase } from '../lib/supabaseClient';
+import { isValidUuid } from '../shared/utils/uuid';
 
 
 const ProfileAvatarFallback = ({ name, className }: { name: string, className?: string }) => {
@@ -15,95 +16,207 @@ const ProfileAvatarFallback = ({ name, className }: { name: string, className?: 
   );
 };
 
+type ClientDetailsViewState =
+  | { status: 'loading' }
+  | { status: 'active'; client: Client }
+  | { status: 'pending'; client: PendingClientSummary }
+  | { status: 'invalid_id' }
+  | { status: 'unavailable' }
+  | { status: 'error'; userMessage: string };
+
+const CLIENT_DETAIL_LOAD_ERROR =
+  'Danışan bilgileri şu anda yüklenemiyor. Lütfen tekrar deneyin.';
+
 const ClientDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [client, setClient] = useState<Client | null>(null);
+  const routeClientId = isValidUuid(id) ? id : null;
+  const [viewState, setViewState] = useState<ClientDetailsViewState>({ status: 'loading' });
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isRemoving, setIsRemoving] = useState(false);
   const [profileImageError, setProfileImageError] = useState(false);
+  const requestSequence = useRef(0);
 
-  const loadData = async () => {
-    if (!id) return;
-    try {
-      const [clientData, measurementsData, logsData] = await Promise.all([
-        fetchClientDetails(id),
-        fetchClientMeasurements(id),
-        fetchClientDailyLogs(id)
-      ]);
-      setClient(clientData);
-      setMeasurements(measurementsData);
-      setDailyLogs(logsData);
-    } catch (err) {
-      console.error("Failed to load client details:", err);
-    } finally {
-      setLoading(false);
+  const loadData = useCallback(async (showLoading: boolean) => {
+    const requestId = ++requestSequence.current;
+
+    if (showLoading) {
+      setViewState({ status: 'loading' });
+      setMeasurements([]);
+      setDailyLogs([]);
     }
-  };
+
+    if (!routeClientId) {
+      if (requestId === requestSequence.current) {
+        setMeasurements([]);
+        setDailyLogs([]);
+        setViewState({ status: 'invalid_id' });
+      }
+      return;
+    }
+
+    try {
+      const accessResult = await fetchClientDetails(routeClientId);
+      if (requestId !== requestSequence.current) return;
+
+      switch (accessResult.status) {
+        case 'invalid_id':
+          setMeasurements([]);
+          setDailyLogs([]);
+          setViewState({ status: 'invalid_id' });
+          return;
+        case 'unavailable':
+          setMeasurements([]);
+          setDailyLogs([]);
+          setViewState({ status: 'unavailable' });
+          return;
+        case 'error':
+          setMeasurements([]);
+          setDailyLogs([]);
+          setViewState({ status: 'error', userMessage: accessResult.userMessage });
+          return;
+        case 'pending':
+          setMeasurements([]);
+          setDailyLogs([]);
+          setViewState({ status: 'pending', client: accessResult.client });
+          return;
+        case 'active': {
+          const [measurementsData, logsData] = await Promise.all([
+            fetchClientMeasurements(routeClientId),
+            fetchClientDailyLogs(routeClientId),
+          ]);
+
+          if (requestId !== requestSequence.current) return;
+          setMeasurements(measurementsData);
+          setDailyLogs(logsData);
+          setViewState({ status: 'active', client: accessResult.client });
+          return;
+        }
+      }
+    } catch {
+      if (requestId !== requestSequence.current) return;
+      setMeasurements([]);
+      setDailyLogs([]);
+      setViewState({ status: 'error', userMessage: CLIENT_DETAIL_LOAD_ERROR });
+    }
+  }, [routeClientId]);
+
+  const displayedClient =
+    viewState.status === 'active' || viewState.status === 'pending'
+      ? viewState.client
+      : null;
 
   useEffect(() => {
     setProfileImageError(false);
-  }, [client?.id, client?.profilePhotoUrl]);
+  }, [displayedClient?.id, displayedClient?.profilePhotoUrl]);
 
   useEffect(() => {
-    loadData();
+    void loadData(true);
 
-    if (!id) return;
+    return () => {
+      requestSequence.current += 1;
+    };
+  }, [loadData]);
 
-    // Realtime subscriptions
+  const activeClientId = viewState.status === 'active' ? viewState.client.id : null;
+
+  useEffect(() => {
+    if (!routeClientId || activeClientId !== routeClientId) return;
+
+    let mounted = true;
+    const refreshActiveClient = () => {
+      if (mounted) void loadData(false);
+    };
+
+    window.addEventListener('focus', refreshActiveClient);
+
     const profilesSub = supabase
-      .channel('client_profiles_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_profiles', filter: `user_id=eq.${id}` }, () => {
-        loadData();
+      .channel(`client_detail_changes_${activeClientId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_profiles', filter: `user_id=eq.${routeClientId}` }, () => {
+        refreshActiveClient();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${id}` }, () => {
-        loadData();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${routeClientId}` }, () => {
+        refreshActiveClient();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'measurements', filter: `client_id=eq.${id}` }, () => {
-        loadData();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'measurements', filter: `client_id=eq.${routeClientId}` }, () => {
+        refreshActiveClient();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_logs', filter: `client_id=eq.${id}` }, () => {
-        loadData();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_logs', filter: `client_id=eq.${routeClientId}` }, () => {
+        refreshActiveClient();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dietitian_clients', filter: `client_id=eq.${routeClientId}` }, () => {
+        refreshActiveClient();
       })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(profilesSub);
+      mounted = false;
+      window.removeEventListener('focus', refreshActiveClient);
+      void supabase.removeChannel(profilesSub);
     };
-  }, [id]);
+  }, [activeClientId, loadData, routeClientId]);
 
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center h-full min-h-screen">
-        <div className="text-center text-slate-500">
-            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-            Yükleniyor...
-        </div>
+  const loadingView = (
+    <div className="p-8 flex items-center justify-center h-full min-h-screen">
+      <div className="text-center text-slate-500">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+          Yükleniyor...
       </div>
-    );
+    </div>
+  );
+
+  if (
+    viewState.status === 'loading' ||
+    ((viewState.status === 'active' || viewState.status === 'pending') &&
+      viewState.client.id !== routeClientId)
+  ) {
+    return loadingView;
   }
 
-  if (!client) {
+  if (!routeClientId || viewState.status === 'invalid_id') {
     return (
       <div className="p-8 flex items-center justify-center h-full min-h-screen">
-        <div className="text-center">
-            <h2 className="text-2xl font-bold text-slate-800">Danışan Bulunamadı</h2>
+        <div className="text-center max-w-md">
+            <h2 className="text-2xl font-bold text-slate-800">Geçersiz Danışan Bağlantısı</h2>
+            <p className="mt-2 text-slate-500">Danışanı görüntülemek için lütfen danışan listesinden tekrar seçim yapın.</p>
             <button onClick={() => navigate('/clients')} className="mt-4 text-primary font-medium hover:underline">Listeye Dön</button>
         </div>
       </div>
     );
   }
 
-  const handleEditPlan = () => {
-    navigate('/meal-plans', { state: { clientId: client.id } });
-  };
+  if (viewState.status === 'unavailable') {
+    return (
+      <div className="p-8 flex items-center justify-center h-full min-h-screen">
+        <div className="text-center max-w-md">
+            <h2 className="text-2xl font-bold text-slate-800">Danışana Erişilemiyor</h2>
+            <p className="mt-2 text-slate-500">Bu danışana erişilemiyor veya danışan bulunamadı.</p>
+            <button onClick={() => navigate('/clients')} className="mt-4 text-primary font-medium hover:underline">Listeye Dön</button>
+        </div>
+      </div>
+    );
+  }
 
-  const handleRemoveClient = async () => {
+  if (viewState.status === 'error') {
+    return (
+      <div className="p-8 flex items-center justify-center h-full min-h-screen">
+        <div className="text-center max-w-md">
+            <h2 className="text-2xl font-bold text-slate-800">Danışan Bilgileri Yüklenemedi</h2>
+            <p className="mt-2 text-slate-500">{viewState.userMessage}</p>
+            <div className="mt-4 flex items-center justify-center gap-4">
+              <button onClick={() => void loadData(true)} className="text-primary font-medium hover:underline">Tekrar Dene</button>
+              <button onClick={() => navigate('/clients')} className="text-slate-500 font-medium hover:underline">Listeye Dön</button>
+            </div>
+        </div>
+      </div>
+    );
+  }
+
+  const handleRemoveClient = async (clientId: string) => {
     if (window.confirm('Bu danışanı listenizden kaldırmak istediğinize emin misiniz?')) {
       setIsRemoving(true);
-      const success = await removeClient(client.id);
+      const success = await removeClient(clientId);
       setIsRemoving(false);
       if (success) {
         alert('Danışan bağlantısı kaldırıldı.');
@@ -114,7 +227,8 @@ const ClientDetails = () => {
     }
   };
 
-  if (client.status === 'Onay Bekliyor') {
+  if (viewState.status === 'pending') {
+    const client = viewState.client;
     return (
       <div className="p-8 max-w-7xl mx-auto min-h-screen">
         <button 
@@ -161,7 +275,7 @@ const ClientDetails = () => {
                  </div>
                  <div className="mt-8 flex justify-center md:justify-start">
                     <button 
-                      onClick={handleRemoveClient}
+                      onClick={() => handleRemoveClient(client.id)}
                       disabled={isRemoving}
                       className="px-4 py-2 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-all disabled:opacity-50 flex items-center gap-2"
                     >
@@ -175,6 +289,12 @@ const ClientDetails = () => {
       </div>
     );
   }
+
+  const client = viewState.client;
+
+  const handleEditPlan = () => {
+    navigate('/meal-plans', { state: { clientId: client.id } });
+  };
 
   // Calculate Data
   const currentWeightNum = parseFloat(client.currentWeight) || 0;
@@ -201,22 +321,33 @@ const ClientDetails = () => {
   // Format Water Data
   const recentLogs = dailyLogs.slice(-7);
   const waterTarget = client.waterGoalLiters ?? null;
+  const recordedWaterValues = recentLogs
+    .map(log => log.water_intake)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const hasDailyLogs = recentLogs.length > 0;
+  const hasWaterData = recordedWaterValues.length > 0;
+  const waterAvg = hasWaterData
+    ? (recordedWaterValues.reduce((sum, value) => sum + value, 0) / recordedWaterValues.length / 1000).toFixed(1)
+    : null;
+  const waterAverageLabel = recordedWaterValues.length === 1
+    ? 'Son Kayıt'
+    : `Son ${recordedWaterValues.length} Kayıt Ort.`;
   
   const dayNames = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
   const waterData = recentLogs.map(log => {
       const d = new Date(log.date);
       return {
-          val: log.water_intake ? parseFloat((log.water_intake / 1000).toFixed(1)) : 0,
+          val: typeof log.water_intake === 'number'
+            ? parseFloat((log.water_intake / 1000).toFixed(1))
+            : null,
           day: dayNames[d.getDay()] || '-'
       };
   });
   
   // Pad if we don't have 7 days
   while (waterData.length < 7) {
-      waterData.unshift({ val: 0, day: '-' });
+      waterData.unshift({ val: null, day: '-' });
   }
-
-  const waterAvg = waterData.length > 0 ? (waterData.reduce((a, b) => a + b.val, 0) / waterData.filter(d => d.val > 0).length || 1).toFixed(1) : '0';
 
   return (
     <div className="p-8 max-w-7xl mx-auto min-h-screen">
@@ -266,7 +397,7 @@ const ClientDetails = () => {
                             Planı Düzenle
                         </button>
                         <button 
-                          onClick={handleRemoveClient}
+                          onClick={() => handleRemoveClient(client.id)}
                           disabled={isRemoving}
                           className="px-3 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-all disabled:opacity-50 flex items-center justify-center"
                           title="Danışanı Kaldır"
@@ -479,27 +610,39 @@ const ClientDetails = () => {
                     <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                         <Droplets className="w-5 h-5 text-blue-500" /> Su Tüketimi
                     </h3>
-                    <div className="flex items-baseline gap-2 mb-6">
-                        <span className="text-3xl font-bold text-slate-800">{waterAvg} <span className="text-sm font-normal text-slate-400">Lt (Ort.)</span></span>
-                        {waterTarget && <span className="text-xs font-medium text-slate-400">Hedef: {waterTarget} Lt</span>}
-                    </div>
-                    
-                    <div className="h-48 flex items-stretch justify-between gap-3">
-                        {waterData.map((data, i) => (
-                             <div key={i} className="flex flex-col items-center flex-1 group relative">
-                                <span className="opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-full mb-2 text-xs font-bold bg-slate-800 text-white px-2 py-1 rounded shadow-lg z-10">
-                                    {data.val} Lt
-                                </span>
-                                <div className="w-full bg-blue-50/50 rounded-2xl relative flex-1 flex items-end overflow-hidden">
-                                    <div 
-                                        className={`w-full rounded-2xl transition-all duration-500 ${waterTarget && data.val >= waterTarget ? 'bg-blue-500' : 'bg-blue-300'}`}
-                                        style={{ height: `${Math.min((data.val / (waterTarget || 3)) * 100, 100)}%` }}
-                                    ></div>
-                                </div>
-                                <span className="text-xs text-slate-400 mt-3 font-medium">{data.day}</span>
-                             </div>
-                        ))}
-                    </div>
+                    {!hasDailyLogs ? (
+                      <p className="text-sm text-slate-500 py-8" role="status">
+                        Henüz günlük takip kaydı bulunmuyor.
+                      </p>
+                    ) : !hasWaterData ? (
+                      <p className="text-sm text-slate-500 py-8" role="status">
+                        Günlük kayıtlar mevcut ancak su tüketimi bilgisi bulunmuyor.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex items-baseline gap-2 mb-6">
+                            <span className="text-3xl font-bold text-slate-800">{waterAvg} <span className="text-sm font-normal text-slate-400">Lt ({waterAverageLabel})</span></span>
+                            {waterTarget !== null && <span className="text-xs font-medium text-slate-400">Hedef: {waterTarget} Lt</span>}
+                        </div>
+
+                        <div className="h-48 flex items-stretch justify-between gap-3">
+                            {waterData.map((data, i) => (
+                                 <div key={i} className="flex flex-col items-center flex-1 group relative">
+                                    <span className="opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-full mb-2 text-xs font-bold bg-slate-800 text-white px-2 py-1 rounded shadow-lg z-10">
+                                        {data.val === null ? 'Su bilgisi yok' : `${data.val} Lt`}
+                                    </span>
+                                    <div className="w-full bg-blue-50/50 rounded-2xl relative flex-1 flex items-end overflow-hidden">
+                                        <div
+                                            className={`w-full rounded-2xl transition-all duration-500 ${data.val !== null && waterTarget !== null && data.val >= waterTarget ? 'bg-blue-500' : 'bg-blue-300'}`}
+                                            style={{ height: `${data.val === null ? 0 : Math.min((data.val / (waterTarget || 3)) * 100, 100)}%` }}
+                                        ></div>
+                                    </div>
+                                    <span className="text-xs text-slate-400 mt-3 font-medium">{data.day}</span>
+                                 </div>
+                            ))}
+                        </div>
+                      </>
+                    )}
                 </div>
 
                 {/* Calorie Chart - Kept as mock since no direct calorie logs are found */}

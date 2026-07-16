@@ -582,3 +582,342 @@ Dar kapsam:
 6. Başka diyetisyen UUID’si, pending, rejected/removed ve geçersiz UUID için unit/service/manual test ekle.
 
 Bu ilk görev migration veya production mutation gerektirmez ve diğer Aşama 4 iş paketleri için güvenli sahiplik temelini kurar.
+
+## 26. İş Paketi 4.1 Uygulama Sonucu
+
+### Değiştirilen dosyalar
+
+- `features/clients/services/clientService.ts`
+- `pages/ClientDetails.tsx`
+- `docs/ROADMAP.md`
+- `docs/CLIENT_MANAGEMENT_STAGE_4_KICKOFF_AUDIT.md`
+
+### Erişim sözleşmesi ve veri yükleme sırası
+
+- Servis sonucu `active`, `pending`, `invalid_id`, `unavailable` ve `error` durumlarını ayıran discriminated union ile açık hâle getirildi.
+- Route ve servis katmanları mevcut `shared/utils/uuid.ts` içindeki `isValidUuid()` helper’ını kullanır. Geçersiz UUID, auth veya tablo sorgusu başlamadan `invalid_id` olarak durur.
+- İlişki sorgusu authenticated diyetisyenin kimliği ve route client UUID’si ile sınırlandırılır. Yalnız `active` ilişki tam profil yüklemesine geçebilir.
+- `pending` ilişki yalnız ad, e-posta ve mevcut avatar görünümü için gereken minimum `profiles` alanlarını yükler; `client_profiles`, ölçüm ve günlük kayıt sorguları başlamaz.
+- `rejected`, `removed`, ilişkisiz ve RLS nedeniyle görünmeyen kayıtlar tenant varlığını ayırmadan `unavailable` sonucuna dönüşür.
+- Ölçüm ve günlük kayıt okumaları yalnız active profil kapısı geçtikten sonra paralel başlar. Bu alt kaynakların sorgu hataları boş diziye çevrilmez; sayfa güvenli `error` durumuna geçer.
+
+### UI ve Realtime kapısı
+
+- Sayfa `loading`, `active`, `pending`, `invalid_id`, `unavailable` ve `error` durumlarını açık bir state modeliyle yönetir.
+- Teknik Supabase hata alanları UI’ya veya yeni console kayıtlarına aktarılmaz; kullanıcıya yalnız güvenli Türkçe mesajlar gösterilir.
+- Realtime kanalı yalnız geçerli route UUID’si ile eşleşen doğrulanmış active client için kurulur. Pending ve diğer fail-closed durumlarda kanal oluşturulmaz.
+- Profil, client profile, ölçüm, daily log ve ilişki değişiklikleri active erişim kapısını yeniden çalıştırır; route değişimi ve unmount sırasında önceki kanal kaldırılır.
+
+### Kalite doğrulaması
+
+- `npm run typecheck`: başarılı.
+- `npm run lint`: başarılı; 0 error, 60 mevcut warning.
+- `npm run build`: başarılı; Vite büyük chunk uyarısı devam ediyor.
+- `git diff --check`: başarılı.
+- Otomatik test: Çalıştırılmadı — repository’de bu kapsam için mevcut otomatik test scripti/harness’i yok. Yeni test framework’ü veya paket eklenmedi.
+- Production veya staging üzerinde manuel hesap/fixture testi yapılmadı; kabul senaryoları kod yolu üzerinden statik olarak doğrulandı.
+
+### Production ve migration etkisi
+
+- Production ve staging Supabase projelerine bağlanılmadı; veri yazılmadı.
+- Migration oluşturulmadı veya çalıştırılmadı.
+- RLS, Storage policy, Auth, Storage ve mobil uygulama değiştirilmedi.
+
+### Kalan riskler ve sonraki adım
+
+- Realtime aboneliği hedefli biçimde active kapısının arkasına alındı ancak hâlâ sayfa katmanındadır; servis/helper katmanına taşıma ayrı ve küçük bir refactor olarak değerlendirilebilir.
+- Açık sayfadaki ilişki iptalinde Realtime olayı kaçırılırsa active ekran pencere yeniden odaklandığında ilişki kapısını tekrar çalıştırır. Sürekli odakta kalan ve Realtime olayı alamayan bir sekmede anlık UI revocation garantisi yoktur; RLS veri erişiminin zorunlu savunma katmanı olmaya devam eder.
+- `daily_logs` policy kararı, grafik empty/error doğruluğu, kanonik profil adapter’ı, avatar sözleşmesi ve mutation postcondition’ları ilgili ayrı iş paketlerinde açık kalır.
+- Aşama 4 genel durumu `Devam ediyor` olarak korunmuştur. Önerilen sonraki çalışma İş Paketi 4.2 — liste error/empty ayrımıdır.
+
+## 27. İş Paketi 4.1 Kod İncelemesi ve Staging Doğrulama Hazırlığı
+
+### İnceleme kararı
+
+`REVIEW PASSED / STAGING VERIFICATION PENDING`
+
+Bağımsız statik incelemede UUID, tenant sahipliği, ilişki durumu, pending veri minimizasyonu, active veri sırası, async generation counter ve UI state ayrımı fail-closed bulundu. Realtime olayının bağlantı kesintisi veya görünürlük nedeniyle kaçırılması hâlinde açık active ekranın ilişki durumunu kendiliğinden tekrar doğrulamadığı dar risk giderildi: active danışan sayfası pencere odağına döndüğünde mevcut `loadData(false)` akışını çalıştırır. Listener yalnız active ve route UUID’si eşleşen durumda kurulur; route değişimi, state değişimi ve unmount sırasında kaldırılır. Periyodik polling eklenmedi.
+
+### Statik senaryo matrisi
+
+| Senaryo | Doğrulanan kod yolu | Sonuç |
+|---|---|---|
+| `/clients/not-a-uuid` | Route `isValidUuid()` sonucu null; `loadData()` servis çağrısından önce `invalid_id` döner; Realtime effect guard’ı geçmez | PASS — Supabase/Auth/Realtime çağrısı yok |
+| Geçerli UUID, auth hatası | `auth.getUser()` error sonucu servis `error` döndürür | PASS — relation/profile sorgusu yok |
+| Geçerli UUID, ilişki sorgusu hatası | Relation error doğrudan typed `error` sonucuna dönüşür | PASS — profil ve alt kaynak sorgusu yok |
+| Geçerli UUID, ilişki yok | `maybeSingle()` null sonucu `unavailable` | PASS — tenant varlığı açıklanmıyor |
+| Başka diyetisyenin danışanı | `dietitian_id = authenticated user` ve `client_id = route UUID` birlikte aranır | PASS — aynı genel `unavailable` sonucu |
+| Pending | Relation `pending`; yalnız `profiles(full_name, avatar_url, email)` | PASS — health/measurement/log/Realtime yok |
+| Rejected | Active/pending dışındaki status | PASS — genel `unavailable` |
+| Removed | Active/pending dışındaki status | PASS — genel `unavailable` |
+| Active | Relation → temel profil → client profile → ölçüm/log sırası | PASS — alt kaynaklar gate sonrasında |
+| Active profil sorgusu hatası | Profile veya client profile error typed `error` | PASS — ölçüm/log başlamıyor |
+| Ölçüm sorgusu hatası | Ölçüm fonksiyonu error fırlatır; orchestration catch state’i temizler | PASS — boş diziyle sahte başarı yok |
+| Daily log sorgusu hatası | Daily log fonksiyonu error fırlatır; orchestration catch state’i temizler | PASS — boş diziyle sahte başarı yok |
+| Route UUID değişimi | `loadData` bağımlılığı değişir; cleanup request generation’ı artırır; eski client ID render guard’ında loading gösterir | PASS — eski sonuç state yazamaz, eski veri gösterilmez |
+| Unmount | Request generation cleanup’ı async yazıları geçersizleştirir; Realtime ve focus listener cleanup edilir | PASS — unmount sonrası state/subscription yazımı engelli |
+
+### Realtime ve ilişki iptali değerlendirmesi
+
+- Kanal yalnız `activeClientId === routeClientId` olduğunda kurulur. Kanal adı doğrulanmış route UUID’sini içerir; aktif uygulama zincirinde aynı ada sahip başka channel yoktur.
+- Auth state değişiminde `ProtectedRoute`, erişim yeniden çözülürken outlet’i unmount eder. Böylece eski kullanıcı bağlamındaki `ClientDetails` kanalı cleanup edilir.
+- Effect bağımlılıkları yalnız active client ID, route UUID ve route’a bağlı `loadData` referansıdır; aynı danışandaki sıradan render duplicate subscription oluşturmaz.
+- Subscription callback’i veriyi doğrudan state’e yazmaz; önce tüm UUID/auth/relation gate’ini yeniden çalıştırır. Sonuç pending/unavailable/error ise active state temizlenir ve channel cleanup olur.
+- Statik baseline’daki `dietitian_clients_select_own` policy’si diyetisyenin kendi relation satırını status’tan bağımsız görmesine izin verir. Bununla birlikte canlı Realtime publication/reconnect teslim garantisi bu görevde uzak ortama bağlanılarak doğrulanmadı.
+- Kaçırılan olay için active ekranda pencere focus revalidation savunması eklendi. Realtime kapalıyken ve sekme sürekli odaktayken anlık UI revocation garanti edilemez; yeni veri sorguları yine RLS tarafından sınırlandırılmalıdır.
+
+### Sentetik staging fixture planı
+
+Gerçek kullanıcı veya production verisi kullanılmamalıdır. Aşağıdaki fixture’lar yalnız ayrı, açık onaylı staging test görevinde oluşturulmalıdır.
+
+| Fixture | Gerekli kayıtlar | Kullanılacağı senaryo | Cleanup gereksinimi |
+|---|---|---|---|
+| Diyetisyen A | Sentetik Auth user, `profiles.role=dietitian`, onaylı `dietitian_profiles` | Active/pending/rejected/removed/other-tenant web girişleri | İlişkiler ve alt veriler silindikten sonra profil ve Auth user kaldırılır |
+| Diyetisyen B | Sentetik Auth user, `profiles.role=dietitian`, onaylı `dietitian_profiles` | Tenant izolasyonu; Active-B’nin gerçek sahibi | Active-B ilişkisi kaldırıldıktan sonra profil ve Auth user kaldırılır |
+| Danışan Active-A | Sentetik Auth user, client profile, Diyetisyen A ile `active` ilişki | Tam detay, ölçüm/log, Realtime ve ilişki iptali | Ölçüm/log → ilişki → client profile/profile → Auth sırasıyla temizlenir |
+| Danışan Pending-A | Sentetik Auth user, minimum profile, A ile `pending` ilişki | Minimum pending UI ve alt sorgu/Realtime yokluğu | Pending relation sonra profile/Auth temizlenir |
+| Danışan Rejected-A | Sentetik Auth user/profile, A ile `rejected` ilişki | Generic unavailable | Relation sonra profile/Auth temizlenir |
+| Danışan Removed-A | Sentetik Auth user/profile, A ile `removed` ilişki | Generic unavailable | Relation sonra profile/Auth temizlenir |
+| Danışan Active-B | Sentetik Auth user/client profile, yalnız B ile `active` ilişki | A oturumunda başka tenant ve ilişkisiz UUID; B oturumunda pozitif kontrol | Alt veriler → B ilişkisi → profile/Auth temizlenir |
+| Active-A ölçümü | Active-A’ya ait tek sentetik `measurements` satırı | Active alt kaynak pozitif yolu | Client/Auth cleanup öncesi explicit ID ile silinir |
+| Active-A daily log | Active-A’ya ait tek sentetik `daily_logs` satırı | Daily log pozitif yolu ve policy görünürlüğü | Client/Auth cleanup öncesi explicit ID ile silinir |
+
+İlişki iptali senaryosunda Diyetisyen A active detay ekranını açık tutar; ayrı sentetik client veya kontrollü test işlemi Active-A relation durumunu `removed` yapar. Önce Realtime ile kapanma, olay alınmazsa pencere odağından çıkıp geri dönüldüğünde generic unavailable state’e geçiş doğrulanır. Bu mutation ve fixture oluşturma bu inceleme görevinde yapılmadı.
+
+### Staging test sırası ve cleanup kapısı
+
+1. Staging proje kimliği production ve GROUNDLESS’tan ayrıştırılır.
+2. Yalnız sentetik fixture’lar deterministic etiket ve explicit UUID envanteriyle oluşturulur.
+3. Diyetisyen A ile invalid, active, pending, rejected, removed ve Active-B URL senaryoları çalıştırılır.
+4. Diyetisyen B ile Active-B pozitif kontrolü yapılır.
+5. Active-A açıkken relation iptali ve focus revalidation denenir.
+6. Hata senaryoları gerçek policy/şema bozulmadan kontrollü network veya request interception ile ayrı test harness’inde uygulanır.
+7. Cleanup ters bağımlılık sırasıyla `measurements`/`daily_logs` → `dietitian_clients` → client/dietitian profile satırları → `profiles` → Auth users biçiminde yapılır.
+8. Final aggregate kontrolünde sentetik Auth user, public row ve Storage nesnesi sayıları `0` olmalıdır. Migration history ve Storage değiştirilmemelidir.
+
+### Kalite ve kapsam notu
+
+- Başlangıç baseline’ı: typecheck başarılı; lint `0 error, 60 warning`; build başarılı ve büyük chunk uyarısı mevcut.
+- Repository’de otomatik `test` scripti/harness’i yoktur; test başarılı sayılmadı ve yeni framework eklenmedi.
+- Production ve staging Supabase’e bağlanılmadı; kullanıcı/fixture/veri oluşturulmadı veya değiştirilmedi.
+- Migration, RLS, Storage, Auth, paket, mobil uygulama ve İş Paketi 4.2 kapsamında değişiklik yapılmadı.
+- Aşama 4 genel durumu `Devam ediyor` olarak korunmuştur.
+
+## 28. İş Paketi 4.1 Staging Manuel Doğrulama Sonucu
+
+### Ortam ve fixture kapsamı
+
+- Hedef proje adı `DietBridge Staging` olarak doğrulandı; environment içindeki project ref maskeli olarak `ezwq…rjkv` biçiminde eşleşti.
+- Staging hedefinin `dietbridge_Production` ve görev dışı `GROUNDLESS` projelerinden farklı olduğu doğrulandı. Production ve GROUNDLESS üzerinde sorgu veya mutation çalıştırılmadı.
+- Repository dışında tutulan yerel manifest ile 2 sentetik diyetisyen, 5 sentetik danışan, 5 ilişki, 1 ölçüm ve 1 daily log kaydı izlendi. Manifest parola, token, URL veya API anahtarı içermedi.
+- Test sırasında kullanılan ayrıcalıklı staging anahtarı yalnız geçici test sürecinde tutuldu; tarayıcı bundle’ına, repository dosyalarına veya manifest’e yazılmadı.
+
+### Senaryo sonuçları
+
+| Senaryo | Sonuç | Kanıt ve not |
+|---|---|---|
+| Geçersiz UUID | PASS | Güvenli geçersiz bağlantı görünümü açıldı; detay REST sorgusu ve Realtime kanalı oluşmadı. |
+| Active-A | FAIL | Profil ve `72.4` ölçümü göründü, tek Realtime kanalı kuruldu ve reload sonrası erişim korundu. Ancak daily log sorgusu teknik hata vermeden boş döndü; fixture görünmek yerine mevcut sabit `1.0 Lt (Ort.)` fallback’i gösterildi. |
+| Pending-A | PASS | Yalnız minimum kimlik ve ilişki durumu yüklendi; health, ölçüm, daily log ve Realtime başlamadı. |
+| Rejected-A | PASS | Genel erişilemiyor görünümü kullanıldı; hassas profil ve alt kaynaklar yüklenmedi, kanal kurulmadı. |
+| Removed-A | PASS | Genel erişilemiyor görünümü kullanıldı; hassas profil ve alt kaynaklar yüklenmedi, kanal kurulmadı. |
+| İlişkisiz geçerli UUID | PASS | Tenant varlığı açıklanmadan genel erişilemiyor görünümü gösterildi; alt sorgu ve kanal oluşmadı. |
+| Cross-tenant A/B | PASS | Diyetisyen A, Diyetisyen B’nin active danışanını göremedi; gerçek sahibi Diyetisyen B aynı danışanın active detayını görebildi. |
+| SPA route geçişleri | PASS | Active→pending/rejected/invalid ve pending→active geçişlerinde eski danışan verisi görünmedi; son route doğru state ve kanal sayısıyla sonuçlandı. |
+| Unmount ve kanal cleanup | PASS | Active detayda bir kanal vardı; listeye dönüşte sıfıra indi, yeniden açılışta yalnız bir kanal kuruldu. Duplicate subscription veya unmount sonrası state uyarısı görülmedi. |
+| Active→removed revocation | BLOCKED | Relation `removed` yapıldıktan sonra Realtime olayı kısa gözlem aralığında ekranı kapatmadı. In-app tarayıcı sekme dönüşü gerçek `window focus` olayı üretmediği için focus fallback’i canlı olarak kanıtlanamadı. Reload sonrasında genel erişilemiyor görünümü, sıfır hassas veri ve sıfır kanal doğrulandı. |
+| Unavailable→active | PASS | Sayfa otomatik erişim kazanmadı; reload sonrasında active görünüm açıldı ve tek kanal kuruldu. Fixture daha sonra tekrar `removed` durumuna alındı. |
+| Güvenli hata enjeksiyonu | PASS | Ölçüm ve daily log GET çağrıları ayrı ayrı yerel runtime katmanında `503` ile kesildi; güvenli Türkçe hata görünümü oluştu, active veri ve Realtime kanalı temizlendi. Şema veya policy değiştirilmedi. |
+
+### Bloklayıcı bulgular
+
+1. Active pozitif yolun daily log kabul kriteri geçmedi. Staging’deki mevcut dietitian read policy kapsamı fixture daily log satırını görünür kılmadı; sayfa da boş sonucu gerçek veri yerine sabit su tüketimi fallback’iyle sundu. Bu, daha önce kaydedilen daily log policy ve fake empty-state riskleriyle uyumludur. Çözüm RLS kararını ve UI fallback sözleşmesini kapsayan ayrı, açık onaylı çalışma gerektirir; bu görevde migration veya geniş kapsamlı uygulama düzeltmesi yapılmadı.
+2. Relation revocation reload sonrasında fail-closed doğrulandı; fakat test aracının gerçek focus olayı üretememesi nedeniyle focus revalidation staging kanıtı tamamlanamadı. Bu sonuç tek başına kod kusuru kanıtı değildir, ancak kabul adımı geçilmiş sayılmadı.
+3. Cross-tenant veri açıklama, yetkisiz mutation, duplicate Realtime subscription veya teknik hata sızıntısı gözlenmedi. Daily log pozitif yol başarısızlığı ve eksik focus kanıtı nedeniyle nihai kapı yine de blokludur.
+
+### Cleanup ve güvenlik sonucu
+
+Cleanup, yalnız manifestteki explicit sentetik kimlikler üzerinden ters bağımlılık sırasıyla tamamlandı. Görev fixture’ları için final aggregate sonuçları:
+
+```text
+Sentetik Auth users = 0
+Sentetik profiles rows = 0
+Sentetik dietitian_profiles rows = 0
+Sentetik client_profiles rows = 0
+Sentetik dietitian_clients rows = 0
+Sentetik measurements rows = 0
+Sentetik daily_logs rows = 0
+Sentetik Storage objects = 0
+```
+
+- Cleanup öncesi ek bağımlılık taraması sıfırdı; cleanup sonrası global staging sayıları fixture öncesi snapshot ile eşleşti.
+- Production verisi okunmadı veya değiştirilmedi. Staging’de yalnız manifest fixture’ları oluşturuldu, kontrollü relation status değişiklikleri yapıldı ve tamamı silindi.
+- Migration history, şema, RLS, Auth ayarları, Storage, Realtime ayarları ve mobil uygulama değiştirilmedi.
+- Test için açılan yerel Vite ve yönlendirme süreçleri kapatıldı.
+
+### Nihai karar
+
+`BLOCKED`
+
+İş Paketi 4.1, daily log pozitif yolu ve focus revalidation staging kanıtı tamamlanmadan `COMMIT REVIEW READY` değildir. Aşama 4 `Devam ediyor` kalır ve İş Paketi 4.2 başlatılmaz.
+
+## 29. İş Paketi 4.1 Daily Log Blocker Analizi ve Düzeltme Hazırlığı
+
+### Aktif kod yolu ve sahte fallback kök nedeni
+
+Aktif zincir `App.tsx` içindeki `/clients/:id` route’undan `pages/ClientDetails.tsx` bileşenine, oradan `features/clients/services/clientService.ts` içindeki `fetchClientDailyLogs()` fonksiyonuna ve `public.daily_logs` tablosuna gider.
+
+Servis `id`, `date` ve `water_intake` kolonlarını seçer; `client_id = route UUID` filtresi uygular ve tarihi artan sırada döndürür. Sayfa tüm sonuçların son yedi kaydını kullanır. Önceki sahte `1.0 Lt (Ort.)` değeri sabit JSX değeri değildi: boş günlük listesi yedi adet sıfır bar ile dolduruluyor, pozitif değer sayısı sıfır olduğu için bölüm sonucu geçersiz oluyor ve `|| 1` ifadesi bunu gerçek ortalama gibi `1.0` değerine çeviriyordu. Gerçek sıfır değerleri de `water_intake ? ... : 0` nedeniyle veri yokluğuyla aynı kola düşüyordu.
+
+Hedefli UI düzeltmesi şu durumları ayırır:
+
+| Durum | Yeni davranış |
+|---|---|
+| Yükleniyor | Mevcut sayfa yükleme görünümü korunur. |
+| Sorgu hatası | Alt kaynak hatası mevcut güvenli genel hata görünümüne gider; active/sahte başarı gösterilmez. |
+| Daily log satırı yok | `Henüz günlük takip kaydı bulunmuyor.` empty state’i gösterilir; ortalama veya grafik gösterilmez. |
+| Satır var, `water_intake` null | `Günlük kayıtlar mevcut ancak su tüketimi bilgisi bulunmuyor.` gösterilir. |
+| Gerçek su değeri `0` | Sayısal kayıt ortalamaya dahil edilir ve `0.0 Lt` gösterilebilir. |
+| Pozitif gerçek değer | Yalnız DB’den gelen sayısal değerler ortalamaya ve grafiğe dahil edilir. |
+
+### Daily log veri sözleşmesi
+
+| Alan | Doğrulanan sözleşme |
+|---|---|
+| Tablo | `public.daily_logs` |
+| Kimlik/sahiplik | `id uuid` PK; `client_id uuid → profiles.id` |
+| Gün | `date date not null`; `(client_id, date)` unique olduğu için danışan başına günde en fazla bir satır |
+| Su | `water_intake numeric null`; database seviyesinde ayrıca birim comment/check’i yok |
+| Uygulama birimi | Web mevcut değeri `1000` ile bölerek litre gösterir; `daily_water_goal_ml` alanı da aynı dönüşümü kullanır. Repository uygulama sözleşmesi değeri mililitre olarak ele alır, ancak birimin şemada kendiliğinden belgelenmemesi kalan veri modeli riskidir. |
+| Tarih kapsamı | Serviste tarih aralığı filtresi yoktur; tüm kayıtlar artan tarih sırasıyla okunur, UI son en fazla 7 kaydı kullanır. |
+| Ortalama | Son en fazla 7 kayıttaki numeric `water_intake` değerlerinin aritmetik ortalaması alınır ve sonra litreye çevrilir. Null değerler dışlanır, gerçek sıfırlar paydaya dahildir; yapay padding ortalamaya dahil edilmez. |
+
+UI etiketi tek kayıt için `Son Kayıt`, birden fazla kayıt için gerçek kayıt sayısını içeren `Son N Kayıt Ort.` biçimindedir. Bu değer son yedi takvim gününün değil, en son en fazla yedi günlük kayıt satırının ortalamasıdır.
+
+### Staging RLS sözleşmesi ve kök neden
+
+Hedef ortam CLI proje listesi ve `.env.staging.local` eşleşmesiyle yeniden `DietBridge Staging` olarak doğrulandı; maskeli ref `ezwq…rjkv` production ve GROUNDLESS ref’lerinden farklıdır. Yeni remote link/JIT rolü veya yazabilen SQL oturumu açılmadı. Staging’e uygulanan migration history’nin repository ile `9/9` eşleştiğini kaydeden mevcut salt-okunur katalog raporu, active migration SQL’i ve bu iş paketindeki gerçek diyetisyen oturumunda fixture satırının `0 satır / hata yok` dönmesi birlikte değerlendirildi.
+
+- `daily_logs` üzerinde RLS açıktır.
+- Mevcut SELECT policy `Users can view own daily logs`, rol `authenticated`, `USING auth.uid() = client_id` sözleşmesindedir.
+- Mevcut INSERT ve UPDATE policy’leri de yalnız client-own kapsamındadır; bu görev onları değiştirmez.
+- Active diyetisyen için ayrı SELECT policy yoktur. Kök neden uygulama sorgusu değil, eksik RLS policy’dir.
+- Mevcut durumda active, pending, rejected, removed ve unrelated diyetisyenlerin tümü daily log satırında sıfır sonuç alır. Cross-tenant veri açılması gözlenmemiştir.
+- Hedef policy yalnız `dietitian_clients.dietitian_id = auth.uid()`, eşleşen `client_id` ve `status = active` birlikte doğruysa SELECT izni verir. Pending, rejected, removed ve unrelated erişimler reddedilmeye devam eder.
+- Policy yalnız SELECT içindir; INSERT, UPDATE veya DELETE yetkisini genişletmez ve mevcut client-own SELECT policy’sini korur.
+- Alt sorgu `daily_logs` tablosuna geri dönmez; recursive policy döngüsü oluşturmaz. Mevcut `(dietitian_id, client_id)` ve `daily_logs(client_id)` indexleri predicate’i destekler.
+
+### Hazırlanan migration
+
+`supabase/migrations/20260716170620_daily_logs_active_dietitian_select.sql` Supabase CLI `migration new` komutuyla oluşturuldu. Migration:
+
+1. Tabloları, `daily_logs.client_id` tipini, `dietitian_clients.status` enum tipini ve RLS durumunu fail-fast doğrular.
+2. Aynı adlı policy varsa sessizce üzerine yazmak yerine durur.
+3. `Dietitians can view active client daily logs` adlı, yalnız `authenticated` ve SELECT kapsamlı policy’yi oluşturur.
+4. Policy postcondition’ını ve mevcut `Users can view own daily logs` policy’sinin korunmasını doğrular.
+5. Şema, Storage, Auth, Realtime veya başka tablo yetkisini değiştirmez.
+
+Migration staging veya production’a uygulanmadı.
+
+Repository dışındaki disposable yerel Supabase çalışma alanında 10 active migration sıfırdan replay edildi. `db reset --local --no-seed` ve `db lint --local --schema public --level warning --fail-on error` başarılı oldu. Yerel metadata sonucu `daily_logs` için RLS `enabled=true`, forced RLS `false`, yeni policy `SELECT/authenticated/USING mevcut`, client-own SELECT policy korunmuş ve tablo satır sayısı `0` olarak doğrulandı. Yerel stack `stop --no-backup` ile kapatıldı; repository içindeki `supabase/.temp/` kullanılmadı.
+
+### Staging preflight ve postflight paketi
+
+Uygulama öncesi salt-okunur kontrol şu metadata’yı birlikte doğrulamalıdır:
+
+```sql
+select c.relrowsecurity, c.relforcerowsecurity
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relname = 'daily_logs';
+
+select column_name, data_type, udt_schema, udt_name, is_nullable
+from information_schema.columns
+where table_schema = 'public'
+  and table_name in ('daily_logs', 'dietitian_clients')
+  and column_name in ('client_id', 'status');
+
+select policyname, cmd, roles, qual, with_check
+from pg_policies
+where schemaname = 'public' and tablename = 'daily_logs'
+order by policyname;
+
+select grantee, privilege_type
+from information_schema.role_table_grants
+where table_schema = 'public' and table_name = 'daily_logs'
+order by grantee, privilege_type;
+```
+
+Postflight metadata kontrolü yeni policy’nin `SELECT`, `authenticated` ve non-null `USING` ifadesiyle tam bir kez bulunduğunu; client-own SELECT policy’sinin kaldığını; diğer komut policy’lerinin değişmediğini doğrulamalıdır. Sentetik staging matrisi ayrıca client own SELECT ve active dietitian SELECT için görünür satır; pending, rejected, removed, unrelated ve cross-tenant için `0 satır` beklemelidir. Bu negatif testler migration uygulama onayı verilmeden çalıştırılmaz.
+
+### Rollback planı
+
+Rollback yalnız yeni eklenen policy’yi kaldırır:
+
+```sql
+drop policy "Dietitians can view active client daily logs" on public.daily_logs;
+```
+
+Rollback mevcut client-own SELECT/INSERT/UPDATE policy’lerine, tablo RLS durumuna veya verilere dokunmaz. Ayrı staging rollback onayı ve post-rollback policy envanteri gerektirir.
+
+### Focus revalidation incelemesi
+
+- Listener yalnız `viewState.status = active` sonucundaki client UUID’si route UUID’siyle eşleştiğinde kurulur.
+- Effect cleanup `window.removeEventListener()` ve `supabase.removeChannel()` çağrılarını yapar; sıradan render duplicate listener oluşturmaz.
+- Focus callback’i doğrudan state yazmak yerine aynı `loadData(false)` zincirini çalıştırır; bu zincir UUID, auth, relation ve alt kaynak kapılarını yeniden uygular.
+- Her load generation counter’ı artırır; eski async sonuç yeni route/client state’ine yazamaz. Pending/unavailable/error sonucu active veri dizilerini temizler ve effect cleanup kanalın kapanmasını sağlar.
+
+Gerçek masaüstü focus testi için sentetik active ilişki gerekir. Bu görev Auth kullanıcısı/fixture oluşturmayı yasakladığından ve önceki fixture’lar başarıyla temizlendiğinden ilişkiyi `active → removed` yapacak güvenli test önkoşulu yoktur. Simüle DOM event’i gerçek kanıt sayılmadı.
+
+`FOCUS LIVE TEST PENDING`
+
+### Karar
+
+`RLS REMEDIATION PREPARED / STAGING APPLICATION APPROVAL REQUIRED`
+
+`FOCUS LIVE TEST PENDING`
+
+İş Paketi 4.1 `BLOCKED — daily_logs visibility and focus verification` durumunda, Aşama 4 `Devam ediyor` olarak kalır. İş Paketi 4.2 başlatılmaz.
+
+## 30. İş Paketi 4.1 Daily Logs RLS Staging Uygulaması ve Tam Regresyon Sonucu
+
+### Staging kimliği ve migration uygulaması
+
+- Branch `codex/client-management`, başlangıç HEAD `bbdb3f58d01c6d35d2f4a32f1ea4cdc1a189fe62` olarak doğrulandı. Başlangıç çalışma ağacında yalnız İş Paketi 4.1 kapsamındaki dört tracked dosya, hazırlanan migration ve önceden mevcut `supabase/.temp/` dizini vardı. `supabase/.temp/` okunmadı, değiştirilmedi veya stage edilmedi.
+- Hedef proje adı ve `.env.staging.local` eşleşmesi `DietBridge Staging` olarak doğrulandı. Maskeli project ref `ezwq…rjkv` olup production ve GROUNDLESS ref’lerinden farklıdır. Repository kökü linklenmedi; repository dışında benzersiz Supabase çalışma alanı kullanıldı.
+- Migration SHA-256 değeri `49EAA24BE307BD0A5BC1CC6ABEE62D756B879E57F6D5217AD0C868E89012026E` olarak doğrulandı. Dosya yalnız `public.daily_logs` için active ilişki tabanlı `SELECT TO authenticated` policy’si ekler; INSERT/UPDATE/DELETE, grant, ownership, RLS kapatma, tablo/kolon silme, function, trigger, Auth veya Storage değişikliği içermez.
+- Staging preflight sonucu `9/9` remote migration eşleşmesi, `daily_logs` tablosu ve gerekli kolonlar, RLS açık/forced kapalı durumu, nullable numeric `water_intake`, `(client_id, date)` unique sözleşmesi, `dietitian_clients.status` enum değerleri ve mevcut client-own policy’leri doğrulandı. Yeni policy preflight’ta yoktu.
+- `db push --linked --dry-run` yalnız `20260716170620_daily_logs_active_dietitian_select.sql` migration’ını pending gösterdi. Ardından migration yalnız doğrulanmış DietBridge Staging projesine uygulandı. CLI’ın dış çalışma alanındaki pg-delta sertifika cache uyarısı uygulamayı etkilemedi; katalog postflight gerçek sonucu doğruladı.
+- Postflight sonucu repository ve staging remote history `10/10` eşleşti; yeni version tam bir kez bulundu. `Dietitians can view active client daily logs` policy’si `SELECT`, `authenticated` ve yalnız `dietitian_id = auth.uid()`, eşleşen `client_id` ve `status = active` predicate’iyle tam bir kez bulundu. Client-own SELECT ve mevcut non-SELECT policy’leri korundu.
+
+### Sentetik fixture ve RLS matrisi
+
+- Yalnız staging’de 2 diyetisyen, 5 client, 2 onaylı diyetisyen profili, 5 client profili ve active/pending/rejected/removed/cross-tenant durumlarını kapsayan 5 ilişki oluşturuldu.
+- Active-A için `null`, `0`, `1000` ve `2000` ml değerli dört farklı tarihli daily log; pending/rejected/removed ve Active-B için birer daily log oluşturuldu. Active-A için bir explicit measurement oluşturuldu. `client_profiles.current_weight` trigger’ının ürettiği ikinci measurement cleanup öncesinde sentetik kullanıcı bağıyla doğrulanıp manifest kapsamına alındı.
+- Client-own Active-A SELECT `4 satır`; Dietitian A → Active-A `4 satır`; pending, rejected, removed, ilişkisiz/cross-tenant A → B `0 satır`; Dietitian B → Active-B `1 satır` sonuçlarıyla geçti.
+
+### Gerçek Chrome UI, Realtime ve route regresyonu
+
+- Dietitian A → Active-A görünümünde daily log ve measurement sorguları `200` döndü; bir Realtime kanalı açıldı. Gerçek `null`, `0`, `1000`, `2000` değerlerinden `(0 + 1000 + 2000) / 3 = 1000 ml` hesaplandı ve UI `1.0 Lt (Son 3 Kayıt Ort.)` gösterdi. `null` ortalamaya katılmadı, gerçek `0` katıldı ve yapay yedi günlük padding ortalamaya dahil edilmedi.
+- Empty durumda `Henüz günlük takip kaydı bulunmuyor.`; null-only durumda `Günlük kayıtlar mevcut ancak su tüketimi bilgisi bulunmuyor.`; zero-only durumda `0.0 Lt (Son Kayıt)`; positive durumda `2.0 Lt (Son Kayıt)` doğrulandı. Sabit `1.0 Lt` fallback’i hiçbir empty/null/zero testinde devreye girmedi.
+- Geçici, repository dışı gözlem katmanıyla yalnız test oturumunda `daily_logs` GET isteğine güvenli `503` enjekte edildi. UI `Danışan Bilgileri Yüklenemedi` ve güvenli Türkçe açıklamayı gösterdi; sahte veri ve Realtime kanalı oluşmadı. Enjeksiyon repository veya Supabase’i değiştirmedi.
+- Pending route yalnız minimum kimlik/ilişki görünümünü gösterdi; `measurements` ve `daily_logs` sorgusu veya Realtime başlatmadı. Rejected ve removed route’ları genel erişilemez görünümü gösterdi; hassas profil ve alt veri sorgusu oluşmadı.
+- Dietitian A → Active-B genel erişilemez görünüm ve sıfır kanal verdi. Dietitian B → Active-B active görünümü, gerçek `1.4 Lt` daily log ve bir kanal ile geçti.
+- Active-A → Pending-A, Active-A → Rejected-A, Active-A → `not-a-uuid` ve Active-A → `/clients` geçişlerinde eski su/measurement detayları kalmadı; kanal sayısı sıfıra indi. Liste görünümünde client adı kartta doğal olarak bulunurken `Su Tüketimi`, `Vücut Kompozisyonu` ve sentetik measurement notu kalmadı.
+- Active-A ilişkisi `active → removed` yapıldıktan sonraki kısa gözlemde Realtime olayı ekranı kendiliğinden kapatmadı; bu sonuç ayrı kaydedildi ve tek başına fail sayılmadı.
+- Zorunlu focus fallback’i uzantı tarafından yönetilmeyen normal masaüstü Chrome sekmesinde gerçek Windows pencere geçişiyle test edildi. Test sekmesi foreground iken başka gerçek pencereye geçildi ve aynı Chrome penceresine geri dönüldü. Runtime gözleminde gerçek focus/blur/visibility event sayaçları arttı, ilişki GET sorgusu yeniden `200` ile tamamlandı, active hassas state temizlendi, `Danışana Erişilemiyor` görünümü geldi ve Realtime kanal sayısı `1 → 0` oldu. Manuel `window.dispatchEvent` kullanılmadı.
+
+### Cleanup, güvenlik ve nihai karar
+
+- İlk cleanup kapısı, `client_profiles.current_weight` trigger’ının ürettiği manifest dışı measurement satırını silmeden önce fail-closed yakaladı. Satır yalnız yeni sentetik Active-A kullanıcısına bağlı olduğu doğrulandı ve veritabanında yeni mutation yapılmadan manifest kapsamına alındı.
+- İkinci cleanup öncesi manifest dışı bağımlılık `0` bulundu. Cleanup sonrasında Auth users, `profiles`, `dietitian_profiles`, `client_profiles`, `dietitian_clients`, `measurements`, `daily_logs` ve Storage object sayılarının her biri `0` oldu. Global staging sayıları fixture öncesi snapshot ile eşleşti; geçici browser credential dosyası silindi.
+- Production ve GROUNDLESS üzerinde data, schema, migration history, Auth, Storage veya policy mutation yapılmadı. Staging’de kalıcı kalan tek değişiklik onaylı daily_logs SELECT migration/policy’sidir; sentetik Auth ve application verileri tamamen temizlendi.
+- Yeni P0/P1 uygulama güvenlik bulgusu bulunmadı. Cleanup harness’indeki trigger-bağımlılık manifest boşluğu test sırasında fail-closed yakalanıp geçici harness kapsamında giderildi.
+- Node.js 24 ortamında `npm run typecheck` başarılı; lint `0 error, 60 warning` ile mevcut baseline’ı aşmadan başarılı; production build başarılı oldu. Build, mevcut yaklaşık 747 kB ana chunk uyarısını üretmeye devam etti. Repository’de otomatik `test` scripti bulunmadığı için test komutu çalıştırılmadı.
+- `git diff --check` ve nihai secret/kapsam kontrolleri görev sonunda ayrıca çalıştırıldı; bu görevde stage, commit, push veya pull request oluşturulmadı.
+
+Nihai karar:
+
+`STAGING PASSED / COMMIT REVIEW READY`
+
+İş Paketi 4.1 tamamlandı; staging doğrulaması geçti. Branch commit ve push kaydı bu görev raporunda tutulacaktır. Aşama 4 `Devam ediyor` kalır. İş Paketi 4.2 başlatılmadı.

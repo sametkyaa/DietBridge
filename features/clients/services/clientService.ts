@@ -71,6 +71,23 @@ interface ClientDetailsProfileRow {
   blood_type: string | null;
 }
 
+export interface PendingClientSummary {
+  id: string;
+  name: string;
+  email: string;
+  profilePhotoUrl: string | null;
+}
+
+export type ClientDetailAccessResult =
+  | { status: 'active'; client: Client }
+  | { status: 'pending'; client: PendingClientSummary }
+  | { status: 'invalid_id' }
+  | { status: 'unavailable' }
+  | { status: 'error'; userMessage: string; cause?: unknown };
+
+const CLIENT_DETAIL_LOAD_ERROR =
+  'Danışan bilgileri şu anda yüklenemiyor. Lütfen tekrar deneyin.';
+
 
 /**
  * Fetches clients associated with the logged-in dietitian.
@@ -222,23 +239,60 @@ export function normalizeMultiValue(value: any): string[] {
 }
 
 
-export const fetchClientDetails = async (clientId: string): Promise<Client | null> => {
+export const fetchClientDetails = async (clientId: string): Promise<ClientDetailAccessResult> => {
+  if (!isValidUuid(clientId)) {
+    return { status: 'invalid_id' };
+  }
+
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      return { status: 'error', userMessage: CLIENT_DETAIL_LOAD_ERROR, cause: authError };
+    }
+    if (!user) return { status: 'unavailable' };
 
     // 1. Verify dietitian-client relationship
     const { data: relation, error: relationError } = await supabase
       .from('dietitian_clients')
-      .select('client_id, status')
+      .select('status')
       .eq('dietitian_id', user.id)
       .eq('client_id', clientId)
       .maybeSingle();
 
-    if (relationError) throw relationError;
-    if (!relation) {
-      console.warn("No active relation found for client:", clientId);
-      return null;
+    if (relationError) {
+      return { status: 'error', userMessage: CLIENT_DETAIL_LOAD_ERROR, cause: relationError };
+    }
+    if (!relation || (relation.status !== 'active' && relation.status !== 'pending')) {
+      return { status: 'unavailable' };
+    }
+
+    if (relation.status === 'pending') {
+      const { data: pendingProfile, error: pendingProfileError } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url, email')
+        .eq('id', clientId)
+        .maybeSingle();
+
+      if (pendingProfileError) {
+        return {
+          status: 'error',
+          userMessage: CLIENT_DETAIL_LOAD_ERROR,
+          cause: pendingProfileError,
+        };
+      }
+      if (!pendingProfile) return { status: 'unavailable' };
+
+      const profilePhotoUrl = resolveProfilePhotoUrl(pendingProfile.avatar_url);
+
+      return {
+        status: 'pending',
+        client: {
+          id: clientId,
+          name: pendingProfile.full_name || 'İsimsiz Danışan',
+          email: pendingProfile.email || '',
+          profilePhotoUrl,
+        },
+      };
     }
 
     // 2. Fetch profile data
@@ -248,7 +302,10 @@ export const fetchClientDetails = async (clientId: string): Promise<Client | nul
       .eq('id', clientId)
       .maybeSingle();
 
-    if (userProfileError) throw userProfileError;
+    if (userProfileError) {
+      return { status: 'error', userMessage: CLIENT_DETAIL_LOAD_ERROR, cause: userProfileError };
+    }
+    if (!userProfile) return { status: 'unavailable' };
 
     // 3. Fetch client profile data
     const { data: clientProfile, error: clientProfileError } = await supabase
@@ -276,7 +333,7 @@ export const fetchClientDetails = async (clientId: string): Promise<Client | nul
       .maybeSingle();
 
     if (clientProfileError) {
-       console.warn("Client profile not found or error:", clientProfileError);
+      return { status: 'error', userMessage: CLIENT_DETAIL_LOAD_ERROR, cause: clientProfileError };
     }
 
     const clientData = (userProfile ?? {}) as Partial<ClientBaseProfileRow>;
@@ -293,37 +350,41 @@ export const fetchClientDetails = async (clientId: string): Promise<Client | nul
       ? Number(profile.sleep_hours) 
       : undefined;
 
+    const profilePhotoUrl = resolveProfilePhotoUrl(clientData.avatar_url);
+
     return {
-      id: clientId,
-      name: clientData.full_name || 'İsimsiz Danışan',
-      email: clientData.email || '',
-      phone: clientData.phone || '',
-      avatar: resolveProfilePhotoUrl(clientData.avatar_url) || USER_AVATAR,
-      profilePhotoUrl: resolveProfilePhotoUrl(clientData.avatar_url),
-      status: relation.status === 'active' ? 'Aktif' : relation.status === 'pending' ? 'Onay Bekliyor' : 'Pasif',
-      goal: profile.goal || 'Sağlıklı Yaşam',
-      startDate: profile.diet_start_date ? new Date(profile.diet_start_date).toLocaleDateString('tr-TR') : '-',
-      duration: '1 Ay',
-      currentWeight: profile.current_weight ? `${profile.current_weight}` : '-',
-      startWeight: profile.start_weight ? `${profile.start_weight}` : undefined,
-      targetWeight: profile.target_weight ? `${profile.target_weight}` : undefined,
-      weeklyChange: 0,
-      compliance: profile.compliance_score || 0,
-      bloodType,
-      chronicConditions,
-      medications,
-      foodIntolerances,
-      waterGoalLiters,
-      heightCm: profile.height_cm,
-      lastLabDate: profile.last_lab_date ? new Date(profile.last_lab_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : undefined,
-      activityLevel: ACTIVITY_LABELS[profile.activity_level] || profile.activity_level || null,
-      sleepHours,
-      smokingStatus: SMOKING_LABELS[profile.smoking_status] || profile.smoking_status || null,
-      alcoholUse: ALCOHOL_LABELS[profile.alcohol_use] || profile.alcohol_use || null,
+      status: 'active',
+      client: {
+        id: clientId,
+        name: clientData.full_name || 'İsimsiz Danışan',
+        email: clientData.email || '',
+        phone: clientData.phone || '',
+        avatar: profilePhotoUrl || USER_AVATAR,
+        profilePhotoUrl,
+        status: 'Aktif',
+        goal: profile.goal || 'Sağlıklı Yaşam',
+        startDate: profile.diet_start_date ? new Date(profile.diet_start_date).toLocaleDateString('tr-TR') : '-',
+        duration: '1 Ay',
+        currentWeight: profile.current_weight ? `${profile.current_weight}` : '-',
+        startWeight: profile.start_weight ? `${profile.start_weight}` : undefined,
+        targetWeight: profile.target_weight ? `${profile.target_weight}` : undefined,
+        weeklyChange: 0,
+        compliance: profile.compliance_score || 0,
+        bloodType,
+        chronicConditions,
+        medications,
+        foodIntolerances,
+        waterGoalLiters,
+        heightCm: profile.height_cm,
+        lastLabDate: profile.last_lab_date ? new Date(profile.last_lab_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : undefined,
+        activityLevel: ACTIVITY_LABELS[profile.activity_level] || profile.activity_level || undefined,
+        sleepHours,
+        smokingStatus: SMOKING_LABELS[profile.smoking_status] || profile.smoking_status || undefined,
+        alcoholUse: ALCOHOL_LABELS[profile.alcohol_use] || profile.alcohol_use || undefined,
+      },
     };
-  } catch (err) {
-    console.error('Error fetching client details:', err);
-    throw err;
+  } catch (cause) {
+    return { status: 'error', userMessage: CLIENT_DETAIL_LOAD_ERROR, cause };
   }
 };
 
@@ -338,45 +399,37 @@ export interface Measurement {
 export interface DailyLog {
   id: string;
   date: string;
-  water_intake: number;
+  water_intake: number | null;
 }
 
 export const fetchClientMeasurements = async (clientId: string): Promise<Measurement[]> => {
-  try {
-    const { data, error } = await supabase
-      .from('measurements')
-      .select('id, weight, measured_at, created_at, notes')
-      .eq('client_id', clientId)
-      .order('measured_at', { ascending: true });
-    
-    if (error) {
-       console.error("Error fetching measurements", error);
-       return [];
-    }
-    return data || [];
-  } catch (err) {
-    console.error("fetchClientMeasurements exception", err);
-    return [];
+  if (!isValidUuid(clientId)) {
+    throw new Error('Invalid client identifier');
   }
+
+  const { data, error } = await supabase
+    .from('measurements')
+    .select('id, weight, measured_at, created_at, notes')
+    .eq('client_id', clientId)
+    .order('measured_at', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
 };
 
 export const fetchClientDailyLogs = async (clientId: string): Promise<DailyLog[]> => {
-  try {
-    const { data, error } = await supabase
-      .from('daily_logs')
-      .select('id, date, water_intake')
-      .eq('client_id', clientId)
-      .order('date', { ascending: true });
-    
-    if (error) {
-       console.error("Error fetching daily_logs", error);
-       return [];
-    }
-    return data || [];
-  } catch (err) {
-    console.error("fetchClientDailyLogs exception", err);
-    return [];
+  if (!isValidUuid(clientId)) {
+    throw new Error('Invalid client identifier');
   }
+
+  const { data, error } = await supabase
+    .from('daily_logs')
+    .select('id, date, water_intake')
+    .eq('client_id', clientId)
+    .order('date', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
 };
 
 export type AddClientResult = 
