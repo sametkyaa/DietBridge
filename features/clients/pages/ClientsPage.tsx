@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Search, Bell, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { USER_AVATAR } from '../../../shared/constants';
 import { Client } from '../../../shared/types';
-import { fetchDietitianClients, addClientByEmail } from '../services/clientService';
+import { fetchDietitianClientList, addClientByEmail } from '../services/clientService';
+
+type ClientListViewState =
+  | { status: 'loading' }
+  | { status: 'success'; clients: Client[] }
+  | { status: 'error'; message: string };
 
 // Desktop/Tablet Table Row Component
 const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
@@ -194,8 +199,9 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
 const ClientsPage = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [viewState, setViewState] = useState<ClientListViewState>({ status: 'loading' });
+  const requestSequence = useRef(0);
+  const requestInFlight = useRef(false);
 
   // Add Client Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -203,27 +209,39 @@ const ClientsPage = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [addFeedback, setAddFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
+    if (requestInFlight.current) return;
+
+    requestInFlight.current = true;
+    const requestId = ++requestSequence.current;
+    setViewState({ status: 'loading' });
+
     try {
-      setLoading(true);
-      const data = await fetchDietitianClients();
-      if (data && data.length > 0) {
-        setClients(data);
-      } else {
-        setClients([]);
+      const result = await fetchDietitianClientList();
+      if (requestId !== requestSequence.current) return;
+
+      if (result.status === 'error') {
+        setViewState({ status: 'error', message: result.userMessage });
+        return;
       }
-    } catch (err) {
-      console.error("Failed to fetch clients:", err);
-      setClients([]);
+
+      setViewState({ status: 'success', clients: result.clients });
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) {
+        requestInFlight.current = false;
+      }
     }
-  };
+  }, []);
 
   // Load clients from Supabase on mount
   useEffect(() => {
-    loadClients();
-  }, []);
+    void loadClients();
+
+    return () => {
+      requestSequence.current += 1;
+      requestInFlight.current = false;
+    };
+  }, [loadClients]);
 
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,9 +288,12 @@ const ClientsPage = () => {
     }
   };
 
+  const clients = viewState.status === 'success' ? viewState.clients : [];
+  const normalizedSearchTerm = searchTerm.trim().toLocaleLowerCase('tr-TR');
+
   // Filter and split clients
   const filteredClients = clients.filter(client => 
-    client.name.toLowerCase().includes(searchTerm.toLowerCase())
+    client.name.toLocaleLowerCase('tr-TR').includes(normalizedSearchTerm)
   );
   
   const activeClients = filteredClients.filter(c => c.status === 'Aktif');
@@ -333,7 +354,7 @@ const ClientsPage = () => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                 <input
                   type="text"
-                  placeholder="İsme göre filtrele..."
+                  placeholder="İsme göre ara..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full md:w-64 pl-9 pr-4 py-3 md:py-2 rounded-xl md:rounded-lg border border-slate-200 bg-white md:bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition-all shadow-sm md:shadow-none"
@@ -347,18 +368,51 @@ const ClientsPage = () => {
         
         {/* Scrollable Content Area */}
         <div className="overflow-visible md:overflow-auto flex-1">
-          {loading ? (
+          {viewState.status === 'loading' ? (
              <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
                 <RefreshCw className="w-8 h-8 animate-spin text-primary" />
                 <p className="text-sm font-medium">Danışanlar yükleniyor...</p>
              </div>
-          ) : clients.length === 0 && !searchTerm ? (
+          ) : viewState.status === 'error' ? (
+             <div className="flex flex-col items-center justify-center py-16 px-4 text-center" role="alert">
+                <div className="bg-red-50 p-4 rounded-full mb-4">
+                  <AlertCircle className="w-8 h-8 text-red-500" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">Danışanlar yüklenemedi</h3>
+                <p className="text-sm text-slate-500 max-w-md">{viewState.message}</p>
+                <button
+                  type="button"
+                  onClick={() => void loadClients()}
+                  className="mt-5 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Tekrar Dene
+                </button>
+             </div>
+          ) : clients.length === 0 ? (
              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
                 <div className="bg-slate-50 p-4 rounded-full mb-4">
                   <Search className="w-8 h-8 text-slate-400" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">Henüz danışanınız yok</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">Henüz danışanınız bulunmuyor.</h3>
                 <p className="text-sm text-slate-500">İlk danışanınızı eklediğinizde burada görünecek.</p>
+             </div>
+          ) : filteredClients.length === 0 ? (
+             <div className="flex flex-col items-center justify-center py-16 px-4 text-center text-slate-500">
+                <div className="bg-slate-50 p-4 rounded-full mb-4">
+                  <Search className="w-8 h-8 text-slate-400" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">Uygun danışan bulunamadı</h3>
+                <p className="text-sm text-slate-500">Arama ölçütüne uygun danışan bulunamadı.</p>
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="mt-4 text-primary font-medium hover:underline"
+                  >
+                    Aramayı Temizle
+                  </button>
+                )}
              </div>
           ) : (
             <>
@@ -381,13 +435,6 @@ const ClientsPage = () => {
                   {activeClients.map((client) => (
                     <ClientRow key={client.id} client={client} />
                   ))}
-                  {activeClients.length === 0 && searchTerm && pendingClients.length === 0 && passiveClients.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
-                        Arama kriterlerine uygun aktif danışan bulunamadı.
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
 
                 {pendingClients.length > 0 && (
@@ -429,12 +476,6 @@ const ClientsPage = () => {
                   <ClientCard key={client.id} client={client} />
                 ))}
                 
-                {activeClients.length === 0 && searchTerm && pendingClients.length === 0 && passiveClients.length === 0 && (
-                    <div className="text-center py-10 text-slate-500">
-                      Arama kriterlerine uygun danışan bulunamadı.
-                    </div>
-                )}
-
                 {pendingClients.length > 0 && (
                     <div className="pt-4">
                       <div className="flex items-center gap-2 mb-3 px-1">

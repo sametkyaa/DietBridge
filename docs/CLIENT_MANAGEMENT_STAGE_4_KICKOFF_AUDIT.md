@@ -921,3 +921,202 @@ Nihai karar:
 `STAGING PASSED / COMMIT REVIEW READY`
 
 İş Paketi 4.1 tamamlandı; staging doğrulaması geçti. Branch commit ve push kaydı bu görev raporunda tutulacaktır. Aşama 4 `Devam ediyor` kalır. İş Paketi 4.2 başlatılmadı.
+
+## 31. İş Paketi 4.2 — Danışan Listesinde Loading, Empty ve Error Ayrımı
+
+### Aktif route ve import zinciri
+
+Aktif zincir `App.tsx` içindeki `/clients` route'undan `features/clients/pages/ClientsPage.tsx` bileşenine ve oradan `features/clients/services/clientService.ts` içindeki `fetchDietitianClientList()` fonksiyonuna gider. Sayfa doğrudan Supabase sorgusu yapmaz. Ortak UI tipi `shared/types.ts` içindeki `Client` arayüzüdür.
+
+### Önceki davranış ve kök neden
+
+- Sayfa ayrı `clients: Client[]` ve `loading: boolean` state'leri kullanıyordu; açık error state'i yoktu.
+- Servis auth kullanıcısı bulunmadığında `[]` döndürüyordu. Sayfa servis exception'ını yakalayıp yine `clients=[]` yapıyordu.
+- Bu nedenle auth hatası, Supabase sorgu hatası ve gerçekten boş başarılı sonuç aynı `Henüz danışanınız yok` görünümüne düşüyordu.
+- Her yeni yükleme `loading=true` yapsa da eski `clients` state'i istek boyunca korunuyordu. Hata sonunda boşaltılıyor, fakat kullanıcıya hata olduğu açıklanmıyordu.
+- Ana liste ile arama sonucu boşluğu yalnız `clients.length` ve `searchTerm` kontrolleriyle ayrılıyordu. Desktop ve mobil için tekrar eden arama-empty blokları vardı.
+- Aktif işlevsel filtre state'i yoktur; `Filtrele` düğmesi mevcut tasarımda yalnız görsel kontroldür. Bu görev yeni filtre özelliği eklemedi.
+- Retry mekanizması yoktu. Realtime veya otomatik liste refetch aboneliği yoktu; yalnız mount ve başarılı danışan ekleme sonrasında yeniden yükleme yapılıyordu.
+- Aktif liste akışında mock/demo danışan fallback'i bulunmadı. `USER_AVATAR` yalnız görsel placeholder'dır; sabit `duration`, `weeklyChange` ve eksik profil varsayılanları ayrı veri doğruluğu riski olarak kalır.
+
+### Uygulanan servis ve state sözleşmesi
+
+Servis sonucu aşağıdaki discriminated union ile ayrıldı:
+
+```ts
+type ClientListResult =
+  | { status: 'success'; clients: Client[] }
+  | { status: 'error'; kind: 'auth' | 'query' | 'unexpected'; userMessage: string };
+```
+
+- `supabase.auth.getUser()` hem `error` hem kullanıcı yokluğu için fail-closed `auth` hatası üretir.
+- `dietitian_clients` sorgusu `dietitian_id = authenticated user` ve `status in (active, pending)` filtrelerini korur. Rejected ve removed ilişkiler listeye geri getirilmez.
+- Sorgu hatası boş diziye çevrilmez. Başarılı sıfır satır ise `success` içinde boş `clients` olarak korunur.
+- Supabase hata nesnesi veya teknik mesaj UI'ya aktarılmaz; güvenli Türkçe mesaj kullanılır ve yeni console kaydı eklenmez.
+- Liste mapping'i typed satır sözleşmesine alındı; bu akıştaki dört mevcut `any` kaldırıldı. Diğer tüketiciler için mevcut `fetchDietitianClients()` dizi sözleşmesi güvenli wrapper olarak korundu.
+
+Sayfa state'i `loading`, `success` ve `error` durumlarını açıkça ayırır. `success` içindeki listenin dolu/boş olması ve mevcut arama sonucu UI durumlarını türetir:
+
+- İlk yükleme ve retry sırasında yalnız loading görünümü gösterilir; önceki liste ve error görünümü korunmaz.
+- Başarılı dolu sonuç gerçek listeyi gösterir.
+- Başarılı boş sonuç `Henüz danışanınız bulunmuyor.` görünümünü gösterir.
+- Başarılı ana liste dolu, arama sonucu boşsa ayrı arama/filtre-empty mesajı ve `Aramayı Temizle` düğmesi gösterilir.
+- Auth, query veya beklenmeyen hata güvenli error görünümü ile `Tekrar Dene` düğmesini gösterir; empty state gösterilmez.
+- Retry sırasında in-flight ref ikinci eşzamanlı isteği engeller. Request sequence eski async sonucu geçersiz kılar; unmount cleanup sequence'i artırarak sonradan state yazımını önler.
+
+### Statik senaryo matrisi
+
+| Senaryo | Sonuç | Kod yolu |
+|---|---|---|
+| İlk yükleme | PASS | Başlangıç `viewState=loading`; yalnız spinner/metin render edilir. |
+| Başarılı sorgu, birden fazla danışan | PASS | Typed `success.clients` arama ve active/pending gruplarına ayrılır. |
+| Başarılı sorgu, sıfır danışan | PASS | `success` ve `clients.length===0` yalnız genel empty görünümünü üretir. |
+| Liste var, arama sonucu yok | PASS | `filteredClients.length===0` ayrı arama/filtre-empty görünümünü üretir. |
+| Liste var, filtre sonucu yok | PASS | Ortak `filteredClients` sonuç kapısı search/filter-empty durumunu temsil eder; mevcut UI'da işlevsel filtre state'i olmadığı için canlı filtre eylemi yoktur. |
+| Auth hatası | PASS | Servis `error.kind=auth`; sayfa error görünümü gösterir, empty göstermez. |
+| Supabase sorgu hatası | PASS | Servis `error.kind=query`; boş başarıya çevrilmez. |
+| Hata öncesinde liste vardı | PASS | Yeni istek önce `loading` yapar; liste yalnız `success` state'inden türetildiği için eski liste temizlenir. |
+| Retry başarılı | PASS | Aynı `loadClients()` akışı `loading → success` geçişini yapar. |
+| Retry başarısız | PASS | Aynı akış yeniden güvenli `error` state'ine gider. |
+| Hızlı iki retry | PASS | `requestInFlight` ikinci eşzamanlı başlangıcı engeller; sequence eski sonucu state'e yazdırmaz. |
+| Component unmount | PASS | Effect cleanup request sequence'i artırır; tamamlanan eski istek state yazamaz. |
+| Başka tenant kaydı | PASS | Sorgu authenticated `dietitian_id` ile sınırlıdır; RLS zorunlu savunma katmanı olmaya devam eder. |
+| Pending gösterimi | PASS | Servis yalnız active/pending getirir; mevcut `Onay Bekleyenler` grubu korunur. |
+| Rejected/removed gizleme | PASS | Server-side status filtresi rejected/removed ilişkileri dışarıda bırakır. |
+
+### Manuel doğrulama, kalite ve kalan riskler
+
+- Lokal güvenli auth/query error injection için mevcut test mock'u veya uygun harness bulunmadı. `NOT EXECUTED — SAFE ERROR INJECTION UNAVAILABLE`.
+- Otomatik test scripti yoktur; test başarılı sayılmadı ve yeni test paketi eklenmedi.
+- Node.js `v24.18.0`; `npm run typecheck` başarılı; `npm run lint` başarılı ve `0 error, 56 warning`; `npm run build` başarılıdır.
+- Build ana chunk değeri yaklaşık `748.58 kB` olup mevcut büyük chunk uyarısı devam eder. `git diff --check` başarılıdır.
+- İşlevsel filtre state'inin bulunmaması ve liste kartlarındaki sabit duration/weekly-change varsayımları bu iş paketinde değiştirilmedi.
+- Production veya staging Supabase'e bağlanılmadı; veri, Auth, Storage, RLS veya migration değişikliği yapılmadı. `supabase/.temp/` okunmadı veya değiştirilmedi.
+- İş Paketi 4.1 durumu değiştirilmedi. Aşama 4 `Devam ediyor` kalır ve İş Paketi 4.3 başlatılmadı.
+
+Nihai karar:
+
+`WORK PACKAGE 4.2 IMPLEMENTED / REVIEW PENDING`
+
+## 32. İş Paketi 4.2 Kod İncelemesi ve Güvenli Lokal Doğrulama
+
+### İnceleme kapsamı ve aktif zincir
+
+İnceleme `App.tsx → /clients → features/clients/pages/ClientsPage.tsx → features/clients/services/clientService.ts` aktif zincirinde yapıldı. `ClientsPage`, typed `fetchDietitianClientList()` fonksiyonunu doğrudan kullanır. Dizi döndüren uyumluluk wrapper'ı `fetchDietitianClients()` ise aktif olarak `features/dashboard/pages/DashboardPage.tsx` ve `pages/MealPlans.tsx` tarafından kullanılır. Kök `services/`, `src/` ve diğer duplicate akışlar aktif route zinciri değildir ve değiştirilmedi.
+
+### Typed servis sonucu ve wrapper değerlendirmesi
+
+- `ClientListResult`, `success.clients` ile `error.kind = auth | query | unexpected` sonuçlarını açıkça ayırır.
+- Auth error veya authenticated kullanıcı yokluğu boş success üretmez. `dietitian_clients` query error sonucu da boş diziye çevrilmez.
+- Başarılı sıfır satır `success` içindeki boş liste olarak korunur; teknik Supabase hata nesnesi UI'ya aktarılmaz.
+- Sorgu `dietitian_id = auth user` ve `status in (active, pending)` filtrelerini korur. Rejected/removed ve başka tenant ilişkileri uygulama sorgusuna dahil edilmez; RLS zorunlu savunma katmanı olmaya devam eder.
+- Beklenmeyen exception güvenli `unexpected` sonucuna dönüşür; yeni `any` veya teknik console kaydı eklenmedi.
+- Uyumluluk wrapper'ı typed error'ı sessizce `[]` yapmaz; güvenli genel `Error` fırlatır. Dashboard ve MealPlans exception'ı yakalar ancak ayrı error UI göstermediğinden bu iki tüketicide error/empty görünürlüğü hâlâ ayrı bir feature riski olarak kalır. Bu görevde başka feature ekranları yeniden yazılmadı.
+
+### Bulunan sorunlar ve uygulanan dar düzeltmeler
+
+1. **P1 — React Strict Mode in-flight kilidi:** İlk effect isteği başlattıktan sonra development Strict Mode cleanup sequence'i artırıyor ancak `requestInFlight` değerini bırakmıyordu. İkinci effect bu kilit nedeniyle yeni istek başlatamıyor; ilk promise stale olduğunda `finally` de sequence eşleşmediği için kilidi açamıyordu. Sonuç kalıcı loading olabilirdi. Cleanup artık sequence'i artırırken in-flight kilidini de bırakır. Eski ilk istek yeni sequence ile eşleşmediğinden ikinci isteğin state veya kilidini değiştiremez.
+2. **P2 — Gerçekte olmayan filtre ifadesi:** Search-empty mesajı işlevsel filtre state'i olmamasına rağmen “arama veya filtre” diyordu. Metin `Arama ölçütüne uygun danışan bulunamadı.` olarak daraltıldı; placeholder `İsme göre ara...` oldu.
+3. **P2 — Arama whitespace/locale davranışı:** Arama değeri `trim()` ve Türkçe locale lowercase ile normalize edildi. Yalnız boşluk içeren arama ana listeyi korur; baş/son boşluk gerçek eşleşmeyi bozmaz.
+
+### In-flight, sequence ve UI değerlendirmesi
+
+- In-flight kilidi istek başlangıcında kurulur ve current request başarı/error sonucunda `finally` ile bırakılır. Cleanup kilidi bırakıp sequence'i artırır; Strict Mode ikinci effect'i yeni istek başlatabilir.
+- Hızlı çift retry sırasında ilk çağrı kilidi kurar; ikinci çağrı Supabase isteği başlatmadan döner. Retry tıklanınca state `loading` olur ve retry butonu error görünümüyle birlikte kaldırılarak yeniden etkileşim engellenir.
+- Liste yalnız `success` state'inden türetilir. Loading veya error state'inde önceki liste görünmez; error mesajı loading başında temizlenir.
+- Stale request yalnız kendi request ID'si current sequence ile eşleşirse state yazabilir veya kilidi bırakabilir. Unmount cleanup eski promise sonucunu geçersiz kılar.
+- Authenticated kullanıcı değişiminde mevcut `ProtectedRoute` erişimi yeniden değerlendirirken sayfayı unmount eder; cleanup eski liste isteğini geçersiz kılar. Bu sayfada ayrıca auth-change subscription eklenmedi.
+- General empty yalnız `success.clients.length === 0`; search empty yalnız ana success listesi dolu ve normalize arama sonucu boşken oluşur. `Aramayı Temizle` gerçek button'dır, yalnız search state'ini temizler ve yeni DB sorgusu başlatmaz.
+
+### Statik kabul matrisi
+
+| Senaryo | Sonuç | Kod yolu |
+|---|---|---|
+| İlk render | PASS | Başlangıç view state'i `loading`. |
+| Success + data | PASS | `success.clients` gerçek listeyi render eder. |
+| Success + [] | PASS | Yalnız general empty render edilir. |
+| Liste var + arama sonucu yok | PASS | Normalize arama sonrası `filteredClients.length === 0` search empty üretir. |
+| Auth failure | PASS | `error.kind=auth`; empty yolu kullanılmaz. |
+| Query failure | PASS | `error.kind=query`; boş success üretilmez. |
+| Önceden liste varken query failure | PASS | Yeni istek önce `loading`; liste yalnız success state'inden türetilir. |
+| Retry failure | PASS | `error → loading → error`. |
+| Retry success | PASS | `error → loading → success/empty`. |
+| Hızlı çift retry | PASS | In-flight guard yalnız ilk isteği başlatır. |
+| Eski request geç tamamlanır | PASS | Request ID/sequence eşleşmesi yoksa state yazılmaz. |
+| Unmount | PASS | Cleanup sequence'i artırır ve kilidi bırakır. |
+| Strict Mode effect tekrarı | PASS | Cleanup sonrası ikinci effect yeni request başlatır; ilk stale promise etkisizdir. |
+| Pending | PASS | Active ilişkilerden ayrı mevcut pending grubunda görünür. |
+| Rejected/removed | PASS | Server-side status filtresiyle görünmez. |
+| Cross-tenant | PASS | Authenticated `dietitian_id` filtresi ve RLS ile sınırlandırılır. |
+
+### Güvenli canlı doğrulama sonucu
+
+- Yalnız `.env.staging.local` içinde tanımlı hedef kullanıldı; maskeli ref mevcut DietBridge Staging audit kaydıyla eşleşti. Production veya GROUNDLESS hedefi kullanılmadı.
+- Yerel Vite sunucusu `--mode staging` ile `127.0.0.1:3000` üzerinde başlatıldı. Tarayıcıda mevcut staging oturumu bulunmadığından `/clients` korumalı route tarafından giriş ekranına yönlendirildi; yeni hesap veya fixture oluşturulmadı.
+- Kullanılabilir tarayıcı kontrol yüzeyinde request blocking/network interception desteği bulunmadı. Secret, cookie, token veya Authorization header okunmadı.
+- Loading, success-with-data, search-empty, query-error, retry-failure, retry-success ve hızlı-retry canlı senaryoları: `NOT EXECUTED — SAFE AUTHENTICATED REQUEST-BLOCKING SESSION UNAVAILABLE`.
+- Auth-error injection: `NOT EXECUTED — SAFE AUTH ERROR INJECTION UNAVAILABLE`.
+- General-empty: `GENERAL EMPTY LIVE TEST NOT EXECUTED — SAFE EMPTY ACCOUNT UNAVAILABLE`.
+- Oturumsuz korumalı-route davranışı canlı olarak fail-closed bulundu; bu sonuç `fetchDietitianClientList()` auth-error UI testi yerine geçirilmedi.
+
+### Kalite ve karar
+
+- Node.js `v24.18.0`; typecheck başarılı; lint `0 error, 56 warning`; production build başarılıdır.
+- Build yaklaşık `748.62 kB` ana chunk uyarısını üretir; bu görevde bundle optimizasyonu yapılmadı.
+- Otomatik test scripti yoktur. `git diff --check` başarılıdır.
+- Production ve staging verisine mutation yapılmadı; migration, RLS, Storage veya Auth değişikliği yapılmadı.
+- İş Paketi 4.1 durumu değiştirilmedi. Aşama 4 `Devam ediyor` kalır ve İş Paketi 4.3 başlatılmadı.
+
+Nihai karar:
+
+`WORK PACKAGE 4.2 REVIEW PASSED / LIVE VALIDATION PENDING`
+
+## 33. İş Paketi 4.2 Staging Auth Oturum Blokajı Analizi
+
+### Staging kimliği ve aktif zincir
+
+- `.env.staging.local` içindeki maskeli proje ref'i `ezwq…rjkv` olarak mevcut DietBridge Staging kaydıyla eşleşti. URL ve anon key tanımlıydı; production veya GROUNDLESS hedefi kullanılmadı.
+- Yerel Vite süreci `--mode staging --host 127.0.0.1 --port 3000` ile, environment dosyasının mevcut sürümünden sonra başlatılmış durumdaydı.
+- Aktif zincir `App.tsx → LoginPage → AuthContext.signIn() → supabase.auth.signInWithPassword() → onAuthStateChange/getSession → resolveAuthAccess() → ProtectedRoute → /clients` olarak doğrulandı.
+- Tek aktif Supabase client `lib/supabaseClient.ts` içindeki module-scope `createClient(env.supabaseUrl, env.supabaseAnonKey)` instance'ıdır. `persistSession: false`, özel storage, `process.env`, Expo fallback veya render başına yeniden client oluşturma bulunmadı.
+
+### Tarayıcı ve auth isteği sonucu
+
+- Normal masaüstü Chrome kullanıldı. İlk kullanıcı sekmesinde kaynak koddan farklılaşmış metinler ve ardından React `removeChild` exception'ı görüldü; DOM tamamen boşaldı. Bu beyaz ekran Chrome sayfa çevirisi veya metin düğümlerini değiştiren benzer bir eklentinin React tarafından yönetilen DOM'u değiştirmesiyle sınıflandırıldı.
+- Temiz ve çevrilmemiş yeni Chrome sekmesinde giriş formu doğru render edildi. Kullanıcı giriş bilgilerini yalnız tarayıcı formuna manuel girdi; parola, token, cookie veya Authorization header okunmadı ve kaydedilmedi.
+- Temiz sekmede kullanıcıya güvenli `E-posta veya şifre hatalı.` mesajı gösterildi. Bu mesaj aktif auth servisinde Supabase `invalid login credentials` hata sınıfına karşılık gelir.
+- Password grant isteği session üretmedi. `/clients` yeni sekmede tekrar `/login` route'una yönlendi; reload veya yeni sekme session restore sonucu oluşmadı.
+- Role/profile/verification resolver veya sign-out hata logu oluşmadı. Bu sorgulara geçildiğine dair kanıt bulunmadığından `profiles`, `dietitian_profiles` ve verification durumu değerlendirilemedi.
+- Codex in-app browser tekrarında `/auth/v1/token` isteğinin gerçekten gönderildiği, React `removeChild` çökmesinin oluşmadığı ve aynı güvenli `invalid credentials` sonucunun döndüğü doğrulandı. Staging Auth logunda son password grant denemesi de `invalid_credentials` olarak kaydedildi; secret veya kullanıcı kimliği okunmadı.
+
+### Kök neden ve manuel işlem
+
+- Beyaz ekranın doğrudan nedeni uygulama auth guard'ı değil, kullanıcı sekmesindeki sayfa çevirisi/DOM değiştiren eklenti davranışıydı. Temiz sekme bu UI çökmesini ortadan kaldırdı.
+- Kalan auth blokajı uygulama kodundan önce, staging password login aşamasındadır: kullanıcı DietBridge Staging projesinde kayıtlı bir diyetisyen hesabı bulunmadığını doğruladı. Supabase bu durumda güvenlik amacıyla aynı `invalid credentials` sınıfını döndürür ve session üretmez.
+- Kullanıcı tarafından DietBridge Staging üzerinde bir test diyetisyeni oluşturulmalı veya onaylı onboarding akışıyla kaydedilmelidir. Auth kullanıcı kaydına ek olarak `profiles.role = dietitian`, ilgili `dietitian_profiles` kaydı ve web erişimine uygun verification/onay durumu bulunmalıdır. Email confirmation ve ban/disabled durumu da kontrol edilmelidir. Production veya GROUNDLESS hesabı staging login için kullanılamaz.
+- Auth kullanıcısı, parola, profile, role veya verification verisi Codex tarafından oluşturulmadı ya da değiştirilmedi. Eksik veya hatalı profile/role/verification kaydı ancak password login başarıyla session ürettikten sonra salt okunur doğrulanabilir.
+
+### İş Paketi 4.2 canlı doğrulama durumu
+
+- `STAGING AUTH SESSION: FAIL — STAGING DIETITIAN ACCOUNT NOT PRESENT / NO SESSION`.
+- Loading, success/general-empty, search-empty, query-error, retry-failure, rapid-retry, retry-success ve unmount/return testleri authenticated `/clients` route'u açılamadığı için çalıştırılmadı.
+- Production veya staging üzerinde DML/RPC, Auth mutation, migration, RLS, Storage veya fixture işlemi yapılmadı.
+- İş Paketi 4.2 durumu `Kod incelemesi geçti / staging auth blokajı nedeniyle canlı doğrulama bekliyor` olarak tutuldu. Aşama 4 `Devam ediyor`; İş Paketi 4.3 başlatılmadı.
+
+### Kullanıcı remediation'ı ve authenticated yeniden test
+
+- Kullanıcı DietBridge Staging üzerinde web erişimine uygun diyetisyen hesabını oluşturup giriş yaptı. Dashboard'un açılması session, `profiles.role = dietitian`, `dietitian_profiles` kaydı ve verification/onay kapılarının başarılı geçtiğini doğruladı.
+- `/clients` doğrudan açıldı; reload sonrasında session korundu ve yeni Codex tarayıcı sekmesinde `/clients` session restore ile tekrar açıldı. `/login` yönlendirmesi veya auth loop oluşmadı.
+- `STAGING AUTH SESSION: PASS`. Aktif session, role/profile/verification kapılarından geçerek korumalı route'u açtı; istemsiz sign-out veya redirect loop gözlenmedi.
+- SPA route geçişinde danışan listesi `loading` görünümü canlı yakalandı; eski liste, empty veya error aynı anda görünmedi. Sorgu tamamlandığında hesapta danışan bulunmadığı için güvenli `general_empty` görünümüne geçildi.
+- Hesapta danışan bulunmadığından search-empty testi güvenli veri yokluğu nedeniyle uygulanmadı.
+- Normal masaüstü Chrome DevTools'ta yalnız `*/rest/v1/dietitian_clients*` isteği engellendi. Query-error testi `loading → güvenli error` üretti; empty veya eski liste görünmedi, teknik Supabase ayrıntısı gösterilmedi ve `Tekrar Dene` sunuldu.
+- Blocking açıkken retry `loading → error` sonucuna döndü ve kalıcı kilit oluşmadı. Loading sırasında retry düğmesi DOM'dan kaldırıldığı için ikinci eşzamanlı etkileşim engellendi; statik in-flight guard incelemesiyle birlikte rapid-retry sonucu PASS olarak kaydedildi.
+- Blocking kaldırıldıktan sonra kullanıcı sayfayı yenilemeden `Tekrar Dene` düğmesine bastı; error temizlendi ve gerçek `general_empty` görünümü geldi. Retry-success PASS'tir.
+- `/clients` fetch'i loading durumundayken `/appointments` route'una geçildi; eski loading UI unmount oldu. `/clients` route'una dönüşte yeni loading/fetch başladı ve güvenli `general_empty` ile tamamlandı. Kalıcı in-flight kilidi veya görünür unmounted-state-update hatası oluşmadı.
+- Production veya staging üzerinde DML/RPC, Auth mutation, migration, RLS, Storage veya fixture işlemi yapılmadı; test hesabı kullanıcı tarafından görev dışı manuel işlemle hazırlandı.
+- Secret, parola, cookie, token, Authorization header, tam URL veya tam project ref repository ya da audit belgesine yazılmadı.
+
+Nihai karar:
+
+`WORK PACKAGE 4.2 LIVE VALIDATION PASSED / COMMIT REVIEW READY`

@@ -71,6 +71,41 @@ interface ClientDetailsProfileRow {
   blood_type: string | null;
 }
 
+interface ClientListProfileRow {
+  goal: string | null;
+  diet_start_date: string | null;
+  current_weight: number | null;
+  compliance_score: number | null;
+  start_weight: number | null;
+  target_weight: number | null;
+  height_cm: number | null;
+  last_lab_date: string | null;
+  activity_level: string | null;
+  sleep_hours: number | null;
+  smoking_status: string | null;
+  alcohol_use: string | null;
+  blood_types: { code: string | null } | { code: string | null }[] | null;
+}
+
+interface ClientListRow {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  email: string | null;
+  client_profiles: ClientListProfileRow | ClientListProfileRow[] | null;
+  client_medical_conditions: Array<{
+    medical_conditions: { name: string | null } | null;
+  }> | null;
+  client_medications: Array<{
+    medications_catalog: { name: string | null } | null;
+  }> | null;
+}
+
+interface DietitianClientListRow {
+  status: string;
+  client: ClientListRow | ClientListRow[] | null;
+}
+
 export interface PendingClientSummary {
   id: string;
   name: string;
@@ -88,14 +123,23 @@ export type ClientDetailAccessResult =
 const CLIENT_DETAIL_LOAD_ERROR =
   'Danışan bilgileri şu anda yüklenemiyor. Lütfen tekrar deneyin.';
 
+const CLIENT_LIST_LOAD_ERROR =
+  'Danışanlar yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.';
+
+export type ClientListResult =
+  | { status: 'success'; clients: Client[] }
+  | { status: 'error'; kind: 'auth' | 'query' | 'unexpected'; userMessage: string };
+
 
 /**
  * Fetches clients associated with the logged-in dietitian.
  */
-export const fetchDietitianClients = async (): Promise<Client[]> => {
+export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return [];
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return { status: 'error', kind: 'auth', userMessage: CLIENT_LIST_LOAD_ERROR };
+    }
 
     const { data, error } = await supabase
       .from('dietitian_clients')
@@ -139,36 +183,39 @@ export const fetchDietitianClients = async (): Promise<Client[]> => {
       .in('status', ['active', 'pending']);
 
     if (error) {
-      console.error('Supabase clients fetch returned error:', error.message);
-      throw error; 
+      return { status: 'error', kind: 'query', userMessage: CLIENT_LIST_LOAD_ERROR };
     }
 
-    if (!data || data.length === 0) {
-      return [];
-    }
+    const rows = (data ?? []) as unknown as DietitianClientListRow[];
+    const clients = rows.flatMap((item): Client[] => {
+      const client = Array.isArray(item.client) ? item.client[0] : item.client;
+      if (!client || !isValidUuid(client.id)) return [];
 
-    // Map Supabase DB shape to App UI shape
-    const clients = data.map((item: any) => {
-      const client = item.client;
-      // client_profiles is likely an array due to the join, even if 1:1 logically
-      const profile = Array.isArray(client.client_profiles) 
-        ? client.client_profiles[0] 
+      const profile: Partial<ClientListProfileRow> = Array.isArray(client.client_profiles)
+        ? client.client_profiles[0] || {}
         : client.client_profiles || {};
       
-      const bloodType = profile.blood_types?.code || undefined;
+      const bloodTypeRow = Array.isArray(profile.blood_types)
+        ? profile.blood_types[0]
+        : profile.blood_types;
+      const bloodType = bloodTypeRow?.code || undefined;
       
       const chronicConditions = Array.isArray(client.client_medical_conditions)
-        ? client.client_medical_conditions.map((c: any) => c.medical_conditions?.name).filter(Boolean)
+        ? client.client_medical_conditions
+            .map(condition => condition.medical_conditions?.name)
+            .filter((name): name is string => Boolean(name))
         : [];
 
       const medications = Array.isArray(client.client_medications)
-        ? client.client_medications.map((m: any) => m.medications_catalog?.name).filter(Boolean)
+        ? client.client_medications
+            .map(medication => medication.medications_catalog?.name)
+            .filter((name): name is string => Boolean(name))
         : [];
 
       const status: Client['status'] =
         item.status === 'active' ? 'Aktif' : item.status === 'pending' ? 'Onay Bekliyor' : 'Pasif';
 
-      return {
+      return [{
         id: client.id,
         name: client.full_name || 'İsimsiz Danışan',
         email: client.email || '',
@@ -192,19 +239,19 @@ export const fetchDietitianClients = async (): Promise<Client[]> => {
         sleepHours: profile.sleep_hours,
         smokingStatus: SMOKING_LABELS[profile.smoking_status] || profile.smoking_status,
         alcoholUse: ALCOHOL_LABELS[profile.alcohol_use] || profile.alcohol_use,
-      };
+      }];
     });
 
-    return clients.filter((client) => {
-      if (isValidUuid(client.id)) return true;
-
-      console.warn('[clientService] Geçersiz UUID alanı: profiles.id');
-      return false;
-    });
-  } catch (err: any) {
-    console.error('Network error or exception in fetchDietitianClients:', err.message || err);
-    throw err;
+    return { status: 'success', clients };
+  } catch {
+    return { status: 'error', kind: 'unexpected', userMessage: CLIENT_LIST_LOAD_ERROR };
   }
+};
+
+export const fetchDietitianClients = async (): Promise<Client[]> => {
+  const result = await fetchDietitianClientList();
+  if (result.status === 'error') throw new Error(result.userMessage);
+  return result.clients;
 };
 
 /**

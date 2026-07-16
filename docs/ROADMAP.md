@@ -221,6 +221,7 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Teslim çıktıları:** Güvenli danışan akışı ve test kanıtları.
 - **Başlangıç tarihi:** 2026-07-16.
 - **İş Paketi 4.1 durumu:** İş Paketi 4.1 tamamlandı; staging doğrulaması geçti. Branch commit ve push kaydı bu görev raporunda tutulacaktır.
+- **İş Paketi 4.2 durumu:** İş Paketi 4.2 tamamlandı — kod incelemesi ve staging canlı error-retry doğrulaması geçti / commit incelemesine hazır.
 - **Durum:** Devam ediyor.
 
 ### Aşama 5 — Beslenme planı ve öğün yönetimi
@@ -440,7 +441,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
 | 3 | Supabase ve RLS | Tamamlandı | `codex/supabase-security` | 2026-07-13 | 2026-07-16 | Production history `9/9` eşleşti; kontrollü adoption ve gerçek policy-removal migration’ı tamamlandı; RPC/RLS/mobil/cleanup/plan senkronizasyon kapıları geçti; PR #1 `main`e merge edildi |
-| 4 | Danışan yönetimi | Devam ediyor | `codex/client-management` | 2026-07-16 |  | İş Paketi 4.1 tamamlandı; staging doğrulaması geçti. Aşama 4 devam ediyor |
+| 4 | Danışan yönetimi | Devam ediyor | `codex/client-management` | 2026-07-16 |  | İş Paketi 4.1 tamamlandı; İş Paketi 4.2 tamamlandı — kod incelemesi ve staging canlı error-retry doğrulaması geçti, commit incelemesine hazır. Aşama 4 devam ediyor |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
 | 7 | Randevular | Bekliyor | `codex/appointments` |  |  |  |
@@ -505,3 +506,8 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-16 | Aşama 4 | Danışan yönetimi kickoff denetimi başlatıldı | Devam ediyor | `codex/client-management` |
 | 2026-07-16 | Aşama 4.1 | UUID fail-fast, active relation gate, pending minimum görünüm ve active-only Realtime doğrulandı; sahte su tüketimi fallback’i kaldırıldı; active dietitian daily log SELECT migration’ı hazırlandı ancak uygulanmadı | BLOCKED — daily_logs visibility and focus verification; Daily logs RLS remediation prepared / not applied | `codex/client-management` |
 | 2026-07-16 | Aşama 4.1 | Daily logs active-dietitian SELECT migration’ı yalnız staging’e uygulandı; RLS/UI/null-zero-empty-positive/error/cross-tenant/route/focus regresyonu ve sıfır cleanup tamamlandı | Tamamlandı — staging doğrulaması geçti | `codex/client-management` |
+| 2026-07-16 | Aşama 4.2 | Danışan listesinde loading, başarılı veri, gerçek empty, arama/filtre empty ve error ayrımı; güvenli retry ile stale-state koruması uygulandı | Uygulandı / kod incelemesi ve manuel doğrulama bekliyor | `codex/client-management` |
+| 2026-07-16 | Aşama 4.2 | Bağımsız kod incelemesinde Strict Mode in-flight kilidi ve arama metni/normalizasyonu düzeltildi; statik kabul matrisi geçti | Kod incelemesi geçti / canlı error-retry doğrulaması bekliyor | `codex/client-management` |
+| 2026-07-16 | Aşama 4.2 | Chrome ve Codex tarayıcısı staging auth incelemesinde login isteği invalid credentials sınıfıyla reddedildi; DietBridge Staging projesinde kayıtlı test diyetisyeni bulunmadığı doğrulandı | Kod incelemesi geçti / staging test hesabı eksik olduğu için canlı doğrulama bekliyor | `codex/client-management` |
+| 2026-07-16 | Aşama 4.2 | Kullanıcı staging diyetisyen hesabını hazırladı; auth, reload/yeni sekme session restore, loading, general-empty ve route dönüşü Codex tarayıcısında geçti | Query-error ve retry canlı doğrulaması bekliyor | `codex/client-management` |
+| 2026-07-16 | Aşama 4.2 | Yalnız `dietitian_clients` isteği engellenerek query-error, retry-failure, rapid-retry ve blocking kaldırıldıktan sonra reload olmadan retry-success doğrulandı; loading sırasında route unmount/return testi geçti | Tamamlandı — kod incelemesi ve staging canlı error-retry doğrulaması geçti / commit incelemesine hazır | `codex/client-management` |
