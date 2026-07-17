@@ -1,6 +1,6 @@
 
 import { supabase } from '../../../lib/supabaseClient';
-import { Client } from '../../../shared/types';
+import { Client, ClientLifestyleReadModel } from '../../../shared/types';
 import { USER_AVATAR } from '../../../shared/constants';
 import { isValidUuid } from '../../../shared/utils/uuid';
 
@@ -24,25 +24,15 @@ export function resolveProfilePhotoUrl(
   return null;
 }
 
-const ACTIVITY_LABELS: Record<string, string> = {
-  sedentary: 'Hareketsiz',
-  lightly_active: 'Az Aktif',
-  moderately_active: 'Orta Aktif',
-  very_active: 'Çok Aktif',
-  extra_active: 'Ekstra Aktif',
-};
+interface CatalogLabelRow {
+  label: string | null;
+}
 
-const SMOKING_LABELS: Record<string, string> = {
-  smoker: 'Kullanıyor',
-  non_smoker: 'Kullanmıyor',
-  occasionally: 'Ara Sıra',
-};
+interface BloodTypeCatalogRow {
+  code: string | null;
+}
 
-const ALCOHOL_LABELS: Record<string, string> = {
-  uses: 'Kullanıyor',
-  does_not_use: 'Kullanmıyor',
-  occasionally: 'Ara Sıra',
-};
+type NestedRelation<T> = T | T[] | null;
 
 interface ClientBaseProfileRow {
   full_name: string | null;
@@ -52,7 +42,9 @@ interface ClientBaseProfileRow {
 }
 
 interface ClientDetailsProfileRow {
+  goal_id: number | null;
   goal: string | null;
+  goal_catalog: NestedRelation<CatalogLabelRow>;
   diet_start_date: string | null;
   current_weight: number | null;
   compliance_score: number | null;
@@ -60,19 +52,34 @@ interface ClientDetailsProfileRow {
   target_weight: number | null;
   height_cm: number | null;
   last_lab_date: string | null;
+  activity_level_id: number | null;
   activity_level: string | null;
+  activity_catalog: NestedRelation<CatalogLabelRow>;
   sleep_hours: number | string | null;
-  smoking_status: string | null;
-  alcohol_use: string | null;
+  sleep_hours_min: number | string | null;
+  sleep_hours_max: number | string | null;
+  smoking_status: boolean | null;
+  alcohol_use: boolean | null;
+  alcohol_status_id: number | null;
+  alcohol_status: string | null;
+  alcohol_catalog: NestedRelation<CatalogLabelRow>;
+  nutrition_type_id: number | null;
+  nutrition_type: string | null;
+  nutrition_catalog: NestedRelation<CatalogLabelRow>;
   daily_water_goal_ml: number | null;
   food_intolerances: unknown;
+  disliked_foods: unknown;
   chronic_conditions: unknown;
   medications: unknown;
+  blood_type_id: number | null;
   blood_type: string | null;
+  blood_type_catalog: NestedRelation<BloodTypeCatalogRow>;
 }
 
 interface ClientListProfileRow {
+  goal_id: number | null;
   goal: string | null;
+  goal_catalog: NestedRelation<CatalogLabelRow>;
   diet_start_date: string | null;
   current_weight: number | null;
   compliance_score: number | null;
@@ -80,11 +87,17 @@ interface ClientListProfileRow {
   target_weight: number | null;
   height_cm: number | null;
   last_lab_date: string | null;
+  activity_level_id: number | null;
   activity_level: string | null;
   sleep_hours: number | null;
-  smoking_status: string | null;
-  alcohol_use: string | null;
-  blood_types: { code: string | null } | { code: string | null }[] | null;
+  smoking_status: boolean | null;
+  alcohol_use: boolean | null;
+  activity_catalog: NestedRelation<CatalogLabelRow>;
+  blood_type_id: number | null;
+  blood_type: string | null;
+  blood_type_catalog: NestedRelation<BloodTypeCatalogRow>;
+  chronic_conditions: unknown;
+  medications: unknown;
 }
 
 interface ClientListRow {
@@ -101,6 +114,14 @@ interface ClientListRow {
   }> | null;
 }
 
+interface ClientMedicalConditionRow {
+  medical_conditions: NestedRelation<{ name: string | null }>;
+}
+
+interface ClientMedicationRow {
+  medications_catalog: NestedRelation<{ name: string | null }>;
+}
+
 interface DietitianClientListRow {
   status: string;
   client: ClientListRow | ClientListRow[] | null;
@@ -114,7 +135,25 @@ export interface PendingClientSummary {
   profilePhotoUrl: string | null;
 }
 
-export type ActiveClientDetails = Client & { relationId: string };
+type ClientLifestyleKeys =
+  | 'goal'
+  | 'activityLevel'
+  | 'bloodType'
+  | 'chronicConditions'
+  | 'medications'
+  | 'foodIntolerances'
+  | 'sleepHours'
+  | 'smokingStatus'
+  | 'alcoholUse';
+
+export type ActiveClientDetails = Omit<Client, ClientLifestyleKeys> &
+  ClientLifestyleReadModel & { relationId: string };
+
+interface ClientLifestyleReadSource {
+  profile: Partial<ClientDetailsProfileRow>;
+  canonicalConditions: string[] | null;
+  canonicalMedications: string[] | null;
+}
 
 export type ClientDetailAccessResult =
   | { status: 'active'; client: ActiveClientDetails }
@@ -155,6 +194,8 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
           email,
           client_profiles (
             goal,
+            goal_id,
+            goal_catalog:client_goals!client_profiles_goal_id_fkey (label),
             diet_start_date,
             current_weight,
             compliance_score,
@@ -163,12 +204,16 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
             height_cm,
             last_lab_date,
             activity_level,
+            activity_level_id,
+            activity_catalog:activity_levels!client_profiles_activity_level_id_fkey (label),
             sleep_hours,
             smoking_status,
             alcohol_use,
-            blood_types (
-              code
-            )
+            blood_type,
+            blood_type_id,
+            blood_type_catalog:blood_types!client_profiles_blood_type_id_fkey (code),
+            chronic_conditions,
+            medications
           ),
           client_medical_conditions (
             medical_conditions (
@@ -200,22 +245,43 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
         ? client.client_profiles[0] || {}
         : client.client_profiles || {};
       
-      const bloodTypeRow = Array.isArray(profile.blood_types)
-        ? profile.blood_types[0]
-        : profile.blood_types;
-      const bloodType = bloodTypeRow?.code || undefined;
+      const goal = resolveCatalogValue(
+        profile.goal_id,
+        profile.goal_catalog,
+        'label',
+        profile.goal,
+      );
+      const activityLevel = resolveCatalogValue(
+        profile.activity_level_id,
+        profile.activity_catalog,
+        'label',
+        profile.activity_level,
+      );
+      const bloodType = resolveCatalogValue(
+        profile.blood_type_id,
+        profile.blood_type_catalog,
+        'code',
+        profile.blood_type,
+      );
       
-      const chronicConditions = Array.isArray(client.client_medical_conditions)
+      const canonicalConditions = Array.isArray(client.client_medical_conditions)
+        && client.client_medical_conditions.length > 0
         ? client.client_medical_conditions
             .map(condition => condition.medical_conditions?.name)
             .filter((name): name is string => Boolean(name))
-        : [];
+        : null;
+      const chronicConditions = normalizeJunctionValues(
+        canonicalConditions,
+        profile.chronic_conditions,
+      );
 
-      const medications = Array.isArray(client.client_medications)
+      const canonicalMedications = Array.isArray(client.client_medications)
+        && client.client_medications.length > 0
         ? client.client_medications
             .map(medication => medication.medications_catalog?.name)
             .filter((name): name is string => Boolean(name))
-        : [];
+        : null;
+      const medications = normalizeJunctionValues(canonicalMedications, profile.medications);
 
       const status: Client['status'] = item.status === 'active' ? 'Aktif' : 'Onay Bekliyor';
 
@@ -226,7 +292,7 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
         avatar: resolveProfilePhotoUrl(client.avatar_url) || USER_AVATAR,
         profilePhotoUrl: resolveProfilePhotoUrl(client.avatar_url),
         status,
-        goal: profile.goal || 'Sağlıklı Yaşam',
+        goal: goal || 'Yok',
         startDate: profile.diet_start_date ? new Date(profile.diet_start_date).toLocaleDateString('tr-TR') : '-',
         duration: '1 Ay', // Calculated or static
         currentWeight: profile.current_weight ? `${profile.current_weight} kg` : '-',
@@ -239,10 +305,8 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
         medications,
         heightCm: profile.height_cm,
         lastLabDate: profile.last_lab_date ? new Date(profile.last_lab_date).toLocaleDateString('tr-TR') : undefined,
-        activityLevel: ACTIVITY_LABELS[profile.activity_level] || profile.activity_level,
+        activityLevel: activityLevel || undefined,
         sleepHours: profile.sleep_hours,
-        smokingStatus: SMOKING_LABELS[profile.smoking_status] || profile.smoking_status,
-        alcoholUse: ALCOHOL_LABELS[profile.alcohol_use] || profile.alcohol_use,
       }];
     });
 
@@ -261,32 +325,165 @@ export const fetchDietitianClients = async (): Promise<Client[]> => {
 /**
  * Fetch a single client's details
  */
-export function normalizeMultiValue(value: any): string[] {
-  if (value === null || value === undefined || value === "") {
-    return [];
+const INVALID_TEXT_VALUES = new Set(['null', 'undefined', 'nan', '[object object]', '[]']);
+
+function normalizeText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized || INVALID_TEXT_VALUES.has(normalized.toLocaleLowerCase('tr-TR'))) {
+    return null;
   }
+  return normalized;
+}
+
+function firstRelation<T>(value: NestedRelation<T> | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function resolveCatalogValue<T extends CatalogLabelRow | BloodTypeCatalogRow>(
+  canonicalId: number | null | undefined,
+  catalog: NestedRelation<T> | undefined,
+  displayKey: keyof T,
+  legacyValue: unknown,
+): string | null {
+  if (canonicalId !== null && canonicalId !== undefined) {
+    return normalizeText(firstRelation(catalog)?.[displayKey]);
+  }
+  return normalizeText(legacyValue);
+}
+
+export function normalizeMultiValue(value: unknown): string[] {
+  let candidates: unknown[] = [];
 
   if (Array.isArray(value)) {
-    return value.map(item => String(item).trim()).filter(Boolean);
-  }
-
-  if (typeof value === "string") {
-    const trimmedValue = value.trim();
-    if (!trimmedValue) return [];
+    candidates = [...value];
+  } else if (typeof value === 'string') {
+    const normalized = normalizeText(value);
+    if (!normalized) return [];
 
     try {
-      const parsedValue = JSON.parse(trimmedValue);
-      if (Array.isArray(parsedValue)) {
-        return parsedValue.map(item => String(item).trim()).filter(Boolean);
-      }
+      const parsedValue: unknown = JSON.parse(normalized);
+      candidates = Array.isArray(parsedValue) ? [...parsedValue] : normalized.split(',');
     } catch {
-      // Not JSON
+      candidates = normalized.split(',');
     }
-
-    return trimmedValue.split(",").map(item => item.trim()).filter(Boolean);
   }
 
-  return [];
+  const uniqueValues = new Map<string, string>();
+  for (const candidate of candidates) {
+    const normalized = normalizeText(candidate);
+    if (!normalized) continue;
+    const key = normalized.toLocaleLowerCase('tr-TR');
+    if (!uniqueValues.has(key)) uniqueValues.set(key, normalized);
+  }
+
+  return [...uniqueValues.values()].sort((left, right) =>
+    left.localeCompare(right, 'tr-TR', { sensitivity: 'base' }),
+  );
+}
+
+function normalizeJunctionValues(canonicalValues: string[] | null, legacyValue: unknown): string[] {
+  return canonicalValues !== null
+    ? normalizeMultiValue(canonicalValues)
+    : normalizeMultiValue(legacyValue);
+}
+
+function normalizeSleepValue(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 24 ? parsed : null;
+}
+
+function formatHours(value: number): string {
+  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(value);
+}
+
+function normalizeSleepRange(
+  rawMin: unknown,
+  rawMax: unknown,
+  rawLegacy: unknown,
+): Pick<ClientLifestyleReadModel, 'sleepHoursMin' | 'sleepHoursMax' | 'sleepHoursLabel'> {
+  const hasCanonicalValue = (rawMin !== null && rawMin !== undefined)
+    || (rawMax !== null && rawMax !== undefined);
+
+  if (hasCanonicalValue) {
+    const min = rawMin === null || rawMin === undefined ? null : normalizeSleepValue(rawMin);
+    const max = rawMax === null || rawMax === undefined ? null : normalizeSleepValue(rawMax);
+    const invalidMin = rawMin !== null && rawMin !== undefined && min === null;
+    const invalidMax = rawMax !== null && rawMax !== undefined && max === null;
+
+    if (invalidMin || invalidMax || (min !== null && max !== null && min > max)) {
+      return { sleepHoursMin: null, sleepHoursMax: null, sleepHoursLabel: null };
+    }
+
+    const label = min !== null && max !== null
+      ? min === max
+        ? `${formatHours(min)} saat`
+        : `${formatHours(min)}–${formatHours(max)} saat`
+      : min !== null
+        ? `En az ${formatHours(min)} saat`
+        : max !== null
+          ? `En fazla ${formatHours(max)} saat`
+          : null;
+
+    return { sleepHoursMin: min, sleepHoursMax: max, sleepHoursLabel: label };
+  }
+
+  const legacy = normalizeSleepValue(rawLegacy);
+  return {
+    sleepHoursMin: null,
+    sleepHoursMax: null,
+    sleepHoursLabel: legacy === null ? null : `${formatHours(legacy)} saat`,
+  };
+}
+
+export function createClientLifestyleReadModel({
+  profile,
+  canonicalConditions,
+  canonicalMedications,
+}: ClientLifestyleReadSource): ClientLifestyleReadModel {
+  const sleep = normalizeSleepRange(
+    profile.sleep_hours_min,
+    profile.sleep_hours_max,
+    profile.sleep_hours,
+  );
+
+  return {
+    goal: resolveCatalogValue(profile.goal_id, profile.goal_catalog, 'label', profile.goal),
+    activityLevel: resolveCatalogValue(
+      profile.activity_level_id,
+      profile.activity_catalog,
+      'label',
+      profile.activity_level,
+    ),
+    bloodType: resolveCatalogValue(
+      profile.blood_type_id,
+      profile.blood_type_catalog,
+      'code',
+      profile.blood_type,
+    ),
+    alcoholStatus: resolveCatalogValue(
+      profile.alcohol_status_id,
+      profile.alcohol_catalog,
+      'label',
+      profile.alcohol_status,
+    ),
+    nutritionType: resolveCatalogValue(
+      profile.nutrition_type_id,
+      profile.nutrition_catalog,
+      'label',
+      profile.nutrition_type,
+    ),
+    smokingStatus: typeof profile.smoking_status === 'boolean' ? profile.smoking_status : null,
+    alcoholUse: typeof profile.alcohol_use === 'boolean' ? profile.alcohol_use : null,
+    ...sleep,
+    dislikedFoods: normalizeMultiValue(profile.disliked_foods),
+    chronicConditions: normalizeJunctionValues(canonicalConditions, profile.chronic_conditions),
+    medications: normalizeJunctionValues(canonicalMedications, profile.medications),
+    foodIntolerances: normalizeMultiValue(profile.food_intolerances),
+  };
 }
 
 
@@ -359,48 +556,89 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
     }
     if (!userProfile) return { status: 'unavailable' };
 
-    // 3. Fetch client profile data
-    const { data: clientProfile, error: clientProfileError } = await supabase
-      .from('client_profiles')
-      .select(`
-        goal,
-        diet_start_date,
-        current_weight,
-        compliance_score,
-        start_weight,
-        target_weight,
-        height_cm,
-        last_lab_date,
-        activity_level,
-        sleep_hours,
-        smoking_status,
-        alcohol_use,
-        daily_water_goal_ml,
-        food_intolerances,
-        chronic_conditions,
-        medications,
-        blood_type
-      `)
-      .eq('user_id', clientId)
-      .maybeSingle();
+    // 3. Fetch active-only profile and canonical health data.
+    const [clientProfileResult, conditionsResult, medicationsResult] = await Promise.all([
+      supabase
+        .from('client_profiles')
+        .select(`
+          goal,
+          goal_id,
+          goal_catalog:client_goals!client_profiles_goal_id_fkey (label),
+          diet_start_date,
+          current_weight,
+          compliance_score,
+          start_weight,
+          target_weight,
+          height_cm,
+          last_lab_date,
+          activity_level,
+          activity_level_id,
+          activity_catalog:activity_levels!client_profiles_activity_level_id_fkey (label),
+          sleep_hours,
+          sleep_hours_min,
+          sleep_hours_max,
+          smoking_status,
+          alcohol_use,
+          alcohol_status,
+          alcohol_status_id,
+          alcohol_catalog:alcohol_statuses!client_profiles_alcohol_status_id_fkey (label),
+          nutrition_type,
+          nutrition_type_id,
+          nutrition_catalog:nutrition_types!client_profiles_nutrition_type_id_fkey (label),
+          daily_water_goal_ml,
+          food_intolerances,
+          disliked_foods,
+          chronic_conditions,
+          medications,
+          blood_type,
+          blood_type_id,
+          blood_type_catalog:blood_types!client_profiles_blood_type_id_fkey (code)
+        `)
+        .eq('user_id', clientId)
+        .maybeSingle(),
+      supabase
+        .from('client_medical_conditions')
+        .select(`
+          medical_conditions!client_medical_conditions_condition_id_fkey (name)
+        `)
+        .eq('client_id', clientId),
+      supabase
+        .from('client_medications')
+        .select(`
+          medications_catalog!client_medications_medication_id_fkey (name)
+        `)
+        .eq('client_id', clientId),
+    ]);
 
-    if (clientProfileError) {
-      return { status: 'error', userMessage: CLIENT_DETAIL_LOAD_ERROR, cause: clientProfileError };
+    const activeReadError = clientProfileResult.error
+      || conditionsResult.error
+      || medicationsResult.error;
+    if (activeReadError) {
+      return { status: 'error', userMessage: CLIENT_DETAIL_LOAD_ERROR, cause: activeReadError };
     }
 
     const clientData = (userProfile ?? {}) as Partial<ClientBaseProfileRow>;
-    const profile = (clientProfile ?? {}) as Partial<ClientDetailsProfileRow>;
-
-    const bloodType = profile.blood_type || undefined;
-    const chronicConditions = normalizeMultiValue(profile.chronic_conditions);
-    const medications = normalizeMultiValue(profile.medications);
-    const foodIntolerances = normalizeMultiValue(profile.food_intolerances);
+    const profile = (clientProfileResult.data ?? {}) as Partial<ClientDetailsProfileRow>;
+    const conditionRows = (conditionsResult.data ?? []) as unknown as ClientMedicalConditionRow[];
+    const medicationRows = (medicationsResult.data ?? []) as unknown as ClientMedicationRow[];
+    const canonicalConditions = conditionRows.length > 0
+      ? conditionRows.flatMap((row) => {
+          const name = normalizeText(firstRelation(row.medical_conditions)?.name);
+          return name ? [name] : [];
+        })
+      : null;
+    const canonicalMedications = medicationRows.length > 0
+      ? medicationRows.flatMap((row) => {
+          const name = normalizeText(firstRelation(row.medications_catalog)?.name);
+          return name ? [name] : [];
+        })
+      : null;
+    const lifestyle = createClientLifestyleReadModel({
+      profile,
+      canonicalConditions,
+      canonicalMedications,
+    });
     const waterGoalLiters = profile.daily_water_goal_ml ? profile.daily_water_goal_ml / 1000 : undefined;
-    
-    // Process sleep hours correctly
-    const sleepHours = profile.sleep_hours !== null && profile.sleep_hours !== undefined 
-      ? Number(profile.sleep_hours) 
-      : undefined;
 
     const profilePhotoUrl = resolveProfilePhotoUrl(clientData.avatar_url);
 
@@ -415,7 +653,7 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
         avatar: profilePhotoUrl || USER_AVATAR,
         profilePhotoUrl,
         status: 'Aktif',
-        goal: profile.goal || 'Sağlıklı Yaşam',
+        ...lifestyle,
         startDate: profile.diet_start_date ? new Date(profile.diet_start_date).toLocaleDateString('tr-TR') : '-',
         duration: '1 Ay',
         currentWeight: profile.current_weight ? `${profile.current_weight}` : '-',
@@ -423,17 +661,9 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
         targetWeight: profile.target_weight ? `${profile.target_weight}` : undefined,
         weeklyChange: 0,
         compliance: profile.compliance_score || 0,
-        bloodType,
-        chronicConditions,
-        medications,
-        foodIntolerances,
         waterGoalLiters,
         heightCm: profile.height_cm,
         lastLabDate: profile.last_lab_date ? new Date(profile.last_lab_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : undefined,
-        activityLevel: ACTIVITY_LABELS[profile.activity_level] || profile.activity_level || undefined,
-        sleepHours,
-        smokingStatus: SMOKING_LABELS[profile.smoking_status] || profile.smoking_status || undefined,
-        alcoholUse: ALCOHOL_LABELS[profile.alcohol_use] || profile.alcohol_use || undefined,
       },
     };
   } catch (cause) {

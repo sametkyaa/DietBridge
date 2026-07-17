@@ -224,6 +224,7 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **İş Paketi 4.2 durumu:** İş Paketi 4.2 tamamlandı — kod incelemesi ve staging canlı error-retry doğrulaması geçti / commit incelemesine hazır.
 - **İş Paketi 4.3 durumu:** İş Paketi 4.3 tamamlandı — kod incelemesi ve staging canlı doğrulaması geçti.
 - **İş Paketi 4.4A durumu:** Resmî yerel Supabase yapılandırması kabul edildi; migration replay, DB lint ve RLS/RPC güvenlik matrisi geçti. Staging onayı bekliyor. Aşama 4 devam ediyor.
+- **İş Paketi 4.4C durumu:** Tamamlandı — canonical profil/yaşam tarzı read-model'i, responsive ve 44 px touch-target kontrolleri ile staging güvenlik harness'i geçti. Cleanup Auth/public/Storage sonucu `0/0/0`; runtime harness migration history kontrolü yapamadı. Aşama 4 devam ediyor.
 - **İş Paketi 4.4B durumu:** WP4.4B tamamlandı — kod incelemesi ve staging canlı regresyonu geçti.
 - **Durum:** Devam ediyor.
 
@@ -520,3 +521,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-17 | Aşama 4.4B | Web davet akışı güvenli RPC'ye geçirildi; enumeration-safe sonuçlar, relation-ID tabanlı sıfır-satır güvenli kaldırma ve kontrollü liste yenileme uygulandı | Uygulandı / kod incelemesi ve staging canlı doğrulaması bekliyor | `codex/client-management` |
 | 2026-07-17 | Aşama 4.4B | Davet modalına Escape, dinamik Tab/Shift+Tab focus trap, dialog fallback ve opener focus-return eklendi; statik erişilebilirlik ve kalite kapıları geçti | Erişilebilirlik düzeltmesi geçti / staging canlı doğrulaması bekliyor | `codex/client-management` |
 | 2026-07-17 | Aşama 4.4B | DietBridge Staging üzerinde sentetik davet, enumeration, state koruması, erişilebilirlik, responsive görünüm, veri sınırı ve relation removal regresyonları doğrulandı; manifest tabanlı cleanup tüm aggregate değerlerini sıfırladı | Tamamlandı — kod incelemesi ve staging canlı regresyonu geçti | `codex/client-management` |
+| 2026-07-17 | Aşama 4.4C | Danışan profil, sağlık ve yaşam tarzı read-model'i canonical kataloglar, junction tabloları, typed booleanlar ve uyku aralığıyla normalize edildi | Tamamlandı / staging doğrulaması geçti | `codex/client-management` |
+| 2026-07-17 | Aşama 4.4C | Canonical read-model staging matrisi geçti; active ve pending detay görünümlerindeki mobil yatay taşma kaynakları hedefli responsive container, wrap ve min-width sözleşmesiyle giderildi | Responsive kontrol tamamlandı | `codex/client-management` |
+| 2026-07-17 | Aşama 4.4C | Active/pending `Listeye Dön` ve pending `İsteği İptal Et` kontrolleri için açık 44×44 px minimum touch target sözleşmesi eklendi | Touch target ve klavye kontrolü tamamlandı | `codex/client-management` |
+| 2026-07-17 | Aşama 4.4C | Staging security harness Preflight/Onboarding/RLS/RPC/functional ve cleanup kapılarını geçti; Auth/public/Storage aggregate sonucu `0/0/0` oldu. Runtime harness migration history sorgulayamadı | WP4.4C tamamlandı; Aşama 4 ölçüm mutation, avatar güvenliği ve bölüm bazlı error/empty/retry işleriyle devam ediyor | `codex/client-management` |

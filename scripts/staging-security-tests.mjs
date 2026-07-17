@@ -17,6 +17,13 @@ const CONFIRMATION = 'YES_DIETBRIDGE_STAGING_ONLY';
 const REPORT_PATH = 'docs/SUPABASE_STAGING_RLS_TEST_REPORT.md';
 const created = { users: [], relations: [], appointments: [], messages: [], plans: [], meals: [] };
 const results = [];
+const RESULT_CATEGORY = Object.freeze({
+  ONBOARDING: 'Onboarding assertion',
+  RLS: 'RLS assertion',
+  RPC: 'RPC assertion',
+  FUNCTIONAL: 'Functional failure',
+  FIXTURE: 'Harness / fixture failure',
+});
 let cleanupFailed = false;
 let finalState = null;
 const migrationHistoryBoundary = {
@@ -46,9 +53,16 @@ function redact(value) {
     .replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '[redacted-id]')
     .replace(/[\w.+-]+@[\w.-]+/g, '[redacted-email]');
 }
+function resultCategory(id) {
+  if (id.startsWith('ONB-')) return RESULT_CATEGORY.ONBOARDING;
+  if (id.startsWith('RPC-')) return RESULT_CATEGORY.RPC;
+  if (id === 'DIETITIAN-MEAL-UPDATE') return RESULT_CATEGORY.FUNCTIONAL;
+  if (id === 'HARNESS') return RESULT_CATEGORY.FIXTURE;
+  return RESULT_CATEGORY.RLS;
+}
 function record(id, area, role, action, expected, ok, actual, severity = '', status = null, productionBlocker = false) {
   const failureStatus = severity === 'P2' ? 'FAIL — FUNCTIONAL BLOCKER' : 'FAIL — SECURITY BLOCKER';
-  results.push({ id, area, role, action, expected, actual: redact(actual), status: status ?? (ok ? 'PASS' : failureStatus), severity, productionBlocker });
+  results.push({ id, category: resultCategory(id), area, role, action, expected, actual: redact(actual), status: status ?? (ok ? 'PASS' : failureStatus), severity, productionBlocker });
 }
 function assertNoError(result, label) { if (result?.error) throw new Error(`${label}: ${redact(result.error.message)}`); return result?.data; }
 function userClient(url, anonKey) {
@@ -71,6 +85,47 @@ async function createUser(admin, role, runId, metadata = {}) {
   identity.id = data.user.id;
   created.users.push(identity.id);
   return identity;
+}
+async function createActiveRelationship(admin, dietitian, client, label) {
+  const { data: pendingRelationship, error: insertError } = await admin
+    .from('dietitian_clients')
+    .insert({ dietitian_id: dietitian.id, client_id: client.id, status: 'pending' })
+    .select('id,dietitian_id,client_id,status,accepted_at')
+    .single();
+  assertNoError({ error: insertError }, `${label} pending insert`);
+  if (!pendingRelationship?.id) throw new Error(`${label}: pending insert did not return a relationship ID.`);
+
+  // Register cleanup immediately after INSERT succeeds. The pending row remains
+  // removable even if contract validation or the active transition fails.
+  created.relations.push(pendingRelationship.id);
+
+  if (
+    pendingRelationship.status !== 'pending'
+    || pendingRelationship.accepted_at !== null
+    || pendingRelationship.dietitian_id !== dietitian.id
+    || pendingRelationship.client_id !== client.id
+  ) {
+    throw new Error(`${label}: pending insert contract verification failed.`);
+  }
+
+  const { data: activeRelationship, error: updateError } = await admin
+    .from('dietitian_clients')
+    .update({ status: 'active' })
+    .eq('id', pendingRelationship.id)
+    .select('id,dietitian_id,client_id,status,accepted_at')
+    .single();
+  assertNoError({ error: updateError }, `${label} active transition`);
+
+  if (
+    activeRelationship?.status !== 'active'
+    || !activeRelationship.accepted_at
+    || activeRelationship.dietitian_id !== dietitian.id
+    || activeRelationship.client_id !== client.id
+  ) {
+    throw new Error(`${label}: active transition or database-generated accepted_at verification failed.`);
+  }
+
+  return activeRelationship;
 }
 async function selectOne(admin, table, idColumn, id) {
   const { data, error } = await admin.from(table).select('*').eq(idColumn, id).maybeSingle();
@@ -118,16 +173,22 @@ async function finalAggregate(admin) {
 }
 function writeReport(runId, stagingRef) {
   const counts = Object.groupBy(results, ({ status }) => status);
-  const securityFailures = results.filter((r) => r.status.includes('SECURITY BLOCKER') && ['P0', 'P1'].includes(r.severity)).length;
+  const securityFailures = results.filter((r) => r.category !== RESULT_CATEGORY.FIXTURE && r.status.includes('SECURITY BLOCKER') && ['P0', 'P1'].includes(r.severity)).length;
   const deferredBlockers = results.filter((r) => r.status === 'KNOWN DEFERRED GAP' && r.productionBlocker).length;
   const p2 = results.filter((r) => r.severity === 'P2' && !r.status.startsWith('PASS')).length;
-  const reportExitCode = classifyHarnessExitCode({ cleanupFailed, securityFailures, deferredBlockers, functionalBlockers: p2 });
-  const rows = results.map((r) => `| ${r.id} | ${r.area} | ${r.role} | ${r.action} | ${r.expected} | ${r.actual} | ${r.status} | ${r.severity} |`).join('\n');
-  const report = `# DietBridge — Staging Onboarding ve Negatif RLS Test Raporu\n\n> [!IMPORTANT]\n> Bu rapor yalnız staging için tasarlanmış sentetik test harness çıktısıdır. Secret, URL, token, UUID ve email değerleri maskelenir.\n\n## Amaç ve ortam\n\n- Test run: \`${mask(runId)}\`\n- Staging referansı: \`${mask(stagingRef)}\`\n- Production ve GROUNDLESS: kullanılmadı.\n- Harness: \`scripts/staging-security-tests.mjs\`\n\n## Test özeti\n\n- Toplam: ${results.length}\n- PASS: ${(counts.PASS ?? []).length}\n- FAIL: ${(counts['FAIL — SECURITY BLOCKER'] ?? []).length + (counts['FAIL — FUNCTIONAL BLOCKER'] ?? []).length}\n- Cleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}\n\n| ID | Alan | Rol | İşlem | Beklenen | Gerçek | Durum | Severity |\n|---|---|---|---|---|---|---|---|\n${rows || '| — | — | — | Çalıştırılmadı | — | — | NOT EXECUTED | — |'}\n\n## Cleanup ve sonuç\n\nCleanup yalnız runtime sırasında kaydedilen explicit ID’leri hedefler. Migration, Storage ve Realtime değişikliği yapılmaz.\n`;
+  const fixtureFailures = results.filter((r) => r.category === RESULT_CATEGORY.FIXTURE && r.status !== 'PASS').length;
+  const rlsAssertions = results.filter((r) => r.category === RESULT_CATEGORY.RLS);
+  const rpcAssertions = results.filter((r) => r.category === RESULT_CATEGORY.RPC);
+  const rlsFailures = rlsAssertions.filter((r) => r.status.startsWith('FAIL')).length;
+  const rpcFailures = rpcAssertions.filter((r) => r.status.startsWith('FAIL')).length;
+  const functionalFailures = results.filter((r) => r.category === RESULT_CATEGORY.FUNCTIONAL && r.status !== 'PASS').length;
+  const reportExitCode = classifyHarnessExitCode({ cleanupFailed, securityFailures, deferredBlockers, functionalBlockers: p2, currentExitCode: fixtureFailures ? 11 : 0 });
+  const rows = results.map((r) => `| ${r.id} | ${r.category} | ${r.area} | ${r.role} | ${r.action} | ${r.expected} | ${r.actual} | ${r.status} | ${r.severity} |`).join('\n');
+  const report = `# DietBridge — Staging Onboarding ve Negatif RLS Test Raporu\n\n> [!IMPORTANT]\n> Bu rapor yalnız staging için tasarlanmış sentetik test harness çıktısıdır. Secret, URL, token, UUID ve email değerleri maskelenir.\n\n## Amaç ve ortam\n\n- Test run: \`${mask(runId)}\`\n- Staging referansı: \`${mask(stagingRef)}\`\n- Production ve GROUNDLESS: kullanılmadı.\n- Harness: \`scripts/staging-security-tests.mjs\`\n\n## Test özeti\n\n- Toplam: ${results.length}\n- PASS: ${(counts.PASS ?? []).length}\n- FAIL: ${(counts['FAIL — SECURITY BLOCKER'] ?? []).length + (counts['FAIL — FUNCTIONAL BLOCKER'] ?? []).length}\n- Cleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}\n\n| ID | Sınıf | Alan | Rol | İşlem | Beklenen | Gerçek | Durum | Severity |\n|---|---|---|---|---|---|---|---|---|\n${rows || '| — | — | — | — | Çalıştırılmadı | — | — | NOT EXECUTED | — |'}\n\n## Cleanup ve sonuç\n\nCleanup yalnız runtime sırasında kaydedilen explicit ID’leri hedefler. Migration, Storage ve Realtime değişikliği yapılmaz.\n`;
   const reportWithVerification = report
     .replace(
       `- Cleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}`,
-      `- Security failures P0/P1: ${securityFailures}\n- Deferred P1 blockers: ${deferredBlockers}\n- P2 functional blockers: ${p2}\n- Cleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}\n- Exit code: ${reportExitCode}`,
+      `- Harness / fixture failures: ${fixtureFailures}\n- RLS assertions: ${rlsAssertions.filter((r) => r.status === 'PASS').length}/${rlsAssertions.length}\n- RLS assertion failures: ${rlsFailures}\n- RPC assertions: ${rpcAssertions.filter((r) => r.status === 'PASS').length}/${rpcAssertions.length}\n- RPC assertion failures: ${rpcFailures}\n- Functional failures: ${functionalFailures}\n- Security failures P0/P1: ${securityFailures}\n- Deferred P1 blockers: ${deferredBlockers}\n- P2 functional blockers: ${p2}\n- Cleanup failures: ${cleanupFailed ? 1 : 0}\n- Cleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}\n- Exit code: ${reportExitCode}`,
     )
     .replace(
       '## Cleanup ve sonuç',
@@ -173,10 +234,8 @@ async function main() {
     record('ONB-ELEVATION', 'Onboarding', elevation.label, 'verification escalation', 'pending/false', elevationProfile?.verification_status === 'pending' && elevationProfile?.is_verified === false, elevationProfile ? 'checked' : 'missing', 'P0');
     record('ONB-INVALID', 'Onboarding', 'Invalid Role Attempt', 'allowlist', 'rejected or safe role', Boolean(invalid.error) || (await selectOne(admin, 'profiles', 'id', invalid.data?.user?.id))?.role !== 'admin', invalid.error ? 'rejected' : 'safe role check', 'P0');
 
-    const { data: relationA, error: relationAError } = await admin.from('dietitian_clients').insert({ dietitian_id: dietitianA.id, client_id: clientA.id, status: 'active', accepted_at: new Date().toISOString() }).select('id').single();
-    assertNoError({ error: relationAError }, 'Tenant A relationship'); created.relations.push(relationA.id);
-    const { data: relationB, error: relationBError } = await admin.from('dietitian_clients').insert({ dietitian_id: dietitianB.id, client_id: clientB.id, status: 'active', accepted_at: new Date().toISOString() }).select('id').single();
-    assertNoError({ error: relationBError }, 'Tenant B relationship'); created.relations.push(relationB.id);
+    await createActiveRelationship(admin, dietitianA, clientA, 'Tenant A relationship');
+    await createActiveRelationship(admin, dietitianB, clientB, 'Tenant B relationship');
     const createFixture = async (dietitian, client) => {
       const appointment = assertNoError(await admin.from('appointments').insert({ dietitian_id: dietitian.id, client_id: client.id, title: runId, date: '2030-01-01', time: '09:00', duration: 30, type: 'online' }).select('id').single(), 'appointment fixture'); created.appointments.push(appointment.id);
       const message = assertNoError(await admin.from('chat_messages').insert({ sender_id: dietitian.id, receiver_id: client.id, message_text: runId }).select('id').single(), 'chat fixture'); created.messages.push(message.id);
@@ -243,12 +302,17 @@ async function main() {
     catch (error) { cleanupFailed = true; console.error(`Final verification failed: ${redact(error.message)}`); }
     writeReport(runId, stagingRef);
   }
-  const securityFailures = results.filter((r) => r.status === 'FAIL — SECURITY BLOCKER' && ['P0', 'P1'].includes(r.severity)).length;
+  const securityFailures = results.filter((r) => r.category !== RESULT_CATEGORY.FIXTURE && r.status === 'FAIL — SECURITY BLOCKER' && ['P0', 'P1'].includes(r.severity)).length;
   const deferredBlockers = results.filter((r) => r.status === 'KNOWN DEFERRED GAP' && r.productionBlocker).length;
   const p2 = results.filter((r) => r.severity === 'P2' && !r.status.startsWith('PASS')).length;
   exitCode = classifyHarnessExitCode({ cleanupFailed, securityFailures, deferredBlockers, functionalBlockers: p2, currentExitCode: exitCode });
-  const passed = results.filter((r) => r.status === 'PASS').length;
-  console.log(`Preflight: PASS\nOnboarding: ${results.filter((r) => r.area === 'Onboarding' && r.status === 'PASS').length}/${results.filter((r) => r.area === 'Onboarding').length}\nRLS tests: ${passed}/${results.length}\nSecurity failures P0/P1: ${securityFailures}\nDeferred P1 blockers: ${deferredBlockers}\nP2 functional blockers: ${p2}\nCleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}\nFinal Auth users: ${finalState?.authUsers ?? 'NOT EXECUTED'}\nFinal public rows: ${finalState?.publicRows ?? 'NOT EXECUTED'}\nFinal Storage buckets: ${finalState?.storageBuckets ?? 'NOT EXECUTED'}\nMigration history unchanged: ${migrationHistoryBoundary.status}\nMigration history reason: ${migrationHistoryBoundary.reason}\nReport: ${REPORT_PATH}`);
+  const fixtureFailures = results.filter((r) => r.category === RESULT_CATEGORY.FIXTURE && r.status !== 'PASS').length;
+  const rlsAssertions = results.filter((r) => r.category === RESULT_CATEGORY.RLS);
+  const rpcAssertions = results.filter((r) => r.category === RESULT_CATEGORY.RPC);
+  const rlsFailures = rlsAssertions.filter((r) => r.status.startsWith('FAIL')).length;
+  const rpcFailures = rpcAssertions.filter((r) => r.status.startsWith('FAIL')).length;
+  const functionalFailures = results.filter((r) => r.category === RESULT_CATEGORY.FUNCTIONAL && r.status !== 'PASS').length;
+  console.log(`Preflight: PASS\nOnboarding: ${results.filter((r) => r.category === RESULT_CATEGORY.ONBOARDING && r.status === 'PASS').length}/${results.filter((r) => r.category === RESULT_CATEGORY.ONBOARDING).length}\nHarness / fixture failures: ${fixtureFailures}\nRLS tests: ${rlsAssertions.filter((r) => r.status === 'PASS').length}/${rlsAssertions.length}\nRLS assertion failures: ${rlsFailures}\nRPC tests: ${rpcAssertions.filter((r) => r.status === 'PASS').length}/${rpcAssertions.length}\nRPC assertion failures: ${rpcFailures}\nFunctional failures: ${functionalFailures}\nSecurity failures P0/P1: ${securityFailures}\nDeferred P1 blockers: ${deferredBlockers}\nP2 functional blockers: ${p2}\nCleanup failures: ${cleanupFailed ? 1 : 0}\nCleanup: ${cleanupFailed ? 'FAIL' : 'PASS'}\nFinal Auth users: ${finalState?.authUsers ?? 'NOT EXECUTED'}\nFinal public rows: ${finalState?.publicRows ?? 'NOT EXECUTED'}\nFinal Storage buckets: ${finalState?.storageBuckets ?? 'NOT EXECUTED'}\nMigration history unchanged: ${migrationHistoryBoundary.status}\nMigration history reason: ${migrationHistoryBoundary.reason}\nReport: ${REPORT_PATH}`);
   process.exit(exitCode);
 }
 

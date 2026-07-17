@@ -234,16 +234,16 @@ const ClientDetails = () => {
   if (viewState.status === 'pending') {
     const client = viewState.client;
     return (
-      <div className="p-8 max-w-7xl mx-auto min-h-screen">
+      <div className="w-full min-w-0 max-w-7xl mx-auto min-h-screen p-4 sm:p-6 lg:p-8">
         <button 
           onClick={() => navigate('/clients')}
-          className="flex items-center gap-2 text-slate-500 hover:text-primary transition-colors mb-6 font-medium"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 text-slate-500 hover:text-primary transition-colors mb-6 rounded-lg font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           <ArrowLeft className="w-5 h-5" />
           Listeye Dön
         </button>
-        <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 relative overflow-hidden">
-           <div className="flex flex-col md:flex-row gap-8 relative z-10 items-center md:items-start">
+        <div className="w-full min-w-0 bg-white rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-100 relative overflow-hidden">
+           <div className="min-w-0 flex flex-col md:flex-row gap-8 relative z-10 items-center md:items-start">
               <div className="flex-shrink-0">
                   {client.profilePhotoUrl && !profileImageError ? (
                   <img 
@@ -256,32 +256,32 @@ const ClientDetails = () => {
                     <ProfileAvatarFallback name={client.name} className="w-32 h-32 rounded-full border-4 border-slate-100 shadow-sm opacity-60 grayscale text-3xl" />
                   )}
               </div>
-              <div className="flex-1 text-center md:text-left">
-                 <h1 className="text-3xl font-bold text-slate-800 mb-2">{client.name}</h1>
+              <div className="min-w-0 flex-1 text-center md:text-left">
+                 <h1 className="text-3xl font-bold text-slate-800 mb-2 break-words [overflow-wrap:anywhere]">{client.name}</h1>
                  <p className="text-slate-500 flex items-center justify-center md:justify-start gap-2 mb-6">
                     <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-500"></span>
                     Onay Bekleyen Danışan
                  </p>
                  <div className="flex flex-wrap gap-4 text-sm text-slate-600 mb-8 justify-center md:justify-start">
-                     <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl">
-                         <Mail className="w-4 h-4 text-slate-400" />
-                         {client.email}
+                     <div className="flex min-w-0 max-w-full items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl">
+                         <Mail className="w-4 h-4 shrink-0 text-slate-400" />
+                         <span className="min-w-0 break-words [overflow-wrap:anywhere]">{client.email}</span>
                      </div>
                  </div>
                  <div className="p-5 bg-amber-50 text-amber-800 rounded-2xl border border-amber-200/50 flex flex-col md:flex-row items-center md:items-start gap-4">
                     <div className="p-3 bg-amber-100 rounded-full shrink-0">
                       <Clock className="w-6 h-6 text-amber-600" />
                     </div>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <h4 className="font-bold mb-1">Bağlantı İsteği Bekleniyor</h4>
-                      <p className="text-sm opacity-90">Bu danışan henüz bağlantı isteğinizi onaylamadı. Danışanınız mobil uygulama üzerinden isteği onayladığında yemek planı oluşturma, ölçüm takibi ve mesajlaşma gibi özellikler aktif olacaktır.</p>
+                      <p className="text-sm opacity-90 break-words [overflow-wrap:anywhere]">Bu danışan henüz bağlantı isteğinizi onaylamadı. Danışanınız mobil uygulama üzerinden isteği onayladığında yemek planı oluşturma, ölçüm takibi ve mesajlaşma gibi özellikler aktif olacaktır.</p>
                     </div>
                  </div>
                  <div className="mt-8 flex justify-center md:justify-start">
                     <button 
                       onClick={() => handleRemoveClient(client.relationId)}
                       disabled={isRemoving}
-                      className="px-4 py-2 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-all disabled:opacity-50 flex items-center gap-2"
+                      className="min-h-11 min-w-11 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-all disabled:opacity-50 inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                     >
                         <Trash2 className="w-4 h-4" />
                         İsteği İptal Et
@@ -295,6 +295,17 @@ const ClientDetails = () => {
   }
 
   const client = viewState.client;
+  const smokingStatusLabel = client.smokingStatus === null
+    ? 'Yok'
+    : client.smokingStatus
+      ? 'Kullanıyor'
+      : 'Kullanmıyor';
+  const alcoholStatusLabel = client.alcoholStatus
+    || (client.alcoholUse === null
+      ? 'Yok'
+      : client.alcoholUse
+        ? 'Tüketiyor'
+        : 'Tüketmiyor');
 
   const handleEditPlan = () => {
     navigate('/meal-plans', { state: { clientId: client.id } });
@@ -354,20 +365,20 @@ const ClientDetails = () => {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto min-h-screen">
+    <div className="w-full min-w-0 max-w-7xl mx-auto min-h-screen p-4 sm:p-6 lg:p-8">
       <button 
         onClick={() => navigate('/clients')}
-        className="flex items-center gap-2 text-slate-500 hover:text-primary transition-colors mb-6 font-medium"
+        className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 text-slate-500 hover:text-primary transition-colors mb-6 rounded-lg font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
       >
         <ArrowLeft className="w-5 h-5" />
         Listeye Dön
       </button>
 
       {/* Header Profile Card */}
-      <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 mb-8 relative overflow-hidden">
+      <div className="w-full min-w-0 bg-white rounded-3xl p-4 sm:p-8 shadow-sm border border-slate-100 mb-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-bl-full -mr-16 -mt-16 opacity-50"></div>
         
-        <div className="flex flex-col md:flex-row gap-8 relative z-10">
+        <div className="min-w-0 flex flex-col md:flex-row gap-8 relative z-10">
             <div className="flex-shrink-0">
                 {client.profilePhotoUrl && !profileImageError ? (
                   <img 
@@ -381,29 +392,29 @@ const ClientDetails = () => {
                 )}
             </div>
             
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-slate-800">{client.name}</h1>
+                    <div className="min-w-0">
+                        <h1 className="text-3xl font-bold text-slate-800 break-words [overflow-wrap:anywhere]">{client.name}</h1>
                         <p className="text-slate-500 flex items-center gap-2 mt-1">
                             <span className={`inline-block w-2.5 h-2.5 rounded-full ${client.status === 'Aktif' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
                             {client.status} Danışan
                         </p>
                     </div>
-                    <div className="flex gap-3">
-                        <button className="px-5 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-primary-dark transition-all shadow-sm shadow-primary/30">
+                    <div className="flex flex-wrap gap-3">
+                        <button className="px-5 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-primary-dark transition-all shadow-sm shadow-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
                             Mesaj Gönder
                         </button>
                         <button 
                           onClick={handleEditPlan}
-                          className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all"
+                          className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                         >
                             Planı Düzenle
                         </button>
                         <button 
                           onClick={() => handleRemoveClient(client.relationId)}
                           disabled={isRemoving}
-                          className="px-3 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-all disabled:opacity-50 flex items-center justify-center"
+                          className="px-3 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-all disabled:opacity-50 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                           title="Danışanı Kaldır"
                         >
                             <Trash2 className="w-5 h-5" />
@@ -411,32 +422,32 @@ const ClientDetails = () => {
                     </div>
                 </div>
 
-                <div className="flex flex-wrap gap-6 text-sm text-slate-600">
-                    <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg">
-                        <Mail className="w-4 h-4 text-slate-400" />
-                        {client.email}
+                <div className="min-w-0 flex flex-wrap gap-6 text-sm text-slate-600">
+                    <div className="flex min-w-0 max-w-full items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg">
+                        <Mail className="w-4 h-4 shrink-0 text-slate-400" />
+                        <span className="min-w-0 break-words [overflow-wrap:anywhere]">{client.email}</span>
                     </div>
-                    {client.phone && (<div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg">
-                        <Phone className="w-4 h-4 text-slate-400" />
-                        {client.phone}
+                    {client.phone && (<div className="flex min-w-0 max-w-full items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg">
+                        <Phone className="w-4 h-4 shrink-0 text-slate-400" />
+                        <span className="min-w-0 break-words [overflow-wrap:anywhere]">{client.phone}</span>
                     </div>)}
-                    <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg">
-                        <Calendar className="w-4 h-4 text-slate-400" />
-                        Başlangıç: {client.startDate}
+                    <div className="flex min-w-0 max-w-full items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg">
+                        <Calendar className="w-4 h-4 shrink-0 text-slate-400" />
+                        <span className="min-w-0 break-words [overflow-wrap:anywhere]">Başlangıç: {client.startDate}</span>
                     </div>
-                    <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg">
-                        <Activity className="w-4 h-4 text-primary" />
-                        Hedef: {client.goal || '-'}
+                    <div className="flex min-w-0 max-w-full items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg">
+                        <Activity className="w-4 h-4 shrink-0 text-primary" />
+                        <span className="min-w-0 break-words [overflow-wrap:anywhere]">Hedef: {client.goal || 'Yok'}</span>
                     </div>
                 </div>
             </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="grid min-w-0 grid-cols-1 md:grid-cols-3 gap-8">
         
         {/* Left Column - Stats */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
                     <Weight className="w-5 h-5 text-primary" />
@@ -476,19 +487,19 @@ const ClientDetails = () => {
                 <div className="space-y-4">
                     <div className="flex justify-between items-center border-b border-slate-50 pb-3">
                         <div className="text-sm text-slate-500">Kan Grubu</div>
-                        <div className="font-medium text-slate-800">{client.bloodType || '-'}</div>
+                        <div className="min-w-0 break-words text-right font-medium text-slate-800 [overflow-wrap:anywhere]">{client.bloodType || 'Yok'}</div>
                     </div>
                     <div className="border-b border-slate-50 pb-3">
                         <div className="text-sm text-slate-500 mb-2">Kronik Rahatsızlıklar</div>
                         <div className="flex flex-wrap gap-2">
                             {client.chronicConditions && client.chronicConditions.length > 0 ? (
                                 client.chronicConditions.map((condition, idx) => (
-                                    <span key={idx} className="px-2 py-1 bg-red-50 text-red-600 rounded-md text-xs font-medium">
+                                    <span key={idx} className="max-w-full break-words px-2 py-1 bg-red-50 text-red-600 rounded-md text-xs font-medium [overflow-wrap:anywhere]">
                                         {condition}
                                     </span>
                                 ))
                             ) : (
-                                <span className="text-sm text-slate-400">-</span>
+                                <span className="text-sm text-slate-400">Yok</span>
                             )}
                         </div>
                     </div>
@@ -497,12 +508,12 @@ const ClientDetails = () => {
                         <div className="flex flex-wrap gap-2">
                             {client.medications && client.medications.length > 0 ? (
                                 client.medications.map((med, idx) => (
-                                    <span key={idx} className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-xs font-medium">
+                                    <span key={idx} className="max-w-full break-words px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-xs font-medium [overflow-wrap:anywhere]">
                                         {med}
                                     </span>
                                 ))
                             ) : (
-                                <span className="text-sm text-slate-400">-</span>
+                                <span className="text-sm text-slate-400">Yok</span>
                             )}
                         </div>
                     </div>
@@ -511,18 +522,32 @@ const ClientDetails = () => {
                         <div className="flex flex-wrap gap-2">
                             {client.foodIntolerances && client.foodIntolerances.length > 0 ? (
                                 client.foodIntolerances.map((intol, idx) => (
-                                    <span key={idx} className="px-2 py-1 bg-yellow-50 text-yellow-700 rounded-md text-xs font-medium">
+                                    <span key={idx} className="max-w-full break-words px-2 py-1 bg-yellow-50 text-yellow-700 rounded-md text-xs font-medium [overflow-wrap:anywhere]">
                                         {intol}
                                     </span>
                                 ))
                             ) : (
-                                <span className="text-sm text-slate-400">-</span>
+                                <span className="text-sm text-slate-400">Yok</span>
+                            )}
+                        </div>
+                    </div>
+                    <div className="border-b border-slate-50 pb-3">
+                        <div className="text-sm text-slate-500 mb-2">Sevilmeyen Besinler</div>
+                        <div className="flex flex-wrap gap-2">
+                            {client.dislikedFoods.length > 0 ? (
+                                client.dislikedFoods.map((food) => (
+                                    <span key={food} className="max-w-full break-words px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-medium [overflow-wrap:anywhere]">
+                                        {food}
+                                    </span>
+                                ))
+                            ) : (
+                                <span className="text-sm text-slate-400">Yok</span>
                             )}
                         </div>
                     </div>
                     <div className="flex justify-between items-center">
                         <div className="text-sm text-slate-500">Son Tahlil Tarihi</div>
-                        <div className="font-medium text-slate-800">{client.lastLabDate || '-'}</div>
+                        <div className="min-w-0 break-words text-right font-medium text-slate-800 [overflow-wrap:anywhere]">{client.lastLabDate || 'Yok'}</div>
                     </div>
                 </div>
             </div>
@@ -536,19 +561,23 @@ const ClientDetails = () => {
                 <div className="space-y-4">
                     <div className="flex justify-between items-center border-b border-slate-50 pb-3">
                         <div className="text-sm text-slate-500">Aktivite Seviyesi</div>
-                        <div className="font-medium text-slate-800">{client.activityLevel || '-'}</div>
+                        <div className="min-w-0 break-words text-right font-medium text-slate-800 [overflow-wrap:anywhere]">{client.activityLevel || 'Yok'}</div>
                     </div>
                     <div className="flex justify-between items-center border-b border-slate-50 pb-3">
                         <div className="text-sm text-slate-500">Uyku Düzeni</div>
-                        <div className="font-medium text-slate-800">{client.sleepHours !== undefined && client.sleepHours !== null ? `${client.sleepHours} Saat` : '-'}</div>
+                        <div className="min-w-0 break-words text-right font-medium text-slate-800 [overflow-wrap:anywhere]">{client.sleepHoursLabel || 'Yok'}</div>
                     </div>
                     <div className="flex justify-between items-center border-b border-slate-50 pb-3">
                         <div className="text-sm text-slate-500">Sigara Kullanımı</div>
-                        <div className="font-medium text-slate-800">{client.smokingStatus || '-'}</div>
+                        <div className="min-w-0 break-words text-right font-medium text-slate-800 [overflow-wrap:anywhere]">{smokingStatusLabel}</div>
+                    </div>
+                    <div className="flex justify-between items-center border-b border-slate-50 pb-3">
+                        <div className="text-sm text-slate-500">Alkol Kullanımı</div>
+                        <div className="min-w-0 break-words text-right font-medium text-slate-800 [overflow-wrap:anywhere]">{alcoholStatusLabel}</div>
                     </div>
                     <div className="flex justify-between items-center">
-                        <div className="text-sm text-slate-500">Alkol Kullanımı</div>
-                        <div className="font-medium text-slate-800">{client.alcoholUse || '-'}</div>
+                        <div className="text-sm text-slate-500">Beslenme Tipi</div>
+                        <div className="min-w-0 break-words text-right font-medium text-slate-800 [overflow-wrap:anywhere]">{client.nutritionType || 'Yok'}</div>
                     </div>
                 </div>
             </div>
@@ -573,7 +602,7 @@ const ClientDetails = () => {
         </div>
 
         {/* Middle Column - Activity/Charts */}
-        <div className="md:col-span-2 space-y-6">
+        <div className="min-w-0 md:col-span-2 space-y-6">
             {/* Weekly Weight Chart */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div className="flex justify-between items-center mb-6">

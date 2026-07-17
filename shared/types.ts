@@ -28,6 +28,23 @@ export interface Client {
   foodIntolerances?: string[];
 }
 
+export interface ClientLifestyleReadModel {
+  goal: string | null;
+  activityLevel: string | null;
+  bloodType: string | null;
+  alcoholStatus: string | null;
+  nutritionType: string | null;
+  smokingStatus: boolean | null;
+  alcoholUse: boolean | null;
+  sleepHoursMin: number | null;
+  sleepHoursMax: number | null;
+  sleepHoursLabel: string | null;
+  dislikedFoods: string[];
+  chronicConditions: string[];
+  medications: string[];
+  foodIntolerances: string[];
+}
+
 export interface Task {
   id: string;
   title: string;

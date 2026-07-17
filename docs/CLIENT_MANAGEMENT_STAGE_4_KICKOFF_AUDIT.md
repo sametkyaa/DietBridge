@@ -1457,3 +1457,95 @@ Nihai erişilebilirlik kararı:
 Nihai staging kararı:
 
 `WP4.4B REVIEW PASSED / COMMIT REVIEW READY`
+
+## 31. WP4.4C — Danışan profil ve yaşam tarzı canonical read-model normalizasyonu
+
+### Önceki drift ve canonical sözleşme
+
+- Detay servisi daha önce `client_profiles.goal`, `activity_level`, `blood_type`, `sleep_hours`, `chronic_conditions` ve `medications` legacy alanlarını doğrudan UI modeline taşıyor; boolean `smoking_status` ve `alcohol_use` alanlarını string gibi ele alıyordu. Liste ise kan grubunda canonical join kullanırken hedef ve aktivitede legacy değer kullandığı için liste–detay drift'i oluşabiliyordu.
+- Baseline migration'da `client_profiles.goal_id → client_goals(label)`, `activity_level_id → activity_levels(label)`, `blood_type_id → blood_types(code)`, `alcohol_status_id → alcohol_statuses(label)` ve `nutrition_type_id → nutrition_types(label)` FK'leri doğrulandı. Katalogların primary key'i `id`, code/name alanlarında unique constraint'leri ve authenticated SELECT RLS policy'leri vardır.
+- Sağlık ilişkileri `client_medical_conditions(client_id, condition_id) → medical_conditions(name)` ve `client_medications(client_id, medication_id) → medications_catalog(name)` zinciridir. Her junction çifti unique'tir; client kendi satırlarını yönetebilir, diyetisyen yalnız `active` ilişkiyle SELECT yapabilir. `client_profiles` için de active-dietitian SELECT ve client-own SELECT policy'leri doğrulandı.
+- Food intolerance için canonical junction bulunmadı; `food_intolerances` typed legacy array olarak korunur. `disliked_foods`, `sleep_hours_min`, `sleep_hours_max`, `smoking_status` ve `alcohol_use` mevcut canonical kolonlardan okunur.
+
+### Typed read-model ve öncelik politikası
+
+- Ham Supabase satır tipleri ile UI modeli ayrıldı. `ClientLifestyleReadModel`; nullable katalog etiketleri, `boolean | null` sigara/alkol değerleri, nullable numeric uyku sınırları, türetilmiş uyku etiketi ve daima normalize `string[]` listeler taşır. Yeni `any`, `@ts-ignore` veya kontrolsüz UI assertion eklenmedi.
+- Canonical FK doluysa yalnız nested katalog gösterim değeri kullanılır. FK dolu fakat katalog satırı yoksa stale legacy text'e dönülmez ve UI `Yok` gösterir. FK null ise trim edilmiş, geçerli legacy text kontrollü fallback olabilir.
+- Canonical junction satırı varsa yalnız katalog adları kullanılır; junction sonucu başarıyla boşsa legacy array fallback uygulanır. Junction veya katalog sorgu hatası tüm detay okumasını kontrollü genel hataya indirir, yanlış legacy veri başarı gibi gösterilmez.
+- String listeleri kaynak array'i mutate etmeden trim edilir, boş/teknik placeholder değerlerden arındırılır, Türkçe case-insensitive duplicate'lerden temizlenir ve deterministik Türkçe locale sırasına konur.
+- `smoking_status` ve `alcohol_use` boolean olarak korunur. UI sigarada `Kullanıyor/Kullanmıyor/Yok`, alkol boolean fallback'inde `Tüketiyor/Tüketmiyor/Yok` gösterir. Canonical `alcohol_status_id` etiketi varsa boolean fallback'ten önce gelir; `false` hiçbir zaman eksik veri sayılmaz.
+- Uyku için canonical min/max legacy `sleep_hours` değerinden önce gelir. Eşit sınır `X saat`, aralık `X–Y saat`, tek sınır `En az/En fazla X saat` gösterir. İki canonical kolon da null ise geçerli legacy sayı fallback olabilir; `0`, negatif, 24 üstü, NaN veya ters aralık fail-closed `Yok` olur.
+- UI hedef, aktivite, kan grubu, beslenme tipi, alkol/sigara durumu, uyku düzeni, sağlık listeleri, intoleranslar ve sevilmeyen besinlerde yalnız normalize servis modelini kullanır. Eksik scalar ve listelerde ortak metin `Yok`tur; pending görünümüne hassas alan eklenmedi.
+
+### Veri sınırı ve yerel doğrulama
+
+- Aktif zincir `ClientDetails → fetchClientDetails → dietitian_clients relation gate → active-only profiles/client_profiles/catalog/junction reads → normalized read-model` biçimindedir. Pending dalı relation kapısından hemen sonra yalnız `profiles(full_name, avatar_url, email)` okur. İlişki yoksa veya başka tenant client'i ise hassas sorgular başlamaz.
+- Canonical kataloglar `client_profiles` sorgusunda tekil FK join'leriyle; junction'lar client UUID açık filtresiyle ayrı, hedefli SELECT'lerle okunur. Sayfaya yeni Supabase sorgusu veya veri normalizasyonu eklenmedi.
+- Repository dışı geçici saf helper harness'i Fixture A–E eşdeğerini doğruladı: canonical-only, legacy-only, mixed conflict, null/empty, boolean false, bozuk FK, geçersiz uyku, duplicate/Türkçe sıralama ve kaynak array değişmezliği geçti. Son marker `WP44C_LOCAL_READ_MODEL_MATRIX_PASS` oldu; iki geçici test dosyası silindi. Remote fixture kurulmadı; local/remote uygulama satırı oluşturulmadığı için cleanup aggregate'i başlangıç ve sonuçta `0` kaldı.
+- Fixture F/G eşdeğeri kaynak zinciriyle doğrulandı: pending dalında canonical hassas sorgu yoktur; relation bulunmadan veya `active` olmadan canonical okuma başlamaz. Canlı RLS sonucu bu uygulama görevinde remote ortama bağlanılmadan sonraki staging preflight'ına bırakıldı.
+
+### Kalite, staging matrisi ve görev sınırı
+
+- `npm run typecheck` başarılıdır. `npm run lint` `0 error, 53 warning` ile 54 warning baseline'ını aşmadı. `npm run build` başarılıdır; ana chunk `755.30 kB` (`198.07 kB` gzip) ve 500 kB büyük chunk uyarısı non-blocker olarak sürer. Repository'de otomatik `test` scripti yoktur; test başarılı sayılmadı.
+- Staging canlı matrisi canonical-only, legacy-only, mixed conflict, null/empty, boolean false, min/max uyku, bozuk FK fail-closed, junction/legacy fallback, pending minimum görünüm, removed/unavailable ve cross-tenant ret senaryolarını içermelidir. Bu görevde staging testi veya fixture mutation'ı yapılmadı.
+- WP4.1 invalid UUID/pending/active/unavailable gate'i, WP4.2 loading-error-empty-retry state'leri, WP4.3 arama/filtre/Türkçe normalizasyon/deterministik sıralama ve WP4.4B davet RPC/relation-ID removal/modal davranışı hedefli kaynak incelemesinde korunmuştur. `ClientsPage.tsx` yeniden yazılmadı; liste adapter'ında yalnız ortak canonical goal/activity/blood normalizasyonu kullanıldı.
+- Bu görevde migration, RLS, RPC, trigger, function, grant, Storage policy, Supabase config, paket/lockfile veya mobil repository değiştirilmedi. Staging, production veya GROUNDLESS'a bağlanılmadı; SQL, Auth, Storage, fixture veya veri mutation'ı yapılmadı. Aşama 4 `Devam ediyor` kalır; İş Paketi 4.5 başlatılmadı.
+
+Nihai uygulama kararı:
+
+`WP4.4C IMPLEMENTED / REVIEW PENDING`
+
+## 32. WP4.4C — Mobil yatay taşma düzeltmesi
+
+### Staging bulgusu ve gerçek taşma kaynağı
+
+- DietBridge Staging üzerinde tamamlanan canonical read-model canlı matrisi; canonical katalog değerleri, legacy fallback, canonical precedence, null/empty, boolean `false`, junction fallback, pending minimum veri sınırı ve cross-tenant RLS reddini doğruladı. Browser console error sayısı `0` oldu ve bütün sentetik fixture kayıtları manifest tabanlı cleanup ile sıfırlandı.
+- Aynı canlı kontrolde `390×844` görünümünde active ve pending detay sayfalarının `main` flex child'ı yaklaşık `500 px` min-content genişliğine büyüdü. Cross-tenant `Danışana Erişilemiyor` görünümünde aynı taşma oluşmadı.
+- Repository dışındaki sentetik render harness'inde neden ayrı ayrı ölçüldü. Active görünümde tek satır aksiyon grubu `340 px`, kırılmayan e-posta rozeti `381 px` intrinsic genişlik üretti; iki kat `p-8` yatay padding ile `main/document scrollWidth` `510 px` oldu. Pending görünümde kırılmayan uzun ad/e-posta zinciri `429 px` intrinsic genişlik üretti ve `main` `559 px` oldu. Test browser'ındaki dikey scrollbar nedeniyle `390 px` requested viewport için `documentElement.clientWidth` `375 px` ölçüldü.
+- Taşan DOM zincirleri active için sayfa root'u → profil kartı → `flex-1` profil içeriği → `flex gap-3` aksiyon grubu ve e-posta/hedef rozetleri; pending için sayfa root'u → profil kartı → `flex-1` özet içeriği → uzun ad ve e-posta rozeti olarak doğrulandı. Cross-tenant görünümünde bu min-content zincirleri bulunmadığından `main` viewport genişliğinde kaldı.
+
+### Minimal responsive düzeltme
+
+- Değişiklik yalnız `pages/ClientDetails.tsx` içindeki active ve pending render sözleşmesine uygulandı. Sayfa root ve kartlarda `w-full min-w-0`, mobilde `p-4`, genişleyen breakpoint'lerde mevcut padding'i koruyan `sm:p-6 lg:p-8` / `sm:p-8` sınıfları kullanıldı.
+- Profil flex child'larına ve grid kolonlarına `min-w-0` eklendi. Active aksiyon grubu `flex-wrap` oldu; buton padding ve touch target değerleri korunarak dar ekranda güvenli satır kırılımı sağlandı.
+- Uzun ad, e-posta, telefon, hedef/katalog değerleri ve sağlık/ilaç/intolerans chip'leri `max-w-full`, `break-words` ve yalnız ilgili metin alanında `overflow-wrap:anywhere` ile okunabilir biçimde sarılır. İkonlar `shrink-0` kaldı. İçerik kesilmedi ve global `overflow-x-hidden` veya başka clipping çözümü eklenmedi.
+- Grafik grid'i, orta kolon ve kart zinciri `min-w-0` ile gerçek kullanılabilir genişliğe küçülebilir hale getirildi; chart bar container'ları ve mevcut dikey scroll davranışı korunmuştur.
+
+### Önce/sonra metrikleri ve regresyon matrisi
+
+- Baseline sentetik ölçüm (`390×844`, `clientWidth=375`): active `main/scrollWidth=510`, pending `main≈559` ve cross-tenant viewport genişliğindeydi. Düzeltme eşdeğeri harness ölçümünde active, pending ve cross-tenant için `mainWidth=375`, `documentElement.scrollWidth=375`, `body.scrollWidth=375` ve taşan element sayısı `0` oldu.
+- `360×800`, `375×812`, `390×844`, `393×852`, `412×915`, `768×1024` ve `1280×800` viewport'larında active, pending ve cross-tenant görünümleri ayrı ayrı ölçüldü. Toplam `21/21` kombinasyonda `scrollWidth <= clientWidth + 1`, `mainWidth <= innerWidth + 1` ve taşan DOM element sayısı `0` koşulları geçti.
+- Uzun ad/e-posta/telefon/katalog etiketleri, kronik rahatsızlık, ilaç, intolerans ve sevilmeyen besin chip'leri kırpılmadan wrap oldu. Profil header, pending bilgilendirmesi, relation removal kontrolleri, ölçüm grafiği ve günlük takip alanları viewport'u genişletmedi. Tablet ve desktop grid/flex breakpoint'leri korunmuştur.
+- Klavye focus sırası veya DOM sırası değiştirilmedi; butonlar küçültülmedi, touch padding'leri korundu ve active/pending detay kontrollerine görünür `focus-visible` ring eklendi. Metinlerin screen-reader sırası değişmedi; yeni yatay scroll container veya focus'u viewport dışına taşıyan bir kontrol eklenmedi.
+
+### Güvenlik, kapsam ve sonraki kapı
+
+- Responsive değişiklik Supabase sorgusu, mutation, servis/read-model normalizasyonu, pending minimum profil kapısı, active-only hassas okuma, cross-tenant fail-closed davranışı, canonical precedence, legacy fallback, boolean/sleep/junction normalizasyonu, relation-ID removal veya Realtime/refetch zincirini değiştirmez.
+- Bu görevde staging, production veya GROUNDLESS'a bağlanılmadı; remote SQL, RPC, Auth, Storage, fixture veya veri mutation'ı yapılmadı. Migration, RLS, Supabase config, package/lockfile ve mobil repository değiştirilmedi.
+- Aşama 4 `Devam ediyor` kalır. WP4.4C responsive ve touch-target kontrolleri tamamlanmıştır; final staging güvenlik harness sonucu aşağıdaki kapanış kaydında ayrıca belgelenir. İş Paketi 4.5 başlatılmadı.
+
+Nihai responsive uygulama kararı:
+
+`WP4.4C RESPONSIVE AND TOUCH-TARGET CHECKS PASSED`
+
+## 33. WP4.4C — Minimum touch target düzeltmesi
+
+- Önceki responsive ön incelemesi, pending `İsteği İptal Et` düğmesinin `px-4 py-2` ve temel satır yüksekliğiyle yaklaşık `40 px` yüksekliğe düştüğünü; active ve pending `Listeye Dön` düğmelerinin ise açık bir minimum boyut sözleşmesine sahip olmadığını belirledi.
+- Yalnız bu üç yerel `<button>` için `min-h-11 min-w-11` (`44×44 px`) eklendi. Metinli kontroller sabit genişlik verilmeden `inline-flex items-center justify-center` ile hizalandı; mevcut yatay padding, görsel hiyerarşi, DOM/tab sırası ve `focus-visible` ring sınıfları korundu.
+- Repository dışı yerel responsive harness ile `360×800`, `375×812`, `390×844`, `393×852`, `412×915`, `768×1024` ve `1280×800` viewport'larında active, pending ve cross-tenant görünümleri yeniden ölçüldü. Toplam `21/21` kombinasyonda `scrollWidth <= clientWidth + 1`, `body.scrollWidth <= clientWidth + 1`, `mainWidth <= innerWidth + 1` ve taşan DOM öğesi sayısı `0` oldu; önceki yatay taşma geri dönmedi.
+- `390×844` ölçümünde active `Listeye Dön` `106.19×44 px`, pending `Listeye Dön` `106.19×44 px` ve pending `İsteği İptal Et` `146.16×44 px` oldu. Her kontrol gerçek, etkin `<button>` olarak kaldı; `focus-visible:ring-2` sınıfı korunmuştur. Native button semantiği nedeniyle Tab erişimi ile Enter/Space aktivasyonu korunur; pending iptal düğmesi yalnız mevcut işlem sürerken `disabled` olur ve bu durumda aktivasyon güvenli biçimde engellenir.
+- Düzeltme yalnız sunum sınıflarındadır: pending minimum profil sınırı, active-only hassas okuma, cross-tenant fail-closed davranışı, canonical read-model, relation removal ve Supabase/RLS zinciri değişmez. Bu görevde staging, production veya GROUNDLESS'a bağlanılmadı; remote mutation, fixture, migration veya credential işlemi yapılmadı.
+
+## 34. WP4.4C — Final staging güvenlik ve cleanup kapanışı
+
+- Canonical profil/sağlık/yaşam tarzı read-model'i tamamlandı. Liste ve detay akışları canonical katalog/junction önceliğini, typed boolean ve uyku aralığı sözleşmesini, kontrollü legacy fallback'i ve fail-closed hassas veri kapısını kullanır.
+- Responsive matris `21/21` geçti; active, pending ve cross-tenant görünümlerinde yatay taşma kalmadı. Active/pending geri dönüş ve pending iptal kontrollerinin minimum `44×44 px` touch target, klavye semantiği ve görünür focus ring kontrolleri tamamlandı.
+- DietBridge Staging güvenlik harness sonucu: Preflight `PASS`, Onboarding `7/7`, Harness/fixture failure `0`, RLS `7/7`, RPC `2/2`, functional failure `0`, P0/P1 security failure `0` ve Cleanup `PASS`.
+- Cleanup sonrası fiziksel aggregate doğrulaması Auth users `0`, public rows `0` ve Storage buckets `0` sonucunu verdi. Sentetik fixture kalmadı.
+- Runtime Node harness migration kataloguna erişemediğinden migration history kontrolü bu harness içinde `NOT EXECUTED` kaldı. Bu sınır başarı gibi raporlanmaz; gerektiğinde ayrı, salt-okunur staging CLI/catalog kontrolüyle ele alınmalıdır.
+- Final commit kapısında `npm run typecheck` geçti; `npm run lint` `0 error, 53 warning` ile mevcut baseline seviyesinde geçti; `npm run build` başarılı oldu. Ana chunk `757.52 kB` (`198.32 kB` gzip) ve mevcut 500 kB chunk uyarısı non-blocker olarak sürer. `node --check scripts/staging-security-tests.mjs` ve `git diff --check` geçti.
+- Aşama 4'te ölçüm mutation akışları, avatar upload/Storage güvenliği ve detay bölümlerinin kendi error/empty/retry sözleşmeleri açıktır. Bu nedenle Aşama 4 `Devam ediyor` kalır; Aşama 5 başlatılmadı.
+
+Nihai WP4.4C kararı:
+
+`WP4.4C COMPLETE / STAGE 4 CONTINUES`
