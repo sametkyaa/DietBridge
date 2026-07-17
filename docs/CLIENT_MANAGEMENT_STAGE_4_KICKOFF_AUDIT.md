@@ -1248,3 +1248,98 @@ Nihai karar:
 Nihai karar:
 
 `WORK PACKAGE 4.3 REVIEW PASSED / COMMIT REVIEW READY`
+
+## 28. WP4.4A — Danışan ilişkilendirme güvenlik sözleşmesi
+
+### Kök neden ve daraltılmış profil erişimi
+
+- P0 kök neden: Baseline içindeki `Dietitians can view client profiles for linking` SELECT policy'si, yalnız caller'ın diyetisyen rolünü kontrol ediyor ve ilişki durumunu kontrol etmiyordu. Bu nedenle ilişkisiz bir diyetisyen, client rolündeki `profiles` satırlarını listeleyebilirdi.
+- Yeni migration bu policy'yi kaldırır. Mevcut `Users can view own profile` self-profile policy'si korunur.
+- Yeni `Relationship parties can view counterpart profiles` policy'si, yalnız taraflardan biri authenticated caller olduğunda ve aynı `dietitian_clients` satırı `pending` veya `active` ise karşı tarafın temel `profiles` satırına SELECT izni verir.
+- `client_profiles`, ölçüm ve diğer sağlık tablolarının active-relationship RLS sözleşmesi değiştirilmez. `profiles` satırı kolon bazında PII koruması sağlamadığından ilişki içindeki karşı taraf temel profil satırının tamamını okuyabilir; daha dar kolon projeksiyonu ihtiyacı ayrı bir privacy kararıdır. Sağlık verisi `profiles` tablosuna taşınmaz.
+
+### Davet RPC sözleşmesi
+
+- Yeni RPC: `public.request_client_connection_by_email(text)`.
+- RPC yalnız `authenticated` rolüne EXECUTE verir; `PUBLIC` ve `anon` izinleri kaldırılır. `SECURITY DEFINER` function owner'ı `postgres`, search path'i `pg_catalog, public` olarak sabitlenir; dinamik SQL kullanmaz.
+- Caller kimliği yalnız `auth.uid()` ile alınır. `public.is_current_user_dietitian()` ile role ek olarak `verification_status = approved` ve `is_verified = true` kontrol edilir; caller parametresiyle diyetisyen veya danışan UUID'si gönderilemez.
+- Girdi e-posta değeri `lower(btrim(...))` ile normalize edilir. Hedef yalnız mevcut `profiles` tablosundaki `client` rolü olabilir; RPC profil, sağlık verisi veya kullanıcı kimliği döndürmez ve Auth kullanıcısı oluşturmaz.
+- Sınırlı sonuç sözleşmesi: `requested`, `already_pending`, `already_active`, `unavailable`. Bulunmayan, client olmayan ve başka aktif/bekleyen ilişkiyle uygun olmayan hedefler aynı `unavailable` sonucunu döndürür; hesap enumeration yapılmaz.
+- Eski `dietitians_create_pending_client_request` RLS INSERT policy'si kaldırılır. Böylece ham browser INSERT yolu ile caller-controlled client UUID üzerinden davet üretilemez; staging uygulaması ancak WP4.4B RPC entegrasyonuyla cutover edilmelidir.
+- Aynı client için transaction-scoped advisory lock, çift unique index kontrolü ve `unique_violation` yakalama birlikte kullanılır. Aynı çiftte `pending`/`active` sonuç idempotenttir; `rejected` ve `removed` kayıtlar aynı çift için güvenli biçimde tekrar `pending` olur.
+
+### Status transition ve timestamp sözleşmesi
+
+| Başlangıç | Hedef | Server-side sonuç |
+|---|---|---|
+| yok | pending | `requested_at` ve `updated_at` şimdi; diğer lifecycle timestamp'leri boş |
+| pending | active | `accepted_at` şimdi; `requested_at` korunur |
+| pending | rejected | `rejected_at` şimdi; `requested_at` korunur |
+| pending | removed | `removed_at` şimdi; `requested_at` korunur |
+| active | removed | `removed_at` şimdi; kabul tarihinin tarihsel kanıtı olarak `accepted_at` korunur |
+| rejected / removed | pending | yeni `requested_at` şimdi; eski accepted/rejected/removed timestamp'leri temizlenir |
+
+- Bu matris dışındaki doğrudan status geçişleri fail-closed `23514` exception ile reddedilir.
+- Status değişmeden yapılan güvenli kolon update'leri reddedilmez; lifecycle timestamp alanları eski değere geri alınır ve `updated_at` server-side yenilenir.
+- Trigger, mevcut mobil `pending → active/rejected` ve web `pending/active → removed` akışlarını korur. RLS'nin yerine geçmez; yalnızca izinli update sonrasında state/timestamp bütünlüğünü uygular.
+- Mevcut satırlar için backfill yapılmaz. Güvenilir tarih kaynağı olmayan eksik geçmiş timestamp'lere sahte kesin zaman atamak yerine bu durum staging/prod testlerinde kalan risk olarak ele alınmalıdır.
+
+### Staging matrisi, rollback ve uygulama sınırı
+
+- Staging negatif matris: ilişkisiz diyetisyen profile SELECT reddi; self profile PASS; pending counterpart profile PASS; pending health data reddi; active health erişimi korunur; anon/PUBLIC RPC reddi; unverified veya client caller RPC reddi; nonexistent/client-olmayan/uygun olmayan e-posta için aynı `unavailable`; duplicate/race; rejected/removed reopen; tüm izinli ve izinsiz status geçişleri; timestamp server-side postcondition; direct INSERT RLS reddi.
+- Staging doğrulaması, migration uygulanmadan önce web RPC cutover bağımlılığını ve mobile accept/reject regresyonunu da kapsamalıdır. Uygulama yalnız staging için ayrıca onaylanan bir görevde yapılabilir.
+- Yerel kalite: `npm run typecheck` başarılı; `npm run lint` `0 error, 56 warning` ile mevcut warning baseline'ını aşmadı; `npm run build` başarılı oldu. Migration sırası CLI ile görüldü. Yerel Supabase stack çalışmadığı için `db lint --local` PostgreSQL bağlantısı kuramadı; bu sonuç lint başarısı sayılmaz ve staging uygulama doğrulamasında tekrar çalıştırılmalıdır.
+- Rollback, yeni RPC EXECUTE iznini kaldırıp function/trigger/policy'yi geri almak ve onaylı önceki sınırlı policy setini ayrı, ileri tarihli rollback migration ile yeniden kurmaktır. Baseline veya migration geçmişi yeniden yazılmaz; rollback production'da ayrıca onay gerektirir.
+- Bu görevde migration staging veya production'a uygulanmadı; uzaktan SQL/RPC/Auth/fixture mutation yapılmadı.
+
+### Yerel init ve güvenlik doğrulaması — 2026-07-17
+
+- Supabase CLI `2.109.1` tarafından üretilen `supabase/config.toml` ve `supabase/.gitignore` resmî init çıktısı olarak kabul edildi. `.branches`, `.temp`, `.env.keys`, `.env.local` ve `.env.*.local` dışlandı; config, migration ve dokümantasyon Git görünürlüğünü korudu. `supabase/.temp/` okunmadı veya değiştirilmedi.
+- `config.toml` geçerli TOML olarak parse edildi. Yapılandırma yalnız yerel hedefleri kullanıyor; remote proje referansı, remote URL, access token, API key, JWT, service-role anahtarı veya veritabanı parolası içermiyor. Yerel portlar API `54321`, DB `54322`, Studio `54323` ve local SMTP `54324` olarak doğrulandı.
+- Docker Client/Server `29.6.1` ve Supabase CLI `2.109.1` ile yerel stack başlatıldı. `db reset --local`, `20260713000000`–`20260717100000` active migration zincirini sıfırdan ve sırasıyla uyguladı; WP4.4A migration'ı başarıyla replay edildi. İlk kurulumda bulunmayan policy/trigger için beklenen idempotent notice'lar dışında hata oluşmadı.
+- `db lint --local --schema public --level warning --fail-on error` sıfır error ve sıfır warning ile geçti. Böylece önceki yerel stack bağlantı blokajı kapandı; o kayıt yalnız ilk denemenin tarihsel sonucudur.
+
+#### Yerel güvenlik kabul matrisi
+
+| Alan | Senaryo | Sonuç | Kanıt |
+|---|---|---|---|
+| Introspection | `profiles` ve `dietitian_clients` RLS açık | PASS | Katalog sorguları iki tabloda da RLS'nin etkin olduğunu doğruladı. |
+| Introspection | Geniş linking policy kaldırıldı | PASS | Eski tüm-client profil SELECT policy'si bulunmadı. |
+| Introspection | Self ve relationship-scoped profil policy'leri mevcut | PASS | Self erişimi ile pending/active counterpart erişimi ayrı policy'lerle bulundu. |
+| RPC | Function güvenlik sözleşmesi | PASS | `request_client_connection_by_email(text)` mevcut, `SECURITY DEFINER`, sabit search path ve `postgres` owner doğrulandı. |
+| Grant | RPC execute kapsamı | PASS | `authenticated` izinli; `PUBLIC` ve `anon` reddedildi. |
+| Profil | Kullanıcının kendi profili | PASS | Authenticated kullanıcı yalnız kendi self satırını okuyabildi. |
+| Profil | İlişkisiz client profili | PASS | İlişkisiz diyetisyen hedef profil satırını göremedi. |
+| Profil | Pending counterpart profili | PASS | Pending ilişkinin diyetisyeni temel counterpart profilini okuyabildi. |
+| Sağlık verisi | Pending ilişki | PASS | Pending diyetisyen client health satırını okuyamadı. |
+| Sağlık verisi | Active ilişki | PASS | Active diyetisyen yetkili client health satırını okuyabildi. |
+| Cross-tenant | Başka tenant ilişki SELECT/UPDATE | PASS | Satır görünmedi ve mutation uygulanmadı. |
+| RPC auth | `anon`, client ve onaysız diyetisyen | PASS | Üç caller sınıfı da fail-closed reddedildi. |
+| RPC sonuç | Yeni davet | PASS | İlk uygun çağrı yalnız `requested` döndürdü. |
+| RPC sonuç | Tekrar pending davet | PASS | Tekrar çağrı yalnız `already_pending` döndürdü. |
+| RPC sonuç | Active ilişki | PASS | Active çift yalnız `already_active` döndürdü. |
+| Enumeration | Olmayan, client olmayan ve uygun olmayan hedef | PASS | Üç sınıf da aynı `unavailable` sonucunu verdi; kimlik/profil verisi dönmedi. |
+| Duplicate | Aynı çift için tekrar davet | PASS | Unique koruması ikinci ilişki satırını engelledi. |
+| Race | İki gerçek eşzamanlı davet | PASS | Ayrı PostgreSQL oturumlarında bir `requested`, bir `already_pending` ve toplam tek ilişki oluştu. |
+| Transition | `pending → active` | PASS | Geçiş kabul edildi; `accepted_at` server-side üretildi. |
+| Transition | `pending → rejected` | PASS | Geçiş kabul edildi; `rejected_at` server-side üretildi. |
+| Transition | `pending → removed` | PASS | Geçiş kabul edildi; `removed_at` server-side üretildi. |
+| Transition | `active → removed` | PASS | Geçiş kabul edildi; tarihsel `accepted_at` korundu. |
+| Transition | `rejected → pending` | PASS | Yeniden davet kabul edildi; lifecycle timestamp'leri normalize edildi. |
+| Transition | `removed → pending` | PASS | Yeniden davet kabul edildi; lifecycle timestamp'leri normalize edildi. |
+| Transition | `active → pending` | PASS | Geçersiz geçiş reddedildi. |
+| Transition | `rejected → active` | PASS | Geçersiz geçiş reddedildi. |
+| Transition | `removed → active` | PASS | Geçersiz geçiş reddedildi. |
+| Timestamp | Aynı status ile sahte lifecycle zamanı | PASS | Caller değeri yok sayıldı; server-side değer korundu. |
+| Timestamp | INSERT sırasında sahte lifecycle zamanları | PASS | Trigger alanları sözleşmeye göre normalize etti. |
+
+#### Sonuç, cleanup ve kalan riskler
+
+- Yerel testler repository dışındaki sentetik SQL harness'lerinde yürütüldü. Ana matris transaction rollback ile, gerçek concurrency fixture'ı ise açık cleanup ile kapatıldı. Final aggregate; Auth users, profiles, dietitian profiles, client profiles, relations, ilişkili uygulama satırları ve Storage nesnelerinin her biri için `0` oldu.
+- Migration veya policy düzeltmesi gerekmedi. `npm run typecheck` geçti; `npm run lint` `0 error, 56 warning` ile baseline'ı aşmadı; `npm run build` geçti. Ana chunk `749.46 kB` (`196.21 kB` gzip) ve 500 kB uyarısı kalan risk olarak sürüyor.
+- Staging, production veya GROUNDLESS projesine bağlanılmadı; remote SQL, RPC, Auth, Storage, fixture veya migration history mutation yapılmadı. ROADMAP'te Aşama 4 `Devam ediyor` kaldı.
+- Staging uygulaması ve web RPC cutover doğrulaması hâlâ bekliyor. Mevcut web doğrudan INSERT akışı WP4.4B kapsamında RPC'ye taşınmadan migration remote ortama uygulanmamalıdır. Relationship-scoped `profiles` policy'si satır düzeyindedir; kolon düzeyinde daha dar PII projeksiyonu ayrı privacy kararıdır.
+
+Nihai yerel karar:
+
+`WP4.4A LOCAL VALIDATION PASSED / STAGING APPROVAL PENDING`
