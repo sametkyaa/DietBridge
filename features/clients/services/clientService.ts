@@ -188,6 +188,8 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
 
     const rows = (data ?? []) as unknown as DietitianClientListRow[];
     const clients = rows.flatMap((item): Client[] => {
+      if (item.status !== 'active' && item.status !== 'pending') return [];
+
       const client = Array.isArray(item.client) ? item.client[0] : item.client;
       if (!client || !isValidUuid(client.id)) return [];
 
@@ -212,8 +214,7 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
             .filter((name): name is string => Boolean(name))
         : [];
 
-      const status: Client['status'] =
-        item.status === 'active' ? 'Aktif' : item.status === 'pending' ? 'Onay Bekliyor' : 'Pasif';
+      const status: Client['status'] = item.status === 'active' ? 'Aktif' : 'Onay Bekliyor';
 
       return [{
         id: client.id,

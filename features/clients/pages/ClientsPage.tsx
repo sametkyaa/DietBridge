@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Bell, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { USER_AVATAR } from '../../../shared/constants';
@@ -9,6 +9,21 @@ type ClientListViewState =
   | { status: 'loading' }
   | { status: 'success'; clients: Client[] }
   | { status: 'error'; message: string };
+
+type ClientStatusFilter = 'all' | 'active' | 'pending';
+
+const normalizeClientSearchValue = (value: string | null | undefined) =>
+  (value ?? '').trim().toLocaleLowerCase('tr-TR');
+
+const compareClients = (left: Client, right: Client) => {
+  const nameComparison = (left.name ?? '').localeCompare(right.name ?? '', 'tr-TR');
+  if (nameComparison !== 0) return nameComparison;
+
+  const emailComparison = (left.email ?? '').localeCompare(right.email ?? '', 'tr-TR');
+  if (emailComparison !== 0) return emailComparison;
+
+  return left.id.localeCompare(right.id);
+};
 
 // Desktop/Tablet Table Row Component
 const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
@@ -199,6 +214,7 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
 const ClientsPage = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('all');
   const [viewState, setViewState] = useState<ClientListViewState>({ status: 'loading' });
   const requestSequence = useRef(0);
   const requestInFlight = useRef(false);
@@ -288,20 +304,38 @@ const ClientsPage = () => {
     }
   };
 
-  const clients = viewState.status === 'success' ? viewState.clients : [];
-  const normalizedSearchTerm = searchTerm.trim().toLocaleLowerCase('tr-TR');
+  const clientSource = viewState.status === 'success' ? viewState.clients : null;
+  const normalizedSearchTerm = normalizeClientSearchValue(searchTerm);
+  const { supportedClients, statusFilteredClients, filteredClients } = useMemo(() => {
+    const supported = (clientSource ?? []).filter(
+      client => client.status === 'Aktif' || client.status === 'Onay Bekliyor'
+    );
+    const statusFiltered = supported.filter(client => {
+      if (statusFilter === 'active') return client.status === 'Aktif';
+      if (statusFilter === 'pending') return client.status === 'Onay Bekliyor';
+      return true;
+    });
+    const searched = statusFiltered.filter(client => {
+      if (!normalizedSearchTerm) return true;
 
-  // Filter and split clients
-  const filteredClients = clients.filter(client => 
-    client.name.toLocaleLowerCase('tr-TR').includes(normalizedSearchTerm)
-  );
-  
+      return (
+        normalizeClientSearchValue(client.name).includes(normalizedSearchTerm) ||
+        normalizeClientSearchValue(client.email).includes(normalizedSearchTerm)
+      );
+    });
+
+    return {
+      supportedClients: supported,
+      statusFilteredClients: statusFiltered,
+      filteredClients: [...searched].sort(compareClients),
+    };
+  }, [clientSource, normalizedSearchTerm, statusFilter]);
+
   const activeClients = filteredClients.filter(c => c.status === 'Aktif');
   const pendingClients = filteredClients.filter(c => c.status === 'Onay Bekliyor');
-  const passiveClients = filteredClients.filter(c => c.status === 'Pasif');
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto min-h-screen md:h-screen flex flex-col">
+    <div className="w-full max-w-[calc(100vw-2rem)] md:max-w-7xl p-4 md:p-8 mx-auto min-h-screen md:h-screen flex flex-col">
        {/* Responsive Header */}
        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-4 flex-shrink-0">
         <div className="w-full md:w-auto flex justify-between items-center">
@@ -352,18 +386,43 @@ const ClientsPage = () => {
         <div className="p-0 md:p-4 mb-4 md:mb-0 md:border-b border-slate-200 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 bg-transparent md:bg-white rounded-xl md:rounded-none">
              <div className="relative w-full md:w-auto">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="İsme göre ara..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full md:w-64 pl-9 pr-4 py-3 md:py-2 rounded-xl md:rounded-lg border border-slate-200 bg-white md:bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition-all shadow-sm md:shadow-none"
-                />
-             </div>
-             <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 hide-scrollbar">
-                <button className="flex-1 md:flex-none whitespace-nowrap px-4 py-2.5 md:py-2 text-sm font-medium text-slate-600 bg-white md:bg-slate-50 rounded-xl md:rounded-lg border border-slate-200 hover:bg-slate-50 shadow-sm md:shadow-none">Dışa Aktar</button>
-                <button className="flex-1 md:flex-none whitespace-nowrap px-4 py-2.5 md:py-2 text-sm font-medium text-slate-600 bg-white md:bg-slate-50 rounded-xl md:rounded-lg border border-slate-200 hover:bg-slate-50 shadow-sm md:shadow-none">Filtrele</button>
-             </div>
+                 <input
+                   type="text"
+                   placeholder="İsim veya e-postaya göre ara..."
+                   aria-label="Danışan adı veya e-postasıyla ara"
+                   value={searchTerm}
+                   onChange={(e) => setSearchTerm(e.target.value)}
+                   className="w-full md:w-64 pl-9 pr-4 py-3 md:py-2 rounded-xl md:rounded-lg border border-slate-200 bg-white md:bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition-all shadow-sm md:shadow-none"
+                 />
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                 <button className="flex-1 md:flex-none whitespace-nowrap px-4 py-2.5 md:py-2 text-sm font-medium text-slate-600 bg-white md:bg-slate-50 rounded-xl md:rounded-lg border border-slate-200 hover:bg-slate-50 shadow-sm md:shadow-none">Dışa Aktar</button>
+                 <div
+                   className="flex w-full sm:w-auto gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white md:bg-slate-50 p-1 shadow-sm md:shadow-none"
+                   role="group"
+                   aria-label="Danışan durum filtresi"
+                 >
+                   {([
+                     ['all', 'Tümü'],
+                     ['active', 'Aktif'],
+                     ['pending', 'Bekleyen'],
+                   ] as const).map(([value, label]) => (
+                     <button
+                       key={value}
+                       type="button"
+                       aria-pressed={statusFilter === value}
+                       onClick={() => setStatusFilter(value)}
+                       className={`flex-1 sm:flex-none whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                         statusFilter === value
+                           ? 'bg-primary text-white shadow-sm'
+                           : 'text-slate-600 hover:bg-slate-100'
+                       }`}
+                     >
+                       {label}
+                     </button>
+                   ))}
+                 </div>
+              </div>
         </div>
         
         {/* Scrollable Content Area */}
@@ -389,7 +448,7 @@ const ClientsPage = () => {
                   Tekrar Dene
                 </button>
              </div>
-          ) : clients.length === 0 ? (
+          ) : supportedClients.length === 0 ? (
              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
                 <div className="bg-slate-50 p-4 rounded-full mb-4">
                   <Search className="w-8 h-8 text-slate-400" />
@@ -397,14 +456,32 @@ const ClientsPage = () => {
                 <h3 className="text-lg font-bold text-slate-800 mb-1">Henüz danışanınız bulunmuyor.</h3>
                 <p className="text-sm text-slate-500">İlk danışanınızı eklediğinizde burada görünecek.</p>
              </div>
+          ) : statusFilteredClients.length === 0 ? (
+             <div className="flex flex-col items-center justify-center py-16 px-4 text-center text-slate-500">
+                <div className="bg-slate-50 p-4 rounded-full mb-4">
+                  <Search className="w-8 h-8 text-slate-400" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">
+                  {statusFilter === 'active'
+                    ? 'Aktif danışan bulunmuyor.'
+                    : 'Bekleyen danışan bulunmuyor.'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('all')}
+                  className="mt-4 text-primary font-medium hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                >
+                  Tümünü Göster
+                </button>
+             </div>
           ) : filteredClients.length === 0 ? (
              <div className="flex flex-col items-center justify-center py-16 px-4 text-center text-slate-500">
                 <div className="bg-slate-50 p-4 rounded-full mb-4">
                   <Search className="w-8 h-8 text-slate-400" />
                 </div>
                 <h3 className="text-lg font-bold text-slate-800 mb-1">Uygun danışan bulunamadı</h3>
-                <p className="text-sm text-slate-500">Arama ölçütüne uygun danışan bulunamadı.</p>
-                {searchTerm && (
+                <p className="text-sm text-slate-500">Aramanızla eşleşen danışan bulunamadı.</p>
+                {normalizedSearchTerm && (
                   <button
                     type="button"
                     onClick={() => setSearchTerm('')}
@@ -453,21 +530,6 @@ const ClientsPage = () => {
                   </tbody>
                 )}
 
-                {passiveClients.length > 0 && (
-                  <tbody className="divide-y divide-slate-100 bg-slate-50/50 border-t-2 border-slate-200">
-                    <tr>
-                      <td colSpan={8} className="px-6 py-3 bg-slate-100 border-b border-slate-200">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                          Pasif Danışanlar
-                        </p>
-                      </td>
-                    </tr>
-                    {passiveClients.map((client) => (
-                      <ClientRow key={client.id} client={client} />
-                    ))}
-                  </tbody>
-                )}
               </table>
 
               {/* Mobile Card View */}
@@ -490,19 +552,6 @@ const ClientsPage = () => {
                     </div>
                 )}
 
-                {passiveClients.length > 0 && (
-                    <div className="pt-4">
-                      <div className="flex items-center gap-2 mb-3 px-1">
-                          <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pasif Danışanlar</p>
-                      </div>
-                      <div className="space-y-4">
-                          {passiveClients.map((client) => (
-                            <ClientCard key={client.id} client={client} />
-                          ))}
-                      </div>
-                    </div>
-                )}
               </div>
             </>
           )}

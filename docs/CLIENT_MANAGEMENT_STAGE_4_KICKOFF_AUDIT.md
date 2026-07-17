@@ -1120,3 +1120,131 @@ Nihai karar:
 Nihai karar:
 
 `WORK PACKAGE 4.2 LIVE VALIDATION PASSED / COMMIT REVIEW READY`
+
+## 34. İş Paketi 4.3 — Danışan Listesi Arama, Durum Filtresi ve Sıralama
+
+### Aktif zincir ve önceki davranış
+
+- Aktif akış `App.tsx → /clients → features/clients/pages/ClientsPage.tsx → features/clients/services/clientService.ts` olarak doğrulandı.
+- Önceki arama yalnız ada uygulanıyor, e-postayı kapsamıyor ve sonuçlar deterministik olarak sıralanmıyordu.
+- Liste aktif ve bekleyen ilişkileri ayrı gruplarda gösteriyordu; ancak görünür `Filtrele` kontrolü işlevsel değildi. Durum sayacı veya gerçek durum filtresi yoktu.
+- Servis `active` ve `pending` durumlarını sunucu tarafında sınırlandırıyor, authenticated diyetisyenin `dietitian_id` değeriyle tenant filtresi uyguluyordu. Rejected/removed ilişkiler listeye alınmıyordu.
+- Loading, query/auth error, retry ve stale request koruması İş Paketi 4.2 sözleşmesiyle mevcuttu. Bu öncelik ve hata davranışı korunmuştur.
+- Null ad/e-posta değerleri serviste güvenli boş metne dönüştürülüyordu. Bilinmeyen durumların `Pasif` olarak gösterilebilme ihtimali bu pakette fail-closed davranışla kaldırıldı.
+
+### Değişiklik öncesi 20 soruluk denetim
+
+| # | Sonuç |
+|---:|---|
+| 1 | Arama yalnız ad alanında çalışıyordu. |
+| 2 | E-posta aramaya dahil değildi. |
+| 3 | Arama metni trim ediliyordu. |
+| 4 | Türkçe locale küçük harf dönüşümü kullanılıyordu. |
+| 5 | `İ/I/ı/i/Ş/Ğ/Ü/Ö/Ç` dönüşümü browser'ın `tr-TR` locale davranışına dayanıyordu ve aynı normalize fonksiyonu kullanılıyordu. |
+| 6 | Açık sıralama olmadığı için DB dönüş sırasına bağlı kart yeri değişikliği mümkündü. |
+| 7 | Active ve pending kayıtlar ayrı bölümlerde render ediliyordu. |
+| 8 | Gerçek durum filtresi yoktu; görünür filtre kontrolü işlevsel değildi. |
+| 9 | Rejected/removed servis sorgusundaki izinli status filtresiyle dışlanıyor; UI yalnız dönen active/pending kayıtları grupluyordu. |
+| 10 | Durum sayacı yoktu. |
+| 11 | Gerçek durum filtresi olmadığından arama/status kesişimi uygulanmıyordu. |
+| 12 | Status state'i bulunmadığından arama temizlerken filtre koruma davranışı uygulanabilir değildi. |
+| 13 | Status-filter empty durumu yoktu. |
+| 14 | İş Paketi 4.2 error görünümü liste/empty dallarından önce değerlendirildiği için arama tarafından gizlenmiyordu. |
+| 15 | Arama client-side çalışıyor ve yeni Supabase isteği başlatmıyordu. |
+| 16 | Liste authenticated `dietitian_id` ve izinli status ile sunucuda sınırlandığından client-side arama başka tenant satırı fetch etmiyordu; RLS ayrıca korunuyordu. |
+| 17 | Servis yalnız `active` ve `pending` ilişkileri getiriyordu. |
+| 18 | Beklenmeyen bir raw status map aşamasına ulaşırsa `Pasif` fallback'i oluşabiliyordu. |
+| 19 | Null ad/e-posta servis map'inde boş metne dönüştürüldüğünden arama exception üretmiyordu. |
+| 20 | Null-safe ve deterministik bir sıralama uygulanmıyordu. |
+
+### Uygulanan filtre modeli
+
+- Durum filtresi `all | active | pending` tipli state olarak tanımlandı; varsayılan değer `all`dır.
+- Görünür kontrol `Tümü`, `Aktif` ve `Bekleyen` yerel button grubudur. `role="group"`, açıklayıcı `aria-label` ve her düğmede `aria-pressed` kullanılır; native button semantiği klavye etkileşimini korur.
+- Sayaç eklenmedi. Bu iş paketi ek sorgu veya görsel kalabalık üretmeden arama/filtre davranışını düzeltmekle sınırlandırıldı.
+- Arama ad ve e-posta alanlarında çalışır. Girdi ile alanlar trim edilir ve `tr-TR` locale ile küçük harfe çevrilir; null değerler boş metin olarak güvenle ele alınır.
+- İşlem sırası desteklenen ilişkiler → seçili durum filtresi → normalize ad/e-posta araması → kopya üzerinde deterministik sıralamadır.
+- Sıralama ad → e-posta → ilişki ID sırasındadır ve Türkçe locale karşılaştırması kullanır. Kaynak array mutate edilmez.
+- URL veya localStorage kalıcılığı önceki akışta yoktu; bu dar kapsamlı pakette eklenmedi. Filtre değişimi arama metnini, aramayı temizleme ise durum filtresini korur.
+
+### Boş durumlar ve güvenlik sınırı
+
+- Desteklenen kaynak liste boşsa genel boş durum gösterilir.
+- Kaynakta veri varken seçili durumda kayıt yoksa duruma özel boş mesaj ve yalnız durum filtresini sıfırlayan `Tümünü Göster` eylemi sunulur.
+- Durum filtresinden geçen kayıt varken arama eşleşmiyorsa arama boş durumu ve yalnız aramayı temizleyen eylem sunulur.
+- Error ve loading durumları filtrelenmiş listenin önünde değerlendirilir; hata hiçbir zaman empty state olarak maskelenmez.
+- Tenant izolasyonu değiştirilmedi: servis authenticated kullanıcının ID’siyle `.eq('dietitian_id', user.id)` ve izinli durumlarla `.in('status', ['active', 'pending'])` kullanmaya devam eder; Supabase RLS savunma katmanı olmaya devam eder.
+- Filtreleme yalnız servis tarafından güvenle dönen sonuçlar üzerinde client-side yapılır; yeni Supabase sorgusu veya doğrudan sayfa-level veri erişimi eklenmedi.
+- Aktif listede mock veri fallback’i yoktur. `USER_AVATAR` görsel fallback’i ile mevcut kartlardaki süre/haftalık sabit gösterimler bu paketin kapsamı dışında bırakılmış mevcut risklerdir.
+
+### Statik kabul matrisi
+
+| Senaryo | Sonuç | Kanıt |
+|---|---|---|
+| Başarılı liste, filtre `all` | PASS | Desteklenen active/pending kayıtlar birlikte filtre zincirine girer. |
+| Filtre `active` | PASS | Yalnız `Aktif` UI durumu kalır. |
+| Filtre `pending` | PASS | Yalnız `Onay Bekliyor` UI durumu kalır. |
+| Rejected satır | PASS | Server-side `.in()` kapsamı dışındadır. |
+| Removed satır | PASS | Server-side `.in()` kapsamı dışındadır. |
+| Bilinmeyen status | PASS | Servis mapping aşamasında fail-closed dışlanır. |
+| Ad ile tam arama | PASS | Normalize substring eşleşmesi tam değeri de eşleştirir. |
+| Ad ile kısmi arama | PASS | Normalize ad üzerinde `includes()` kullanılır. |
+| E-posta ile arama | PASS | Normalize e-posta üzerinde `includes()` kullanılır. |
+| Büyük/küçük harf farkı | PASS | Sorgu ve alanlar aynı locale yöntemiyle normalize edilir. |
+| Türkçe `İ/i/ı/I` | PASS | Her iki taraf `toLocaleLowerCase('tr-TR')` ile normalize edilir. |
+| Baştaki/sondaki boşluk | PASS | Sorgu trim edilir. |
+| Yalnız boşluk araması | PASS | Trim sonrası boş arama tüm seçili durum sonucunu korur. |
+| Null full_name | PASS | Null değer boş metin olarak normalize edilir. |
+| Null email | PASS | Null değer boş metin olarak normalize edilir. |
+| `active` + eşleşmeyen arama | PASS | Status sonucu doluysa search empty render edilir. |
+| `pending` + eşleşmeyen arama | PASS | Status sonucu doluysa search empty render edilir. |
+| `active` filtresinde hiç kayıt yok | PASS | Active-filter empty mesajı render edilir. |
+| `pending` filtresinde hiç kayıt yok | PASS | Pending-filter empty mesajı render edilir. |
+| Ana liste tamamen boş | PASS | General empty diğer filtre/arama boşluklarından önce gelir. |
+| Error state + search metni | PASS | Error görünümü empty/list dallarından önce render edilir. |
+| Loading state + status filtresi | PASS | Yalnız loading render edilir. |
+| Aramayı temizle | PASS | Yalnız search state sıfırlanır; status korunur. |
+| Tümünü göster | PASS | Yalnız status `all` yapılır; arama korunur. |
+| Aynı isimli iki kayıt | PASS | E-posta, ardından ID tie-breaker olarak kullanılır. |
+| Yeniden render | PASS | Kaynak mutate edilmez ve aynı comparator tekrar uygulanır. |
+| Retry sonrası success | PASS | Filtreler güncel `success.clients` kaynağına uygulanır. |
+| Unmount | PASS | İş Paketi 4.2 request sequence cleanup'ı değiştirilmedi. |
+| Cross-tenant kayıt | PASS | Authenticated `dietitian_id` filtresi ve RLS sınırı değişmedi. |
+
+### Güvenli manuel lokal doğrulama
+
+- Yerel uygulama `--mode staging` ile açıldı ve mevcut authenticated staging oturumu kullanıldı; secret, cookie, token veya Authorization header okunmadı.
+- `/clients` üzerinde loading sonrasında güvenli genel boş durum, gerçek `Tümü/Aktif/Bekleyen` filtre seçimi ve `aria-pressed` değişimi doğrulandı.
+- Üç boşluktan oluşan aramanın trim edilerek arama-empty üretmediği ve seçili durum filtresini koruduğu doğrulandı.
+- `390 × 844` mobil viewport’ta üç filtre düğmesinin görünür olduğu ve grubun yatay taşma üretmediği doğrulandı.
+- Test hesabında danışan bulunmadığından ad/e-posta eşleşmesi, active veri, pending veri, durum-empty ve search-empty senaryoları gerçek satırlarla çalıştırılmadı: `LIVE DATA SCENARIOS NOT EXECUTED — SAFE CLIENT FIXTURE UNAVAILABLE`.
+- Yeni kullanıcı, danışan, ilişki veya fixture oluşturulmadı; staging ya da production verisine mutation yapılmadı.
+
+### Kalite, riskler ve karar
+
+- Node.js `v24.18.0`; typecheck başarılı; lint `0 error, 56 warning`; production build başarılıdır. Otomatik test scripti mevcut değildir.
+- Production build ana chunk'ı `749.43 kB` (`196.18 kB` gzip) ölçülmüş ve 500 kB eşiği uyarısı üretmiştir. Tailwind CDN production uyarısı da canlı tarayıcı kontrolünde devam etmiştir; bu görevde Tailwind migrasyonu veya code splitting yapılmadı.
+- Dashboard/MealPlans içindeki mevcut wrapper ve danışan kartlarındaki sabit gösterim riskleri değiştirilmedi.
+- Migration, RLS, Auth, Storage, paket veya mobil uygulama değişikliği yapılmadı. İş Paketi 4.1 ve 4.2 durumları değiştirilmedi; Aşama 4 `Devam ediyor` kalır.
+
+Nihai karar:
+
+`WORK PACKAGE 4.3 IMPLEMENTED / REVIEW PENDING`
+
+### Staging canlı doğrulama ve fixture cleanup
+
+- Aktif manifest, tamamlanmış kurulum durumunu; 10 sentetik Auth kullanıcısını, 1 sentetik diyetisyeni, 9 sentetik danışanı, 9 ilişkiyi, `5 active / 2 pending / 1 rejected / 1 removed` başlangıç dağılımını ve sıfır Storage nesnesini doğruladı. Manifestte secret alanı bulunmadı.
+- Normal masaüstü Chrome'da authenticated Dietitian A oturumuyla `/clients` açıldı; sayfa yenilemesi oturumu korudu ve istemsiz logout veya yönlendirme gözlenmedi.
+- `Tümü`, `Aktif` ve `Bekleyen` filtreleri; ad/e-posta araması, Türkçe `İ/i` ve `I/ı` karşılaştırması, trim, yalnız boşluk sorgusu, null adın e-posta ile bulunması ve arama–filtre kesişimleri sentetik kayıtlarla doğrulandı. Rejected, removed ve cross-tenant kayıtlar hiçbir listede veya arama sonucunda görünmedi.
+- Aynı isimli iki kayıt için ad → e-posta → ilişki kimliği sıralaması reload, route dönüşü ve filtre geçişlerinde sabit kaldı. Kaynak array mutate edilmedi ve duplicate kart oluşmadı.
+- Search-empty, yalnız aramayı temizleme ve `Tümünü Göster` davranışları doğrulandı. Sentetik active ilişkiler geçici olarak `removed` yapıldığında active-filter empty; pending ilişkiler geçici olarak `removed` yapıldığında pending-filter empty doğru mesaj ve eylemle göründü. Her iki geçici durum da cleanup öncesinde eski değerlerine geri yüklendi.
+- `390 × 844` görünümünde filtre düğmelerinin sayfa sınırını aştığı saptandı. `ClientsPage.tsx` kök kapsayıcısına mobil genişliği sınırlayan `max-w-[calc(100vw-2rem)]` eklendi; düzeltme sonrasında üç filtre görünür, grup taşmasız, Tab/Enter/Space ile erişilebilir ve seçili düğme `aria-pressed=true` idi.
+- Arama ve filtre state'leri yalnız `useMemo` zincirini günceller. Liste sorgusu yalnız mount/retry yolundaki `loadClients()` çağrısından gelir; arama, filtre, temizleme ve `Tümü` seçimi için yeni `dietitian_clients` sorgusu eklenmemiştir. Kontrollü Chrome arayüzü ağ paneli kaydını sunmadığından bu kanıt kaynak ve canlı etkileşim birlikte incelenerek kaydedildi; header, cookie veya token okunmadı.
+- Cleanup komutu `FIXTURE_CLEANUP_VERIFIED` ve `WP43_FIXTURE_CLEANUP_COMMAND_COMPLETE` ile tamamlandı. Aktif manifestin final aggregate değeri Auth users, profiles, client profiles, dietitian profiles, relations, measurements, daily logs, meal plans, meals, appointments, chat messages ve Storage nesnelerinin her biri için `0` oldu.
+- Cleanup sonrası `/clients` genel boş durumu canlı olarak göründü. Böylece fixture dışı ilişki olmadığı da doğrulandı; önceki tablo sayımındaki ek satırın grup başlığı olduğu anlaşıldı.
+- Production'a bağlantı veya mutation yapılmadı. Staging mutation'ları kullanıcı tarafından interaktif terminalde yalnız manifestteki sentetik fixture kayıtları için gerçekleştirildi. Migration, RLS, Auth ayarı, Storage policy, paket veya mobil uygulama değişikliği yapılmadı.
+- Node.js `v24.18.0` altında typecheck başarılı; lint `0 error, 56 warning` ile mevcut baseline'ı aşmadı; production build başarılı oldu. Build ana chunk'ı `749.46 kB` (`196.21 kB` gzip) ve 500 kB uyarısı üretmeye devam ediyor. Otomatik test scripti tanımlı değildir.
+
+Nihai karar:
+
+`WORK PACKAGE 4.3 REVIEW PASSED / COMMIT REVIEW READY`
