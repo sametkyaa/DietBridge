@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, MapPin, Phone, Calendar, Weight, Activity, TrendingUp, TrendingDown, Droplets, Utensils, FileText, HeartPulse, Pill, Moon, Coffee, Stethoscope, Clock, Trash2 } from 'lucide-react';
-import { fetchClientDetails, removeClient, fetchClientMeasurements, fetchClientDailyLogs, Measurement, DailyLog, PendingClientSummary } from '../features/clients/services/clientService';
-import { Client } from '../shared/types';
+import { fetchClientDetails, removeClient, fetchClientMeasurements, fetchClientDailyLogs, Measurement, DailyLog, PendingClientSummary, ActiveClientDetails } from '../features/clients/services/clientService';
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
 
@@ -18,7 +17,7 @@ const ProfileAvatarFallback = ({ name, className }: { name: string, className?: 
 
 type ClientDetailsViewState =
   | { status: 'loading' }
-  | { status: 'active'; client: Client }
+  | { status: 'active'; client: ActiveClientDetails }
   | { status: 'pending'; client: PendingClientSummary }
   | { status: 'invalid_id' }
   | { status: 'unavailable' }
@@ -37,6 +36,7 @@ const ClientDetails = () => {
   const [isRemoving, setIsRemoving] = useState(false);
   const [profileImageError, setProfileImageError] = useState(false);
   const requestSequence = useRef(0);
+  const isMounted = useRef(true);
 
   const loadData = useCallback(async (showLoading: boolean) => {
     const requestId = ++requestSequence.current;
@@ -112,9 +112,11 @@ const ClientDetails = () => {
   }, [displayedClient?.id, displayedClient?.profilePhotoUrl]);
 
   useEffect(() => {
+    isMounted.current = true;
     void loadData(true);
 
     return () => {
+      isMounted.current = false;
       requestSequence.current += 1;
     };
   }, [loadData]);
@@ -213,16 +215,18 @@ const ClientDetails = () => {
     );
   }
 
-  const handleRemoveClient = async (clientId: string) => {
+  const handleRemoveClient = async (relationId: string) => {
     if (window.confirm('Bu danışanı listenizden kaldırmak istediğinize emin misiniz?')) {
       setIsRemoving(true);
-      const success = await removeClient(clientId);
+      const result = await removeClient(relationId);
+      if (!isMounted.current) return;
+
       setIsRemoving(false);
-      if (success) {
+      if (result.status === 'removed') {
         alert('Danışan bağlantısı kaldırıldı.');
         navigate('/clients');
       } else {
-        alert('İşlem sırasında bir hata oluştu. Lütfen tekrar deneyin.');
+        alert('Bağlantı kaldırılamadı. İlişki artık mevcut olmayabilir veya bu işlem için yetkiniz bulunmuyor.');
       }
     }
   };
@@ -275,7 +279,7 @@ const ClientDetails = () => {
                  </div>
                  <div className="mt-8 flex justify-center md:justify-start">
                     <button 
-                      onClick={() => handleRemoveClient(client.id)}
+                      onClick={() => handleRemoveClient(client.relationId)}
                       disabled={isRemoving}
                       className="px-4 py-2 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-all disabled:opacity-50 flex items-center gap-2"
                     >
@@ -397,7 +401,7 @@ const ClientDetails = () => {
                             Planı Düzenle
                         </button>
                         <button 
-                          onClick={() => handleRemoveClient(client.id)}
+                          onClick={() => handleRemoveClient(client.relationId)}
                           disabled={isRemoving}
                           className="px-3 py-2.5 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-all disabled:opacity-50 flex items-center justify-center"
                           title="Danışanı Kaldır"

@@ -108,13 +108,16 @@ interface DietitianClientListRow {
 
 export interface PendingClientSummary {
   id: string;
+  relationId: string;
   name: string;
   email: string;
   profilePhotoUrl: string | null;
 }
 
+export type ActiveClientDetails = Client & { relationId: string };
+
 export type ClientDetailAccessResult =
-  | { status: 'active'; client: Client }
+  | { status: 'active'; client: ActiveClientDetails }
   | { status: 'pending'; client: PendingClientSummary }
   | { status: 'invalid_id' }
   | { status: 'unavailable' }
@@ -302,7 +305,7 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
     // 1. Verify dietitian-client relationship
     const { data: relation, error: relationError } = await supabase
       .from('dietitian_clients')
-      .select('status')
+      .select('id, status')
       .eq('dietitian_id', user.id)
       .eq('client_id', clientId)
       .maybeSingle();
@@ -336,6 +339,7 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
         status: 'pending',
         client: {
           id: clientId,
+          relationId: relation.id,
           name: pendingProfile.full_name || 'İsimsiz Danışan',
           email: pendingProfile.email || '',
           profilePhotoUrl,
@@ -404,6 +408,7 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
       status: 'active',
       client: {
         id: clientId,
+        relationId: relation.id,
         name: clientData.full_name || 'İsimsiz Danışan',
         email: clientData.email || '',
         phone: clientData.phone || '',
@@ -480,126 +485,84 @@ export const fetchClientDailyLogs = async (clientId: string): Promise<DailyLog[]
   return data || [];
 };
 
-export type AddClientResult = 
-  | { status: 'success' }
-  | { status: 'not_found' }
-  | { status: 'invalid_role' }
-  | { status: 'already_linked' }
-  | { status: 'error', message?: string };
+export type ClientConnectionRequestStatus =
+  | 'requested'
+  | 'already_pending'
+  | 'already_active'
+  | 'unavailable';
 
-/**
- * Links an existing client to the currently authenticated dietitian by email.
- */
-export const addClientByEmail = async (email: string): Promise<AddClientResult> => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { status: 'error', message: 'User not authenticated' };
+export type AddClientResult =
+  | { status: ClientConnectionRequestStatus }
+  | { status: 'error' };
 
-    // 1. Search profiles for that email
-    const { data: clientProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, role')
-      .eq('email', email.toLowerCase().trim())
-      .single();
+export type RemoveClientResult =
+  | { status: 'removed' }
+  | { status: 'unavailable' }
+  | { status: 'error' };
 
-    if (profileError) {
-      if (profileError.code === 'PGRST116') {
-        // No rows returned
-        return { status: 'not_found' };
-      }
-      console.error('Error fetching profile by email:', profileError);
-      return { status: 'error', message: profileError.message };
-    }
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
-    if (!clientProfile) {
-      return { status: 'not_found' };
-    }
-
-    // 2. Confirm role = 'client'
-    if (clientProfile.role !== 'client') {
-      return { status: 'invalid_role' };
-    }
-
-    // 3. Check whether a dietitian_clients relation already exists
-    const { data: existingLink, error: linkError } = await supabase
-      .from('dietitian_clients')
-      .select('id, status')
-      .eq('dietitian_id', user.id)
-      .eq('client_id', clientProfile.id)
-      .maybeSingle();
-
-    if (linkError) {
-      console.error('Error checking existing link:', linkError);
-      return { status: 'error', message: 'İşlem sırasında bir hata oluştu. Lütfen tekrar deneyin.' };
-    }
-
-    if (existingLink) {
-      if (existingLink.status === 'active' || existingLink.status === 'pending') {
-        return { status: 'already_linked' };
-      } else {
-        // It's rejected or removed, try to update it back to pending
-        const { error: updateError } = await supabase
-          .from('dietitian_clients')
-          .update({ status: 'pending', requested_at: new Date().toISOString() })
-          .eq('id', existingLink.id);
-
-        if (updateError) {
-           if (updateError.code === '23505') {
-              return { status: 'error', message: 'Bu danışana zaten başka bir diyetisyen tarafından bağlantı isteği gönderilmiş veya aktif bağlantısı bulunuyor.' };
-           }
-           console.error('Error updating existing link:', updateError);
-           return { status: 'error', message: 'İşlem sırasında bir hata oluştu. Lütfen tekrar deneyin.' };
-        }
-        return { status: 'success' };
-      }
-    }
-
-    // 4. Insert a new row into dietitian_clients
-    const { error: insertError } = await supabase
-      .from('dietitian_clients')
-      .insert({
-        dietitian_id: user.id,
-        client_id: clientProfile.id,
-        status: 'pending',
-        requested_at: new Date().toISOString()
-      });
-
-    if (insertError) {
-      if (insertError.code === '23505') {
-          return { status: 'error', message: 'Bu danışana zaten başka bir diyetisyen tarafından bağlantı isteği gönderilmiş veya aktif bağlantısı bulunuyor.' };
-      }
-      console.error('Error inserting dietitian_clients:', insertError);
-      return { status: 'error', message: 'İşlem sırasında bir hata oluştu. Lütfen tekrar deneyin.' };
-    }
-
-    return { status: 'success' };
-  } catch (err: any) {
-    console.error('Exception in addClientByEmail:', err);
-    return { status: 'error', message: 'İşlem sırasında bir hata oluştu. Lütfen tekrar deneyin.' };
+export const parseClientConnectionRequestStatus = (
+  value: unknown
+): ClientConnectionRequestStatus | null => {
+  switch (value) {
+    case 'requested':
+    case 'already_pending':
+    case 'already_active':
+    case 'unavailable':
+      return value;
+    default:
+      return null;
   }
 };
 
 /**
- * Sets a client's status to 'removed'
+ * Requests a connection to an eligible mobile client through the security-definer RPC.
  */
-export const removeClient = async (clientId: string): Promise<boolean> => {
+export const addClientByEmail = async (email: string): Promise<AddClientResult> => {
+  const normalizedEmail = email.trim();
+  if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+    return { status: 'error' };
+  }
+
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
+    const { data, error } = await supabase.rpc('request_client_connection_by_email', {
+      p_email: normalizedEmail,
+    });
 
-    const { error } = await supabase
+    if (error) return { status: 'error' };
+
+    const status = parseClientConnectionRequestStatus(data);
+    return status ? { status } : { status: 'error' };
+  } catch {
+    return { status: 'error' };
+  }
+};
+
+/**
+ * Sets an owned pending or active relationship to removed.
+ */
+export const removeClient = async (relationId: string): Promise<RemoveClientResult> => {
+  if (!isValidUuid(relationId)) return { status: 'unavailable' };
+
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { status: 'error' };
+
+    const { data, error } = await supabase
       .from('dietitian_clients')
-      .update({ status: 'removed', removed_at: new Date().toISOString() })
-      .eq('client_id', clientId)
-      .eq('dietitian_id', user.id);
+      .update({ status: 'removed' })
+      .eq('id', relationId)
+      .eq('dietitian_id', user.id)
+      .in('status', ['pending', 'active'])
+      .select('id')
+      .maybeSingle();
 
-    if (error) {
-      console.error('Supabase removeClient error:', error);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error('Error in removeClient:', err);
-    return false;
+    if (error) return { status: 'error' };
+    if (!data || data.id !== relationId) return { status: 'unavailable' };
+
+    return { status: 'removed' };
+  } catch {
+    return { status: 'error' };
   }
 };

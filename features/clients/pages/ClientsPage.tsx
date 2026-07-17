@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Bell, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Bell, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { USER_AVATAR } from '../../../shared/constants';
 import { Client } from '../../../shared/types';
@@ -11,6 +11,15 @@ type ClientListViewState =
   | { status: 'error'; message: string };
 
 type ClientStatusFilter = 'all' | 'active' | 'pending';
+
+const MODAL_FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'a[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 const normalizeClientSearchValue = (value: string | null | undefined) =>
   (value ?? '').trim().toLocaleLowerCase('tr-TR');
@@ -218,30 +227,42 @@ const ClientsPage = () => {
   const [viewState, setViewState] = useState<ClientListViewState>({ status: 'loading' });
   const requestSequence = useRef(0);
   const requestInFlight = useRef(false);
+  const addRequestInFlight = useRef(false);
+  const isMounted = useRef(true);
+  const inviteButtonRef = useRef<HTMLButtonElement>(null);
+  const inviteDialogRef = useRef<HTMLDivElement>(null);
+  const inviteEmailInputRef = useRef<HTMLInputElement>(null);
+  const wasAddModalOpen = useRef(false);
 
   // Add Client Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newClientEmail, setNewClientEmail] = useState('');
   const [isAdding, setIsAdding] = useState(false);
-  const [addFeedback, setAddFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [addFeedback, setAddFeedback] = useState<{ type: 'success' | 'info' | 'error', message: string } | null>(null);
 
-  const loadClients = useCallback(async () => {
-    if (requestInFlight.current) return;
+  const loadClients = useCallback(async (
+    options: { showLoading?: boolean; preserveOnError?: boolean } = {}
+  ): Promise<boolean> => {
+    const { showLoading = true, preserveOnError = false } = options;
+    if (requestInFlight.current) return false;
 
     requestInFlight.current = true;
     const requestId = ++requestSequence.current;
-    setViewState({ status: 'loading' });
+    if (showLoading) setViewState({ status: 'loading' });
 
     try {
       const result = await fetchDietitianClientList();
-      if (requestId !== requestSequence.current) return;
+      if (!isMounted.current || requestId !== requestSequence.current) return false;
 
       if (result.status === 'error') {
-        setViewState({ status: 'error', message: result.userMessage });
-        return;
+        if (!preserveOnError) {
+          setViewState({ status: 'error', message: result.userMessage });
+        }
+        return false;
       }
 
       setViewState({ status: 'success', clients: result.clients });
+      return true;
     } finally {
       if (requestId === requestSequence.current) {
         requestInFlight.current = false;
@@ -251,56 +272,163 @@ const ClientsPage = () => {
 
   // Load clients from Supabase on mount
   useEffect(() => {
+    isMounted.current = true;
     void loadClients();
 
     return () => {
+      isMounted.current = false;
       requestSequence.current += 1;
       requestInFlight.current = false;
     };
   }, [loadClients]);
 
+  const openAddModal = () => {
+    setIsAddModalOpen(true);
+    setAddFeedback(null);
+    setNewClientEmail('');
+  };
+
+  const closeAddModal = useCallback(() => {
+    if (isAdding || addRequestInFlight.current) return;
+
+    addRequestInFlight.current = false;
+    setIsAdding(false);
+    setIsAddModalOpen(false);
+    setNewClientEmail('');
+    setAddFeedback(null);
+  }, [isAdding]);
+
+  useEffect(() => {
+    if (isAddModalOpen) {
+      wasAddModalOpen.current = true;
+      const focusFrame = window.requestAnimationFrame(() => {
+        const focusTarget = inviteEmailInputRef.current?.disabled
+          ? inviteDialogRef.current
+          : inviteEmailInputRef.current;
+
+        if (focusTarget && document.activeElement !== focusTarget) {
+          focusTarget.focus();
+        }
+      });
+
+      return () => window.cancelAnimationFrame(focusFrame);
+    }
+
+    if (!wasAddModalOpen.current) return;
+    wasAddModalOpen.current = false;
+
+    const returnFocusFrame = window.requestAnimationFrame(() => {
+      if (isMounted.current) inviteButtonRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(returnFocusFrame);
+  }, [isAddModalOpen]);
+
+  useEffect(() => {
+    if (!isAddModalOpen) return;
+
+    const handleModalKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeAddModal();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const dialog = inviteDialogRef.current;
+      if (!dialog) return;
+
+      const focusableElements = [
+        ...dialog.querySelectorAll<HTMLElement>(MODAL_FOCUSABLE_SELECTOR),
+      ].filter((element) => (
+        element.getAttribute('aria-hidden') !== 'true'
+        && element.getClientRects().length > 0
+      ));
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeIndex = activeElement instanceof HTMLElement
+        ? focusableElements.indexOf(activeElement)
+        : -1;
+
+      if (!dialog.contains(activeElement) || activeIndex === -1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleModalKeyDown);
+    return () => document.removeEventListener('keydown', handleModalKeyDown);
+  }, [closeAddModal, isAddModalOpen]);
+
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (addRequestInFlight.current) return;
+
     if (!newClientEmail.trim()) {
       setAddFeedback({ type: 'error', message: 'Lütfen geçerli bir e-posta adresi giriniz.' });
       return;
     }
 
+    addRequestInFlight.current = true;
     setIsAdding(true);
     setAddFeedback(null);
 
     try {
-      const result = await addClientByEmail(newClientEmail);
+      const result = await addClientByEmail(newClientEmail.trim());
+      if (!isMounted.current) return;
       
       switch (result.status) {
-        case 'success':
-          setAddFeedback({ type: 'success', message: 'Danışan başarıyla eklendi.' });
+        case 'requested': {
           setNewClientEmail('');
-          // Refresh the client list
-          await loadClients();
-          // Close modal after a short delay
-          setTimeout(() => {
-            setIsAddModalOpen(false);
-            setAddFeedback(null);
-          }, 2000);
+          const refreshed = await loadClients({ showLoading: false, preserveOnError: true });
+          if (!isMounted.current) return;
+          setAddFeedback({
+            type: 'success',
+            message: refreshed
+              ? 'Bağlantı isteği gönderildi. Danışan isteği mobil uygulamadan kabul ettiğinde aktif danışanlarınız arasında görünecektir.'
+              : 'Bağlantı isteği gönderildi. Liste şu anda yenilenemedi; mevcut arama ve filtrelerinizi koruyarak daha sonra tekrar deneyebilirsiniz.',
+          });
           break;
-        case 'not_found':
-          setAddFeedback({ type: 'error', message: 'Bu e-posta ile kayıtlı bir danışan bulunamadı. Lütfen danışanınızın önce mobil uygulamadan kayıt olmasını isteyin.' });
+        }
+        case 'already_pending':
+          setAddFeedback({ type: 'info', message: 'Bu danışana daha önce bağlantı isteği gönderilmiş. Danışanın mobil uygulamadan yanıt vermesi bekleniyor.' });
           break;
-        case 'invalid_role':
-          setAddFeedback({ type: 'error', message: 'Bu e-posta bir danışan hesabına ait değil.' });
+        case 'already_active':
+          setAddFeedback({ type: 'info', message: 'Bu danışan zaten aktif danışanlarınız arasında.' });
           break;
-        case 'already_linked':
-          setAddFeedback({ type: 'error', message: 'Bu danışan zaten hesabınıza bağlı.' });
+        case 'unavailable':
+          setAddFeedback({ type: 'error', message: 'Bu e-posta ile bağlantı isteği gönderilemedi. Danışanın DietBridge mobil uygulamasında kayıtlı olduğundan ve bağlantı için uygun olduğundan emin olun.' });
           break;
         case 'error':
-          setAddFeedback({ type: 'error', message: result.message || 'Bir hata oluştu. Lütfen tekrar deneyin.' });
+          setAddFeedback({ type: 'error', message: 'Bağlantı isteği gönderilemedi. Lütfen e-posta adresini kontrol edip tekrar deneyin.' });
           break;
       }
-    } catch (err) {
-      setAddFeedback({ type: 'error', message: 'Beklenmeyen bir hata oluştu.' });
+    } catch {
+      if (isMounted.current) {
+        setAddFeedback({ type: 'error', message: 'Bağlantı isteği gönderilemedi. Lütfen tekrar deneyin.' });
+      }
     } finally {
-      setIsAdding(false);
+      addRequestInFlight.current = false;
+      if (isMounted.current) setIsAdding(false);
     }
   };
 
@@ -353,15 +481,12 @@ const ClientsPage = () => {
         
         <div className="flex items-center gap-3 w-full md:w-auto">
           <button 
-            onClick={() => {
-              setIsAddModalOpen(true);
-              setAddFeedback(null);
-              setNewClientEmail('');
-            }}
+            ref={inviteButtonRef}
+            onClick={openAddModal}
             className="flex-1 md:flex-none justify-center items-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-medium shadow-sm transition-all active:scale-95 text-sm md:text-base flex"
           >
              <Plus className="w-5 h-5" />
-             <span className="md:inline">Yeni Danışan</span>
+             <span className="md:inline">Danışan Davet Et</span>
           </button>
           
           <div className="hidden md:block w-px h-8 bg-slate-200 mx-2"></div>
@@ -454,7 +579,7 @@ const ClientsPage = () => {
                   <Search className="w-8 h-8 text-slate-400" />
                 </div>
                 <h3 className="text-lg font-bold text-slate-800 mb-1">Henüz danışanınız bulunmuyor.</h3>
-                <p className="text-sm text-slate-500">İlk danışanınızı eklediğinizde burada görünecek.</p>
+                 <p className="text-sm text-slate-500">İlk bağlantı isteğinizi gönderdiğinizde burada görünecek.</p>
              </div>
           ) : statusFilteredClients.length === 0 ? (
              <div className="flex flex-col items-center justify-center py-16 px-4 text-center text-slate-500">
@@ -561,12 +686,22 @@ const ClientsPage = () => {
       {/* Add Client Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div
+            ref={inviteDialogRef}
+            className="bg-white rounded-2xl w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto shadow-2xl animate-in fade-in zoom-in duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="client-invitation-title"
+            aria-describedby="client-invitation-description"
+            tabIndex={-1}
+          >
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-               <h2 className="text-xl font-bold text-slate-800">Yeni Danışan Ekle</h2>
+               <h2 id="client-invitation-title" className="text-xl font-bold text-slate-800">Danışana Bağlantı İsteği Gönder</h2>
                <button 
-                 onClick={() => setIsAddModalOpen(false)} 
-                 className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
+                 type="button"
+                 onClick={closeAddModal}
+                 aria-label="Bağlantı isteği penceresini kapat"
+                 className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                  disabled={isAdding}
                >
                   <X className="w-5 h-5" />
@@ -575,53 +710,66 @@ const ClientsPage = () => {
             
             <form onSubmit={handleAddClient} className="p-6 space-y-5">
                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Danışan E-posta Adresi</label>
-                  <p className="text-xs text-slate-500 mb-2">Danışanınızın mobil uygulamaya kayıt olurken kullandığı e-posta adresini girin.</p>
+                  <label htmlFor="client-invitation-email" className="text-sm font-bold text-slate-700">Danışanın kayıtlı e-posta adresi</label>
+                  <p id="client-invitation-description" className="text-xs text-slate-500 mb-2">Yalnız DietBridge mobil uygulamasında kayıtlı danışanlara bağlantı isteği gönderebilirsiniz. Danışan isteği mobil uygulamadan kabul ettiğinde bağlantı aktif olur.</p>
                   <input 
+                    ref={inviteEmailInputRef}
+                    id="client-invitation-email"
                     type="email"
                     required
                     placeholder="ornek@email.com"
                     value={newClientEmail}
                     onChange={(e) => setNewClientEmail(e.target.value)}
                     disabled={isAdding}
+                    autoFocus
+                    aria-describedby="client-invitation-description"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
                   />
                </div>
 
                {addFeedback && (
-                 <div className={`p-4 rounded-xl flex items-start gap-3 text-sm ${
-                   addFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
-                 }`}>
+                 <div
+                   role={addFeedback.type === 'error' ? 'alert' : 'status'}
+                   className={`p-4 rounded-xl flex items-start gap-3 text-sm ${
+                     addFeedback.type === 'success'
+                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                       : addFeedback.type === 'info'
+                         ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                         : 'bg-red-50 text-red-700 border border-red-100'
+                   }`}
+                 >
                    {addFeedback.type === 'success' ? (
                      <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+                   ) : addFeedback.type === 'info' ? (
+                     <Info className="w-5 h-5 shrink-0 mt-0.5" />
                    ) : (
                      <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                    )}
-                   <p className="font-medium leading-relaxed">{addFeedback.message}</p>
+                   <p className="min-w-0 break-words font-medium leading-relaxed">{addFeedback.message}</p>
                  </div>
                )}
 
-               <div className="pt-2 flex gap-3">
+               <div className="pt-2 flex flex-col sm:flex-row gap-3">
                   <button 
                     type="button" 
-                    onClick={() => setIsAddModalOpen(false)}
+                    onClick={closeAddModal}
                     disabled={isAdding}
-                    className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors text-sm disabled:opacity-50"
+                    className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors text-sm disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                   >
                      İptal
                   </button>
                   <button 
                     type="submit"
                     disabled={isAdding || !newClientEmail.trim()}
-                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors text-sm disabled:opacity-50 flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
                   >
                      {isAdding ? (
                        <>
                          <RefreshCw className="w-4 h-4 animate-spin" />
-                         Ekleniyor...
+                         Gönderiliyor...
                        </>
                      ) : (
-                       'Danışanı Ekle'
+                       'Bağlantı İsteği Gönder'
                      )}
                   </button>
                </div>

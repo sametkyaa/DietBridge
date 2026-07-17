@@ -1343,3 +1343,117 @@ Nihai karar:
 Nihai yerel karar:
 
 `WP4.4A LOCAL VALIDATION PASSED / STAGING APPROVAL PENDING`
+
+## 29. WP4.4B — Web danışan davet akışının güvenli RPC'ye geçirilmesi
+
+### Çağrı zinciri ve güvenlik sözleşmesi
+
+- Eski aktif web akışı, diyetisyen tarayıcısından `profiles` tablosunda e-posta/rol araması yapıyor; mevcut ilişkiyi sorguluyor ve `dietitian_clients` tablosuna doğrudan `INSERT` veya yeniden `pending` `UPDATE` gönderiyordu. Bu lookup ve doğrudan yazma zinciri kaldırıldı; başarısız RPC için eski yola fallback bırakılmadı.
+- Yeni aktif zincir `ClientsPage → addClientByEmail → supabase.rpc('request_client_connection_by_email', { p_email })` biçimindedir. Servis mevcut authenticated anon client'ı kullanır; admin veya service-role client kullanmaz.
+- Migration sözleşmesi `p_email text` parametreli, scalar `text` döndüren `public.request_client_connection_by_email` function'ıdır. Yalnız `requested`, `already_pending`, `already_active` ve `unavailable` sonuçları kabul edilir. Runtime parser bilinmeyen, null veya bozuk dönüşü fail-closed `error` sonucuna indirger.
+- Function `SECURITY DEFINER` ve sabit `search_path` kullanır; `PUBLIC`/`anon` EXECUTE kaldırılmış, yalnız `authenticated` rolüne verilmiştir. Yetkisiz caller exception'ı teknik ayrıntı sızdırmadan genel davet hatasına çevrilir.
+
+### UI, enumeration ve state davranışı
+
+- `requested` gerçek pending isteğini bildirir ve danışanın mobil uygulamadan kabul etmesi gerektiğini açıklar. `already_pending` yanıt bekleme, `already_active` mevcut aktif bağlantı bilgisini verir. `unavailable`; hesabın bulunmaması, rolü veya başka ilişki durumu ayrımını açıklamayan tek genel mesaj kullanır.
+- Buton `Danışan Davet Et`, modal `Danışana Bağlantı İsteği Gönder`, alan `Danışanın kayıtlı e-posta adresi` ve submit `Bağlantı İsteği Gönder` olarak güncellendi. Anında aktif ekleme izlenimi veren metinler kaldırıldı.
+- Form e-postayı trim eder ve geçersiz/boş girdide remote çağrı yapmaz. Submit sırasında butonlar kilitlenir; Enter submit'i korunur. Hata ve bilgilendirme sonuçlarında e-posta korunur, yalnız `requested` sonucunda temizlenir.
+- Yalnız `requested` sonrasında liste refetch edilir. Refetch mevcut arama ve durum filtresi state'lerini değiştirmez; başarısız refetch RPC başarısını geri almaz, mevcut listeyi korur ve kontrollü bilgi verir. Modal kapanışı feedback/e-posta state'ini temizler; request sequence ve mounted guard geç async state yazımını engeller.
+- Modal `dialog`, `aria-modal`, başlık ilişkisi, etiket/input ilişkisi, açıklama ilişkisi, autofocus, durum/alert live semantics ve erişilebilir kapatma etiketiyle güncellendi. Mevcut responsive sınıflar, liste filtreleri, Türkçe normalizasyon ve deterministik sıralama korunmuştur.
+
+### İlişki kaldırma ve veri sınırları
+
+- Eski `removeClient(clientId)` yalnız client UUID ve dietitian UUID filtresiyle update yapıyor, frontend'den `removed_at` gönderiyor ve `0 row / error yok` sonucunu başarı sayıyordu.
+- Detay erişim kapısı artık ilişkinin UUID'sini de okur. `removeClient(relationId)` yalnız authenticated diyetisyenin kendi relation UUID'sini ve yalnız `pending`/`active` statülerini hedefler; `status='removed'` dışında lifecycle timestamp göndermez.
+- Mutation `.select('id').maybeSingle()` ile etkilenen satırı açıkça doğrular. Satır dönmezse stale, yanlış tenant veya RLS sonucu güvenli `unavailable/error` alanına iner ve başarı mesajı gösterilmez. Gerçek başarıdan sonra liste route'una dönüş yeni liste sorgusunu başlatır; başarısızlık mevcut detay state'ini korur.
+- Pending detay yine yalnız minimum profil özetini yükler. Sağlık, ölçüm ve daily log sorguları yalnız active ilişki kapısından sonra çalışır. Web tarafına pending kabul veya red mutation'ı eklenmedi.
+
+### Yerel doğrulama ve kalite
+
+- Çalışan disposable yerel Supabase stack'inde repository dışındaki sentetik transaction harness'i tekrar çalıştırıldı. `requested`, `already_pending`, `already_active` ve bulunmayan/client olmayan/başka uygun ilişkili hedefler için ortak `unavailable` sonuçları geçti; cross-tenant update sıfır satır döndürdü.
+- WP4.4B'ye özel transaction testinde relation-ID ve authenticated owner/status filtreli başarılı kaldırma tek relation UUID'sini döndürdü; `removed_at` trigger tarafından üretildi. Aynı stale kaldırma tekrarında etkilenen satır sayısı `0` oldu ve başarı sayılmaması gereken postcondition doğrulandı.
+- Tüm yerel fixture işlemleri transaction rollback ile kapandı. Son aggregate; sentetik Auth user, profile ve relation kayıtları için `0` olarak doğrulandı. Storage nesnesi oluşturulmadı.
+- Parser'ın dört allowlist sonucu ve default fail-closed dalı kaynak düzeyinde incelendi; TypeScript union ve exhaustive UI switch'i `npm run typecheck` ile doğrulandı.
+- `npm run typecheck`: başarılı. `npm run lint`: başarılı, `0 error, 54 warning`; 56 warning baseline'ı aşılmadı. `npm run build`: başarılı; ana chunk `749.59 kB` (`196.47 kB` gzip) ve 500 kB büyük chunk uyarısı devam ediyor.
+- Repository'de otomatik `test` scripti yoktur; test başarılı sayılmadı ve yeni test paketi eklenmedi. Yerel SQL sözleşme testleri ayrıca yukarıda raporlandı.
+
+### Staging canlı regresyon matrisi ve görev sınırı
+
+| Senaryo | Beklenen canlı sonuç |
+|---|---|
+| Uygun mobil client daveti | `requested`; pending liste refetch'i ve doğru davet mesajı |
+| Aynı pending davet | `already_pending`; yeni relation yok, enumeration yok |
+| Active danışan daveti | `already_active`; yeni relation yok |
+| Bulunmayan/client olmayan/başka uygun ilişkili hedef | Her biri aynı `unavailable` mesajı |
+| Pending ilişki kaldırma | Tek owned relation `removed`; liste dönüşünde gizli |
+| Active ilişki kaldırma | Tek owned relation `removed`; sağlık erişimi fail-closed |
+| Stale veya başka tenant relation | Başarı mesajı yok; mevcut detay/list state'i korunur |
+| Reload, arama, active/pending filtre ve 390×844 görünüm | Mevcut WP4.1–4.3 davranışları korunur |
+
+- Bu uygulama görevinde staging, production veya GROUNDLESS projesine bağlanılmadı; remote SQL, RPC, Auth, Storage, fixture, `INSERT`, `UPDATE` veya `DELETE` çalıştırılmadı. WP4.4A migration'ı, baseline migration'ları, RLS/function/trigger/grant, `supabase/config.toml`, `supabase/.gitignore` ve mobil repository değiştirilmedi.
+- Aşama 4 `Devam ediyor` kalır. WP4.4B kod incelemesi ve ayrıca açık onaylı staging canlı regresyon testi beklenmektedir; WP4.4C veya İş Paketi 4.5 başlatılmamıştır.
+
+Nihai uygulama kararı:
+
+`WP4.4B IMPLEMENTED / REVIEW PENDING`
+
+### Davet modalı klavye ve odak blocker kapanışı — 2026-07-17
+
+- Önceki kod incelemesi, davet modalında Escape handler, focus trap ve modal kapandıktan sonra opener focus-return bulunmadığı için staging fixture onay kapısını blokladı. Bu görev yalnız `ClientsPage.tsx` içindeki erişilebilirlik davranışını tamamladı; RPC, relation removal veya Supabase sözleşmesi değiştirilmedi.
+- `Danışan Davet Et` opener butonu, dialog container ve e-posta input'u typed React ref'lerle izlenir. Modal açıldığında mevcut `autoFocus` davranışı korunur; render sonrası input aktif değilse input, input kullanılamıyorsa `tabIndex={-1}` taşıyan dialog fallback olarak focus alır. Aynı hedef zaten aktifse ikinci focus çağrısı yapılmaz.
+- Modal açıkken tek document `keydown` listener'ı kurulur. Normal Escape ortak güvenli close handler'ı çalıştırır. `isAdding` veya senkron request ref kilidi aktifken handler olayı sayfaya bırakmaz ancak close işlemi etkisiz kalır; devam eden request iptal edilmiş veya tamamlanmış gibi gösterilmez.
+- Tab focus trap, her keydown anında dialog içindeki güncel ve görünür `button`, `input`, `select`, `textarea`, link ve uygun `tabindex` öğelerini yeniden hesaplar. Son öğede Tab ilk öğeye, ilk öğede Shift+Tab son öğeye döner. Focus dialog dışındaysa ilk öğe, focusable öğe yoksa dialog container focus alır. Disabled ve `aria-hidden=true` öğeler listeye girmez.
+- Listener effect cleanup'ında kesin olarak kaldırılır. Açılış ve focus-return animation frame'leri cleanup sırasında iptal edilir; Strict Mode yeniden çalışması duplicate listener veya stale focus üretmez. `wasAddModalOpen` transition ref'i, sayfa ilk mount olduğunda opener'a gereksiz focus verilmesini engeller.
+- X ve İptal butonları aynı close handler'ı kullanır. Güvenli kapanış feedback, e-posta, loading ve stale request ref state'ini temizler. Modal DOM'dan çıktıktan sonraki animation frame'de, sayfa hâlâ mounted ve buton mevcutsa focus opener'a döner.
+- Dialog `role=dialog`, `aria-modal`, `aria-labelledby`, `aria-describedby` ve label/input ilişkisini korur. Başarı/bilgi mesajları `status`, hata mesajları `alert` live semantics kullanır; modal kontrollerine görünür `focus-visible` ring eklendi.
+- `390×844` statik görünüm için dialog yüksekliği viewport içinde sınırlandı ve dikey scroll etkinleştirildi. Mobilde form aksiyonları dikey, geniş ekranlarda yatay dizilir; uzun feedback metni güvenli biçimde kırılır. Close butonu ve form aksiyonları scroll içinde erişilebilir kalır.
+- RPC regresyon taramasında davet yalnız `request_client_connection_by_email` çağrısını kullanmaya devam eder; geniş e-posta lookup, doğrudan relation INSERT, fallback mutation veya “başarıyla eklendi” metni yoktur. Relation-ID tabanlı removal, `.select('id').maybeSingle()` sıfır-satır postcondition'ı ve server-side `removed_at` davranışı korunmuştur.
+- `npm run typecheck` başarılıdır. `npm run lint` `0 error, 54 warning` ile baseline'ı aşmadı. `npm run build` başarılıdır; ana chunk `751.39 kB` (`197.06 kB` gzip) ve 500 kB uyarısı sürer. `git diff --check` başarılıdır. Repository'de otomatik `test` scripti yoktur.
+- Staging canlı regresyonunda mouse açma/kapatma, input ilk focus, Tab ve Shift+Tab çevrimi, dialog dışı focus geri alma, submit sırasında Escape/X/İptal kilidi, işlem sonrası Escape, opener focus-return, Enter submit, live feedback ve `390×844` taşma ayrıca doğrulanacaktır.
+- Bu görevde staging, production veya GROUNDLESS'a bağlanılmadı; remote SQL/RPC/Auth/Storage/veri mutation'ı veya fixture işlemi yapılmadı. Migration, config, paket ve mobil repository değiştirilmedi. Aşama 4 `Devam ediyor`; WP4.4C veya İş Paketi 4.5 başlatılmadı.
+
+Nihai erişilebilirlik kararı:
+
+`WP4.4B ACCESSIBILITY FIX PASSED / STAGING REGRESSION APPROVAL REQUIRED`
+
+## 30. WP4.4B — Staging canlı regresyonu ve fixture cleanup kapanışı
+
+### Hedef, fixture ve güvenlik kapıları
+
+- Testler yalnız maskeli referansı `ezwq…rjkv` ile doğrulanan DietBridge Staging projesinde yürütüldü. Production ve GROUNDLESS hedefleri linklenmedi veya kullanılmadı.
+- Remote migration history `11/11` eşleşti; pending veya remote-only migration bulunmadı. WP4.4A ilişki güvenlik sözleşmesinin RLS, scoped profile policy, güvenli davet RPC'si, grant/revoke, transition function ve trigger bileşenleri preflight sırasında doğrulandı.
+- Repository dışında oluşturulan sentetik fixture seti `11` Auth user, `11` profile, `3` dietitian profile, `8` client profile ve başlangıçta `7` relation içerdi. Davet testiyle yalnız bir yeni pending relation oluştu; toplam izlenen relation sayısı `8` oldu. Storage veya başka uygulama kaydı oluşturulmadı.
+- Admin anahtarı yalnız interaktif PowerShell sürecinde environment üzerinden kullanıldı; repository, manifest, rapor ve console çıktısına yazılmadı.
+
+### Canlı davet ve enumeration sonuçları
+
+- Uygun mobil client daveti `requested` sonucu verdi; doğru Türkçe bilgilendirme gösterildi, e-posta alanı temizlendi, mevcut arama ve `pending` filtresi korunarak liste yenilendi.
+- Mevcut pending ilişki `already_pending`, mevcut active ilişki `already_active` sonucunu verdi; yeni relation oluşmadı ve giriş değeri korundu.
+- Başka tenant'a bağlı client, bulunmayan sentetik hesap ve uygun olmayan hedef aynı genel `unavailable` mesajını verdi. Teknik Supabase, token veya session ayrıntısı gösterilmedi; enumeration mesaj eşitliği geçti.
+- Browser kontrol yüzeyi kesin request ledger veya çağrı sayacı sunmadığından RPC/refetch adetleri canlı network kaydı olarak ileri sürülmedi. Aktif kaynak zincirinde geniş profile lookup, doğrudan relation `INSERT` veya fallback mutation bulunmadığı statik olarak doğrulandı; çift submit sonrasında admin postcondition kontrolü yalnız bir yeni relation bulunduğunu doğruladı.
+
+### State, erişilebilirlik ve responsive regresyonu
+
+- `requested` sonrasında liste verisi yenilendi; arama ve durum filtresi korundu. Aramayı temizleme yalnız arama değerini sıfırladı. Ad, e-posta, Türkçe küçük/büyük harf, trim, boş arama ve deterministik sıralama senaryoları doğrulandı.
+- Modal açılışında ilk focus e-posta alanına geçti. Escape kapanışı, Tab/Shift+Tab focus trap sınırları, X/İptal/Escape sonrasında opener focus-return ve submit sürerken X/İptal/Escape close engeli geçti.
+- `390×844` görünümünde modal ve danışan listesi yatay taşma üretmedi; dialog viewport içinde scroll edilebilir, input ve kapatma kontrolleri erişilebilir kaldı; tablo yerine kart görünümü kullanıldı.
+- İstek engellemesi açıkken yükleme durumu hata ve `Tekrar Dene` akışına geçti; engel açıkken retry tekrar kontrollü hataya döndü. Engel kaldırılınca danışan listesi canlı veriyi yeniden yükledi.
+
+### Veri sınırı ve ilişki kaldırma regresyonu
+
+- Pending detay yalnız minimum profil özeti ve bekleme/kaldırma durumunu gösterdi; sağlık, ölçüm ve günlük verileri açılmadı. Active detay yetkili sağlık, yaşam tarzı, ölçüm ve günlük bölümlerini yükledi.
+- Pending ve active relation kaldırma işlemleri yalnız hedef relation'ı `removed` yaptı; her ikisi liste dönüşünde gizlendi ve `removed_at` değerlerinin server tarafından üretildiği postcondition ile doğrulandı.
+- Stale relation kullanıcı kapsamlı mutation'ı sıfır satır döndürdü ve ilişki `removed` kaldı. Cross-tenant mutation sıfır satır döndürdü ve diğer tenant relation'ı `active` kaldı. Hiçbir yetkisiz başarı mesajı gösterilmedi.
+- Rejected/removed kayıtlar listede görünmedi. WP4.1 loading/error/empty ayrımı, WP4.2 canlı error/retry ve WP4.3 arama/filtre/sıralama davranışlarında blocker regresyon görülmedi.
+
+### Cleanup, kalite ve kapanış
+
+- Cleanup marker'ları `FIXTURE_CLEANUP_VERIFIED` ve `WP44B_FIXTURE_CLEANUP_COMMAND_COMPLETE` alındı. Final aggregate; Auth user, profile, dietitian profile, client profile, relation, measurement, daily log, meal plan, meal, appointment, message, diğer uygulama kaydı ve Storage object kategorilerinin tamamında `0` olarak doğrulandı.
+- Sentetik credential dosyası arşiv öncesinde kaldırıldı. Kalan dört kanıt dosyası repository dışındaki zaman damgalı `%TEMP%` arşivine taşındı; credential bulunmadığı ve secret değer taramasının `0` sonuç verdiği doğrulandı.
+- `npm run typecheck` başarılıdır. `npm run lint` `0 error, 54 warning` ile baseline'ı aşmadı. `npm run build` başarılıdır; ana chunk `751.39 kB` (`197.06 kB` gzip) ve 500 kB büyük chunk uyarısı sürer. Repository'de otomatik `test` scripti yoktur ve test başarılı sayılmadı.
+- Production ve GROUNDLESS üzerinde bağlantı, veri mutation'ı, Auth, Storage veya migration işlemi yapılmadı. Staging mutation'ları yalnız açıkça onaylanan sentetik fixture setup, davet/removal güvenlik senaryoları ve manifest tabanlı cleanup ile sınırlı kaldı.
+- Geçici staging secret key cleanup tamamlandıktan sonra Supabase Dashboard'dan silinmelidir. Aşama 4 `Devam ediyor`; WP4.4C veya İş Paketi 4.5 başlatılmadı.
+
+Nihai staging kararı:
+
+`WP4.4B REVIEW PASSED / COMMIT REVIEW READY`
