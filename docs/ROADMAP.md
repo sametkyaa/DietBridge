@@ -223,12 +223,16 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **İş Paketi 4.1 durumu:** İş Paketi 4.1 tamamlandı; staging doğrulaması geçti. Branch commit ve push kaydı bu görev raporunda tutulacaktır.
 - **İş Paketi 4.2 durumu:** İş Paketi 4.2 tamamlandı — kod incelemesi ve staging canlı error-retry doğrulaması geçti / commit incelemesine hazır.
 - **İş Paketi 4.3 durumu:** İş Paketi 4.3 tamamlandı — kod incelemesi ve staging canlı doğrulaması geçti.
-- **İş Paketi 4.4A durumu:** Resmî yerel Supabase yapılandırması kabul edildi; migration replay, DB lint ve RLS/RPC güvenlik matrisi geçti. Staging onayı bekliyor. Aşama 4 devam ediyor.
-- **İş Paketi 4.4C durumu:** Tamamlandı — canonical profil/yaşam tarzı read-model'i, responsive ve 44 px touch-target kontrolleri ile staging güvenlik harness'i geçti. Cleanup Auth/public/Storage sonucu `0/0/0`; runtime harness migration history kontrolü yapamadı. Aşama 4 devam ediyor.
+- **İş Paketi 4.4A durumu:** Tamamlandı — ilişki güvenlik sözleşmesi, migration replay, DB lint, RLS/RPC matrisi ve staging lifecycle doğrulaması geçti.
+- **İş Paketi 4.4C durumu:** Tamamlandı — canonical profil/yaşam tarzı read-model'i, responsive ve 44 px touch-target kontrolleri ile staging güvenlik harness'i geçti. Cleanup Auth/public/Storage sonucu `0/0/0`; runtime harness migration history kontrolü yapamadı.
 - **İş Paketi 4.4B durumu:** WP4.4B tamamlandı — kod incelemesi ve staging canlı regresyonu geçti.
+- **İş Paketi 4.5A/4.5B durumu:** Tamamlandı — güvenli measurement persistence, ayrıştırılmış bölüm durumları, bağımsız kilo/vücut ölçüsü formları, same-day upsert, responsive UI ve staging runtime matrisi geçti.
 - **İş Paketi 4.6 durumu:** Tamamlandı — `avatars` bucket private, private path okumaları 5 dakikalık signed URL ile sınırlandırılmıştır. Owner ve active ilişkili diyetisyen erişimi; pending/cross-tenant/anon retleri; canonical path, JPEG/PNG/WebP ve 5 MiB sınırları; initials fallback, avatar error isolation ve sıfır cleanup doğrulandı. Silme öncesi üretilmiş signed URL'nin TTL/CDN cache süresince okunabilmesi P2 non-blocking deferred limitasyondur; anında revocation doğrulanmış değildir.
-- **Açık Aşama 4 işi:** Measurement history limit/pagination.
-- **Durum:** Devam ediyor.
+- **İş Paketi 4.7 durumu:** Tamamlandı — measurement history ilk `4`, sonraki `8` kayıtlık cursor pagination, load-more hata/retry izolasyonu ve canonical merge davranışıyla sınırlandırıldı.
+- **İş Paketi 4.8 durumu:** Tamamlandı — ayrık measurement patch RPC'leri, `4 + 1` / `8 + 1` cursor pagination, senkron load-more kilidi, canonical satır merge'ü, veri koruma matrisi, responsive/touch-target kontrolleri ve sıfır cleanup DietBridge Staging'de geçti.
+- **Deferred P2:** Silme öncesi üretilmiş avatar signed URL'si kalan 5 dakikalık TTL/CDN cache süresince okunabilir; anında revocation doğrulanmış değildir. Bu sınırlama Aşama 4 MVP blocker'ı değildir.
+- **Bitiş tarihi:** 2026-07-18.
+- **Durum:** Tamamlandı.
 
 ### Aşama 5 — Beslenme planı ve öğün yönetimi
 
@@ -447,7 +451,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 1 | Teknik temel | Tamamlandı | `codex/project-foundation` | 2026-07-12 | 2026-07-12 | Teknik temel ve Node.js 24 LTS kalite kapıları doğrulandı |
 | 2 | Authentication güvenliği | Tamamlandı | `codex/auth-hardening` | 2026-07-12 | 2026-07-13 | Fail-closed auth ve kritik gerçek hesap erişim senaryoları doğrulandı; Pending, rejected veya recovery özel durumları test ortamında ayrıca doğrulanacak |
 | 3 | Supabase ve RLS | Tamamlandı | `codex/supabase-security` | 2026-07-13 | 2026-07-16 | Production history `9/9` eşleşti; kontrollü adoption ve gerçek policy-removal migration’ı tamamlandı; RPC/RLS/mobil/cleanup/plan senkronizasyon kapıları geçti; PR #1 `main`e merge edildi |
-| 4 | Danışan yönetimi | Devam ediyor | `codex/client-management` | 2026-07-16 |  | İş Paketleri 4.1–4.3 ve WP4.4B tamamlandı; WP4.4B kod incelemesi ve staging canlı regresyonu geçti. Aşama 4 devam ediyor |
+| 4 | Danışan yönetimi | Tamamlandı | `codex/client-management` | 2026-07-16 | 2026-07-18 | Measurement patch/pagination runtime, responsive/touch-target ve sıfır cleanup kapıları geçti; avatar signed URL cache/TTL davranışı P2 deferred kaldı |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
 | 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
 | 7 | Randevular | Bekliyor | `codex/appointments` |  |  |  |
@@ -528,3 +532,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-17 | Aşama 4.4C | Active/pending `Listeye Dön` ve pending `İsteği İptal Et` kontrolleri için açık 44×44 px minimum touch target sözleşmesi eklendi | Touch target ve klavye kontrolü tamamlandı | `codex/client-management` |
 | 2026-07-17 | Aşama 4.4C | Staging security harness Preflight/Onboarding/RLS/RPC/functional ve cleanup kapılarını geçti; Auth/public/Storage aggregate sonucu `0/0/0` oldu. Runtime harness migration history sorgulayamadı | WP4.4C tamamlandı; Aşama 4 ölçüm mutation, avatar güvenliği ve bölüm bazlı error/empty/retry işleriyle devam ediyor | `codex/client-management` |
 | 2026-07-18 | Aşama 4.6 | Private avatars bucket, 5 dakikalık signed URL, owner/active erişimi, pending/cross-tenant/anon retleri, canonical path, MIME/5 MiB sınırları, initials fallback ve sıfır cleanup doğrulandı | Tamamlandı; silme öncesi signed URL TTL/CDN cache davranışı P2 deferred, measurement history limit/pagination açık | `codex/client-management` |
+| 2026-07-18 | Aşama 4.8 | Ayrık measurement patch RPC'leri, 4→12→13 cursor pagination, tek gerçek load-more GET, canonical save merge'ü, veri koruma matrisi, üç viewport ve 44 px kontrolleri disposable staging fixture ile geçti; cleanup Auth/public/Storage/measurement/failure `0/0/0/0/0` oldu | Aşama 4 tamamlandı; avatar signed URL cache/TTL davranışı P2 deferred, Aşama 5 başlatılmadı | `codex/client-management` |

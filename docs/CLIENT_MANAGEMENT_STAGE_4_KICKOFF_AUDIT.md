@@ -1585,3 +1585,44 @@ Nihai WP4.4C kararı:
 Nihai WP4.6 kararı:
 
 `WP4.6 COMPLETE / P2 SIGNED URL CACHE LIMITATION DEFERRED / STAGE 4 CONTINUES`
+
+## 38. WP4.7 — Measurement history limit ve cursor pagination
+
+- `fetchClientMeasurements()` limitsiz okumayı bıraktı. İlk sayfa sunucuda `measured_at DESC` sıralanarak `4 + 1`, sonraki sayfalar `8 + 1` satırla sınırlandırılır; fazladan satır yalnız güvenilir `hasMore` hesabı için kullanılır. Son sayfada sekizden az kayıt kaldığında kalanların tamamı döner ve fazladan satır olmadığından `hasMore=false` olur.
+- `measurements_client_date_unique (client_id, measured_at)` sözleşmesi nedeniyle cursor, döndürülen sayfadaki en eski `measured_at` değeridir. Sonraki istek aynı danışan için `measured_at < cursor` filtresi uygular; offset kullanılmaz. Servis her sayfayı UI'ya kronolojik ASC döndürür.
+- UI ilk yükleme ile daha eski sayfa yüklemesini ayrı state'lerde yönetir. Load-more hatası profil, grafik ve yüklenmiş ölçümleri kapatmaz; retry aynı korunmuş cursor ile yalnız başarısız sayfayı yeniden ister.
+- Birleştirme measurement ID'sine göre de-duplicate edilir ve sonuç `measured_at`, ardından `id` ile deterministik ASC sıralanır. Yeni ölçüm ekleme veya aynı gün upsert sonrasında cursor/`hasMore` sıfırlanarak ilk sayfa yeniden okunur.
+- Kilo grafiği yalnız `weight !== null` kayıtların kronolojik listedeki son sekizini kullanmaya devam eder. Measurement empty/error izolasyonu korunur. `8 ölçüm daha göster` / `Tekrar Dene` kontrolü minimum `44 px` yüksekliğe, mobilde `w-full` ve geniş ekranda içerik genişliğine sahiptir.
+- Migration, Supabase policy veya remote veri değiştirilmedi. Aşama 4 pagination uygulaması yerel kalite kapıları ve ayrıca runtime regresyonu tamamlanana kadar `Devam ediyor` kalır; Aşama 5 başlatılmadı.
+
+Nihai WP4.7 uygulama kararı:
+
+`WP4.7 MEASUREMENT HISTORY PAGINATION IMPLEMENTED / LOCAL VALIDATION`
+
+## 39. WP4 — Kilo ve vücut ölçüsü patch sözleşmelerinin ayrılması
+
+- Birleşik `save_active_client_measurement` sözleşmesi, aynı günlük satırdaki gönderilmeyen alanları açık `null` ile güncelliyordu. Bu nedenle yalnız vücut ölçüsü kaydı, aynı tarihteki gerçek kilo değerini silebiliyordu. Eski tam-payload RPC migration geçmişi için korunmuş, ancak `authenticated` çalıştırma yetkisi kaldırılmıştır.
+- Yeni `save_active_client_weight` RPC'si yalnız `weight` ve isteğe bağlı notu yazar. Bugünkü kilo için `client_profiles.current_weight` senkronizasyonu korunur; bel, kalça, kol, göğüs, baldır, boyun ve legacy `thigh` update listesine girmez.
+- Yeni `save_active_client_body_measurements` RPC'si yalnız bel, kalça, kol, göğüs, baldır, boyun ve isteğe bağlı notu patch eder. Aynı gün satırında `weight` ve legacy `thigh` korunur; yeni body-only tarih kilosuz tek günlük satır oluşturabilir.
+- Web servisinde kilo ve vücut ölçüsü payload tipleri ayrılmıştır. Yeni write tipleri ve RPC parametrelerinde `thigh` yoktur; legacy kolon yalnız eski kayıtların read-model uyumluluğu için okunur. Kilo geçmişi sorgusu `weight IS NOT NULL` ile sınırlandığından kilosuz vücut ölçüsü kayıtları pagination, grafik veya son kilo değişimi hesabını etkilemez.
+- Danışan detayında kilo geçmişi/grafiği ve bağımsız kilo formu üstte, bağımsız vücut ölçüleri formu altta gösterilir. Formların submit/loading/error/success state'leri ayrıdır; başarısız yazmada ilgili form değerleri korunur ve başarı mesajı üretilmez. Bütün kontroller minimum `44 px` yüksekliği ve dar ekranda `min-w-0` davranışını korur.
+- Local Supabase migration replay `--no-seed` ile geçti. Rollback edilen yerel transaction; aynı tarihte kilo→vücut ve vücut→kilo sıralarını, farklı tarihte kilosuz vücut kaydını, tek fiziksel günlük satırı ve legacy `thigh` korunmasını doğruladı. Transaction sonrasında local Auth users, measurements ve relationships değerleri `0` kaldı. Remote Supabase işlemi veya fixture oluşturulmadı.
+
+Nihai yerel uygulama kararı:
+
+`WP4 MEASUREMENT FORMS SEPARATED / WEIGHT HISTORY PRESERVED / REMOTE VALIDATION PENDING`
+
+## 40. WP4.8 — Measurement patch, pagination runtime ve Aşama 4 kapanışı
+
+- DietBridge Staging üzerinde disposable, onaylı diyetisyen ve active danışan fixture'ı ile 13 farklı tarihli kilo kaydı doğrulandı. İlk açılışta en yeni `4` kayıt, ilk load-more işleminde `8` eski kayıt ve son işlemde kalan `1` kayıt yüklendi; toplam `13` kayıtta buton kayboldu ve liste en yeniden eskiye deterministik kaldı.
+- Hızlı çift tıklama ağ kaydında aynı cursor için yalnız bir gerçek measurement `GET` isteği oluşturdu. Aynı URL'deki ayrı `OPTIONS` olayı CORS preflight olarak sınıflandırıldı; ikinci uygulama isteği değildir.
+- Başarılı kilosuz vücut ölçüsü kaydından sonra yüklenmiş `13` kilo kaydı, kapanmış `hasMore` kapsamı ve en yeni sekiz kiloluk grafik değişmeden kaldı. Başarılı kilo kaydı RPC'nin döndürdüğü canonical satırı mevcut listeye merge etti; ilk sayfa yeniden yüklenmedi, aynı günlük kayıt tek fiziksel satır olarak kaldı ve mevcut çevre ölçüleri korundu.
+- Staging RPC matrisi kilo → vücut ve vücut → kilo sıralarını, altı çevre alanını, legacy `thigh` değerini, farklı tarihli kilosuz kaydın kilo geçmişini değiştirmediğini, bugünkü/geçmiş tarihli `current_weight` davranışını ve günlük tek-satır sözleşmesini doğruladı. Pending, unverified, cross-tenant, client ve anon çağrıları ile eski birleşik RPC authenticated çağrısı reddedildi.
+- Grafik yalnız `weight !== null` olan en yeni sekiz kaydı kullandı. `1440×900`, `1024×768` ve `390×844` viewport'larında document/body yatay taşması oluşmadı; measurement butonlarının tamamı minimum `44 px` touch target koşulunu geçti.
+- Fixture cleanup sonucu Auth users `0`, public rows `0`, Storage objects `0`, measurement fixture rows `0` ve cleanup failures `0` oldu.
+- Private avatar signed URL'sinin silme sonrasında kalan `5 dakika` TTL veya CDN cache süresince okunabilmesi **P2 — non-blocking deferred limitation** olarak korunur; anında revocation doğrulanmış değildir ve bu sınırlama Aşama 4 MVP blocker'ı değildir.
+- WP4.8 runtime ve yerel kalite kapılarıyla Aşama 4 kabul kriterleri tamamlandı. Aşama 5 bu çalışma kapsamında başlatılmadı.
+
+Nihai Aşama 4 kararı:
+
+`STAGE 4 COMPLETE / P2 SIGNED URL CACHE LIMITATION DEFERRED / STAGE 5 NOT STARTED`
