@@ -673,11 +673,159 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
 
 export interface Measurement {
   id: string;
-  weight: number;
+  client_id: string;
   measured_at: string;
-  notes?: string;
+  weight: number | null;
+  waist: number | null;
+  hip: number | null;
+  arm: number | null;
+  chest: number | null;
+  thigh: number | null;
+  calf: number | null;
+  neck: number | null;
+  notes: string | null;
   created_at: string;
+  updated_at: string;
 }
+
+export interface SaveClientMeasurementInput {
+  clientId: string;
+  measuredAt: string;
+  weight: number | null;
+  waist: number | null;
+  hip: number | null;
+  arm: number | null;
+  chest: number | null;
+  thigh: number | null;
+  calf: number | null;
+  neck: number | null;
+  notes: string | null;
+}
+
+export const CLIENT_MEASUREMENT_SAVE_ERROR =
+  'Ölçüm şu anda kaydedilemiyor. Lütfen bilgileri kontrol edip tekrar deneyin.';
+
+const measurementNumericKeys = [
+  'weight',
+  'waist',
+  'hip',
+  'arm',
+  'chest',
+  'thigh',
+  'calf',
+  'neck',
+] as const satisfies ReadonlyArray<keyof SaveClientMeasurementInput>;
+
+type MeasurementNumericKey = (typeof measurementNumericKeys)[number];
+
+const isValidMeasurementDate = (value: string): boolean => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+};
+
+const createMeasurementSaveError = (cause: unknown): Error => {
+  const error = new Error(CLIENT_MEASUREMENT_SAVE_ERROR);
+  Object.defineProperty(error, 'cause', { value: cause, enumerable: false });
+  return error;
+};
+
+const normalizeMeasurementNotes = (notes: string | null): string | null => {
+  if (notes === null) return null;
+  const normalized = notes.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const isCanonicalMeasurementRow = (
+  value: unknown,
+  input: SaveClientMeasurementInput,
+  normalizedNotes: string | null
+): value is Measurement => {
+  if (!value || typeof value !== 'object') return false;
+
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== 'string' || !isValidUuid(row.id)) return false;
+  if (row.client_id !== input.clientId || row.measured_at !== input.measuredAt) return false;
+  if (row.notes !== normalizedNotes) return false;
+  if (typeof row.created_at !== 'string' || typeof row.updated_at !== 'string') return false;
+
+  return measurementNumericKeys.every((key) => {
+    const expected = input[key];
+    const actual = row[key];
+    return expected === null
+      ? actual === null
+      : typeof actual === 'number' && Number.isFinite(actual) && actual === expected;
+  });
+};
+
+export const saveClientMeasurement = async (
+  input: SaveClientMeasurementInput
+): Promise<Measurement> => {
+  try {
+    if (!isValidUuid(input.clientId) || !isValidMeasurementDate(input.measuredAt)) {
+      throw new Error('Invalid measurement identity or date');
+    }
+
+    const values = measurementNumericKeys.map((key) => input[key]);
+    if (!values.some((value) => value !== null)) {
+      throw new Error('At least one measurement value is required');
+    }
+    if (values.some((value) => value !== null && !Number.isFinite(value))) {
+      throw new Error('Measurement values must be finite numbers');
+    }
+    if (input.weight !== null && (input.weight < 20 || input.weight > 500)) {
+      throw new Error('Weight is outside the supported range');
+    }
+
+    const circumferenceKeys: MeasurementNumericKey[] = [
+      'waist', 'hip', 'arm', 'chest', 'thigh', 'calf', 'neck',
+    ];
+    if (circumferenceKeys.some((key) => {
+      const value = input[key];
+      return value !== null && (value <= 0 || value > 500);
+    })) {
+      throw new Error('Circumference is outside the supported range');
+    }
+
+    const normalizedNotes = normalizeMeasurementNotes(input.notes);
+    if (normalizedNotes !== null && normalizedNotes.length > 1000) {
+      throw new Error('Measurement notes are too long');
+    }
+
+    const { data, error } = await supabase.rpc('save_active_client_measurement', {
+      p_client_id: input.clientId,
+      p_measured_at: input.measuredAt,
+      p_weight: input.weight,
+      p_waist: input.waist,
+      p_hip: input.hip,
+      p_arm: input.arm,
+      p_chest: input.chest,
+      p_thigh: input.thigh,
+      p_calf: input.calf,
+      p_neck: input.neck,
+      p_notes: normalizedNotes,
+    });
+
+    if (error) throw error;
+
+    const rows = Array.isArray(data) ? data : data ? [data] : [];
+    if (rows.length !== 1 || !isCanonicalMeasurementRow(rows[0], input, normalizedNotes)) {
+      throw new Error('Measurement RPC returned an invalid canonical row');
+    }
+
+    return rows[0];
+  } catch (cause) {
+    throw createMeasurementSaveError(cause);
+  }
+};
 
 export interface DailyLog {
   id: string;
@@ -692,7 +840,7 @@ export const fetchClientMeasurements = async (clientId: string): Promise<Measure
 
   const { data, error } = await supabase
     .from('measurements')
-    .select('id, weight, measured_at, created_at, notes')
+    .select('id, client_id, measured_at, weight, waist, hip, arm, chest, thigh, calf, neck, notes, created_at, updated_at')
     .eq('client_id', clientId)
     .order('measured_at', { ascending: true });
 

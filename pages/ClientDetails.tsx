@@ -318,8 +318,11 @@ const ClientDetails = () => {
   const bmi = heightM > 0 ? (currentWeightNum / (heightM * heightM)).toFixed(1) : '-';
 
   // Format Weight History
-  const weightHistory = measurements.length > 0 
-    ? measurements.slice(-8).map(m => {
+  const measurementsWithWeight = measurements.filter(
+    (measurement): measurement is Measurement & { weight: number } => measurement.weight !== null
+  );
+  const weightHistory = measurementsWithWeight.length > 0
+    ? measurementsWithWeight.slice(-8).map(m => {
         const d = new Date(m.measured_at || m.created_at);
         return {
           date: `${d.getDate()} ${d.toLocaleString('tr-TR', { month: 'short' })}`,

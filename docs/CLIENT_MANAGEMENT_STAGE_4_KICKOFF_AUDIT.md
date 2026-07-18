@@ -1549,3 +1549,11 @@ Nihai responsive uygulama kararı:
 Nihai WP4.4C kararı:
 
 `WP4.4C COMPLETE / STAGE 4 CONTINUES`
+
+## 35. WP4.5A — Güvenli ölçüm RPC ve servis sözleşmesi
+
+- WP4.5A uygulandı: active ve doğrulanmış diyetisyen, yalnız kendi active danışanı için hedefli `save_active_client_measurement` RPC'si üzerinden günlük canonical ölçüm kaydedebilir. Geniş bir diyetisyen tablo-write policy'si eklenmedi.
+- Ölçüm bütünlük kontrolleri ve RPC migration'ı local Supabase reset, DB lint ve rollback edilen yerel güvenlik matrisine ek olarak DietBridge Staging'de doğrulandı. Ayrı migration history kontrolünde local/remote `12/12` eşleşti ve pending migration `0` oldu. Runtime Node harness migration kataloguna erişemediği için bu kontrol harness içinde `NOT EXECUTED` kalır; ayrı staging-only kontrolün sonucu olarak belgelenir.
+- Staging security harness sonucu Measurement RPC `19/19`, RLS `7/7`, RPC `2/2`, güvenlik ve fonksiyonel hata `0`, Cleanup `PASS` oldu. Cleanup sonrasında Auth users `0`, public rows `0`, Storage buckets `0` ve measurement fixture rows `0` doğrulandı.
+- Web servis mutation sözleşmesi tamamlandı ve measurement read-model gerçek nullable DB kolonlarıyla eşlendi. Ölçüm ekleme/düzenleme UI formu henüz uygulanmadı.
+- Limitsiz measurement history okuması, measurement UI ve UI bölüm bazlı loading/error/empty/retry sözleşmeleri sonraki iş olarak açıktır. Aşama 4 `Devam ediyor` kalır; Aşama 5 başlatılmadı.
