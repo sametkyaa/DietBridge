@@ -9,11 +9,11 @@ export interface Client {
   status: 'Aktif' | 'Pasif' | 'Onay Bekliyor';
   goal: string; // Changed from union type to string to match DB text field
   startDate: string;
-  duration: string;
+  duration: string | null;
   currentWeight: string;
   startWeight?: string; // Added for detail view
   targetWeight?: string; // Added for detail view
-  weeklyChange: number;
+  weeklyChange: number | null;
   compliance: number;
   bloodType?: string;
   chronicConditions?: string[];
@@ -26,6 +26,23 @@ export interface Client {
   alcoholUse?: string;
   waterGoalLiters?: number;
   foodIntolerances?: string[];
+}
+
+export interface ClientLifestyleReadModel {
+  goal: string | null;
+  activityLevel: string | null;
+  bloodType: string | null;
+  alcoholStatus: string | null;
+  nutritionType: string | null;
+  smokingStatus: boolean | null;
+  alcoholUse: boolean | null;
+  sleepHoursMin: number | null;
+  sleepHoursMax: number | null;
+  sleepHoursLabel: string | null;
+  dislikedFoods: string[];
+  chronicConditions: string[];
+  medications: string[];
+  foodIntolerances: string[];
 }
 
 export interface Task {

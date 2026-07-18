@@ -38,7 +38,7 @@ const Sidebar = () => {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex-col justify-between z-20">
+      <aside className="hidden max-md:hidden md:flex w-64 shrink-0 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex-col justify-between z-20">
         <div className="p-6">
           <div className="flex items-center mb-10">
             <img src={APP_LOGO} alt="DietBridge Logo" className="h-10 w-auto object-contain" />
@@ -73,7 +73,7 @@ const Sidebar = () => {
       </aside>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 px-2 py-2 flex justify-around items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 max-w-full overflow-x-hidden bg-white border-t border-slate-200 z-50 px-2 py-2 flex justify-around items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         {mobileNavItems.map((item) => (
           <NavLink
             key={item.path}
