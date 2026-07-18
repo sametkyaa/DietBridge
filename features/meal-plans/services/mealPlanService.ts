@@ -6,7 +6,11 @@ export type MealPlanValidationErrorCode =
   | 'INVALID_CLIENT_ID'
   | 'INVALID_DIETITIAN_ID'
   | 'INVALID_PLAN_ID'
-  | 'INVALID_RECIPE_ID';
+  | 'INVALID_MEAL_ID'
+  | 'INVALID_RECIPE_ID'
+  | 'RECIPE_SOURCE_NOT_SUPPORTED'
+  | 'INVALID_WEEK_PAYLOAD'
+  | 'INVALID_RPC_RESPONSE';
 
 export class MealPlanValidationError extends Error {
   constructor(
@@ -42,6 +46,10 @@ export const getMealPlanUserMessage = (error: unknown): string => {
     if (error.code === 'INVALID_RECIPE_ID') {
       return 'Seçili tarif bilgisi geçersiz. Tarifi yeniden seçin.';
     }
+
+    if (error.code === 'RECIPE_SOURCE_NOT_SUPPORTED') {
+      return 'Tarif kaynaklı öğün kaydı henüz desteklenmiyor.';
+    }
   }
 
   return 'Plan kaydedilemedi. Lütfen bilgileri kontrol edip tekrar deneyin.';
@@ -66,124 +74,214 @@ export const getMealPlanErrorLogContext = (
   return { code: 'UNKNOWN_MEAL_PLAN_ERROR' };
 };
 
-export interface MealPlanInput {
-  client_id: string;
-  dietitian_id: string;
-  plan_date: string; // YYYY-MM-DD
-  notes?: string | null;
-}
-
-export interface MealInput {
-  plan_id: string;
+export interface WeeklyMealInput {
+  id?: string;
   type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   title: string;
-  calories?: number;
-  macros?: Record<string, unknown>; // JSONB
+  calories?: number | null;
+  macros?: Record<string, unknown>;
   photo_url?: string | null;
-  is_eaten?: boolean;
-  sort_order?: number;
-  time?: string;
-  source?: string;
-  recipe_id?: string | null;
+  sort_order: number;
+  time: string;
+  source: 'manual';
+  recipe_id?: null;
 }
 
-/**
- * Creates a meal plan for a specific date and adds meals to it.
- */
-export const createDailyMealPlan = async (
-  planData: MealPlanInput,
-  meals: Omit<MealInput, 'plan_id'>[]
-) => {
-  assertValidUuid(planData.client_id, 'INVALID_CLIENT_ID', 'meal_plans.client_id');
-  assertValidUuid(planData.dietitian_id, 'INVALID_DIETITIAN_ID', 'meal_plans.dietitian_id');
-  meals.forEach((meal) => {
-    if (meal.recipe_id != null) {
-      assertValidUuid(meal.recipe_id, 'INVALID_RECIPE_ID', 'meals.recipe_id');
+export interface WeeklyMealPlanDayInput {
+  plan_date: string;
+  notes?: string | null;
+  meals: WeeklyMealInput[];
+}
+
+export interface CanonicalMeal extends Required<Omit<WeeklyMealInput, 'recipe_id' | 'calories' | 'photo_url'>> {
+  id: string;
+  plan_id: string;
+  calories: number | null;
+  photo_url: string | null;
+  recipe_id: string | null;
+  is_eaten: boolean;
+}
+
+export interface CanonicalDailyMealPlan {
+  id: string;
+  plan_date: string;
+  notes: string | null;
+  meals: CanonicalMeal[];
+}
+
+export interface CanonicalWeeklyMealPlan {
+  client_id: string;
+  dietitian_id: string;
+  week_start: string;
+  week_end: string;
+  plans: CanonicalDailyMealPlan[];
+}
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const MEAL_TYPES = new Set<WeeklyMealInput['type']>(['breakfast', 'lunch', 'dinner', 'snack']);
+
+const addUtcDays = (isoDate: string, days: number): string => {
+  if (!ISO_DATE_PATTERN.test(isoDate)) {
+    throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', 'week_start');
+  }
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) {
+    throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', 'week_start');
+  }
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const assertWeeklyPayload = (weekStart: string, days: WeeklyMealPlanDayInput[]): void => {
+  const [year, month, day] = weekStart.split('-').map(Number);
+  const weekStartDate = new Date(Date.UTC(year, month - 1, day));
+  addUtcDays(weekStart, 0);
+  if (weekStartDate.getUTCDay() !== 1 || days.length !== 7) {
+    throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', 'week_start');
+  }
+
+  const seenMealIds = new Set<string>();
+  days.forEach((plan, dayIndex) => {
+    if (plan.plan_date !== addUtcDays(weekStart, dayIndex) || !Array.isArray(plan.meals)) {
+      throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', `days[${dayIndex}]`);
     }
+
+    const seenSortOrders = new Set<number>();
+    plan.meals.forEach((meal, mealIndex) => {
+      const field = `days[${dayIndex}].meals[${mealIndex}]`;
+      if (meal.id != null) {
+        assertValidUuid(meal.id, 'INVALID_MEAL_ID', `${field}.id`);
+        if (seenMealIds.has(meal.id)) {
+          throw new MealPlanValidationError('INVALID_MEAL_ID', `${field}.id`);
+        }
+        seenMealIds.add(meal.id);
+      }
+      if (!MEAL_TYPES.has(meal.type) || !meal.title.trim() || !TIME_PATTERN.test(meal.time)) {
+        throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', field);
+      }
+      if (!Number.isInteger(meal.sort_order) || meal.sort_order < 0 || seenSortOrders.has(meal.sort_order)) {
+        throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', `${field}.sort_order`);
+      }
+      seenSortOrders.add(meal.sort_order);
+      if (meal.source !== 'manual') {
+        throw new MealPlanValidationError('RECIPE_SOURCE_NOT_SUPPORTED', `${field}.source`);
+      }
+      if (meal.recipe_id != null) {
+        throw new MealPlanValidationError('INVALID_RECIPE_ID', `${field}.recipe_id`);
+      }
+    });
+  });
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const assertCanonicalResponse = (
+  value: unknown,
+  expectedClientId: string,
+  expectedDietitianId: string,
+  expectedWeekStart: string,
+): CanonicalWeeklyMealPlan => {
+  if (!isRecord(value)
+      || value.client_id !== expectedClientId
+      || value.dietitian_id !== expectedDietitianId
+      || value.week_start !== expectedWeekStart
+      || value.week_end !== addUtcDays(expectedWeekStart, 6)
+      || !Array.isArray(value.plans)
+      || value.plans.length !== 7) {
+    throw new MealPlanValidationError('INVALID_RPC_RESPONSE', 'save_weekly_meal_plan');
+  }
+
+  const seenMealIds = new Set<string>();
+  const plans = value.plans.map((rawPlan, dayIndex): CanonicalDailyMealPlan => {
+    if (!isRecord(rawPlan)
+        || !isValidUuid(rawPlan.id)
+        || rawPlan.plan_date !== addUtcDays(expectedWeekStart, dayIndex)
+        || (rawPlan.notes !== null && typeof rawPlan.notes !== 'string')
+        || !Array.isArray(rawPlan.meals)) {
+      throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}]`);
+    }
+
+    let previousSortOrder = -1;
+    let previousId = '';
+    const meals = rawPlan.meals.map((rawMeal, mealIndex): CanonicalMeal => {
+      if (!isRecord(rawMeal)
+          || !isValidUuid(rawMeal.id)
+          || rawMeal.plan_id !== rawPlan.id
+          || !MEAL_TYPES.has(rawMeal.type as WeeklyMealInput['type'])
+          || typeof rawMeal.title !== 'string'
+          || typeof rawMeal.is_eaten !== 'boolean'
+          || !Number.isInteger(rawMeal.sort_order)
+          || (rawMeal.sort_order as number) < 0
+          || typeof rawMeal.time !== 'string'
+          || !TIME_PATTERN.test(rawMeal.time)
+          || rawMeal.source !== 'manual'
+          || !isRecord(rawMeal.macros)
+          || (rawMeal.calories !== null && typeof rawMeal.calories !== 'number')
+          || (rawMeal.photo_url !== null && typeof rawMeal.photo_url !== 'string')) {
+        throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}]`);
+      }
+
+      if (rawMeal.recipe_id !== null || seenMealIds.has(rawMeal.id)) {
+        throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}]`);
+      }
+
+      const sortOrder = rawMeal.sort_order as number;
+      if (sortOrder < previousSortOrder || (sortOrder === previousSortOrder && rawMeal.id <= previousId)) {
+        throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals`);
+      }
+      previousSortOrder = sortOrder;
+      previousId = rawMeal.id;
+      seenMealIds.add(rawMeal.id);
+      return rawMeal as unknown as CanonicalMeal;
+    });
+
+    return {
+      id: rawPlan.id,
+      plan_date: rawPlan.plan_date as string,
+      notes: rawPlan.notes as string | null,
+      meals,
+    };
   });
 
-  // 1. Check if a plan already exists for this client/date/dietitian
-  const { data: existingPlan, error: fetchError } = await supabase
-    .from('meal_plans')
-    .select('id')
-    .eq('client_id', planData.client_id)
-    .eq('dietitian_id', planData.dietitian_id)
-    .eq('plan_date', planData.plan_date)
-    .maybeSingle();
+  return {
+    client_id: value.client_id,
+    dietitian_id: value.dietitian_id,
+    week_start: value.week_start,
+    week_end: value.week_end,
+    plans,
+  };
+};
 
-  if (fetchError) throw fetchError;
+export const saveWeeklyMealPlan = async (
+  clientId: string,
+  weekStart: string,
+  days: WeeklyMealPlanDayInput[],
+): Promise<CanonicalWeeklyMealPlan> => {
+  assertValidUuid(clientId, 'INVALID_CLIENT_ID', 'meal_plans.client_id');
+  assertWeeklyPayload(weekStart, days);
 
-  let planId = existingPlan?.id;
-
-  if (planId) {
-    assertValidUuid(planId, 'INVALID_PLAN_ID', 'meal_plans.id');
-
-    // Option A: Delete existing meals and update plan notes
-    const { error: deleteError } = await supabase.from('meals').delete().eq('plan_id', planId);
-    if (deleteError) throw deleteError;
-
-    const { error: updateError } = await supabase
-      .from('meal_plans')
-      .update({ notes: planData.notes })
-      .eq('id', planId);
-    if (updateError) throw updateError;
-  } else {
-    // Option B: Create new plan
-    const { data: newPlan, error: planError } = await supabase
-      .from('meal_plans')
-      .insert([planData])
-      .select('id')
-      .single();
-
-    if (planError) throw planError;
-    assertValidUuid(newPlan?.id, 'INVALID_PLAN_ID', 'meal_plans.id');
-    planId = newPlan.id;
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    throw new MealPlanValidationError('INVALID_DIETITIAN_ID', 'auth.uid');
   }
+  assertValidUuid(user.id, 'INVALID_DIETITIAN_ID', 'auth.uid');
 
-  assertValidUuid(planId, 'INVALID_PLAN_ID', 'meal_plans.id');
+  const { data, error } = await supabase.rpc('save_weekly_meal_plan', {
+    p_client_id: clientId,
+    p_week_start: weekStart,
+    p_days: days,
+  });
+  if (error) throw error;
 
-  // 2. Insert meals
-  if (meals.length > 0) {
-    const mealsPayload = meals.map(m => ({
-      plan_id: planId,
-      type: m.type,
-      title: m.title,
-      calories: m.calories ?? 0,
-      macros: m.macros ?? {},
-      photo_url: m.photo_url ?? null,
-      is_eaten: false,
-      sort_order: m.sort_order ?? 0,
-      time: m.time || '00:00',
-      source: m.source || 'manual',
-      recipe_id: m.recipe_id ?? null
-    }));
-
-    // For backwards compatibility, if the column doesn't exist, we fallback to macros storage.
-    // We'll store it in macros as well to ensure it survives if the DB doesn't have the column yet.
-    const safeMealsPayload = mealsPayload.map(m => ({
-        ...m,
-        macros: { ...m.macros, _sortOrder: m.sort_order, _time: m.time }
-    }));
-
-    const { error: mealsError } = await supabase
-      .from('meals')
-      .insert(safeMealsPayload);
-
-    // If there is an error due to missing columns, try without them
-    if (mealsError && (mealsError.code === 'PGRST204' || mealsError.code === '42703')) {
-        console.warn("sort_order or time columns not found, using macros fallback.");
-        const fallbackPayload = safeMealsPayload.map(m => {
-            const { sort_order, time, source, recipe_id, ...rest } = m as any;
-            return rest;
-        });
-        const { error: fallbackError } = await supabase.from('meals').insert(fallbackPayload);
-        if (fallbackError) throw fallbackError;
-    } else if (mealsError) {
-        throw mealsError;
-    }
-  }
-
-  return { success: true, planId };
+  return assertCanonicalResponse(data, clientId, user.id, weekStart);
 };
 
 export const fetchWeeklyMealPlan = async (
@@ -219,34 +317,6 @@ export const fetchWeeklyMealPlan = async (
     .eq('dietitian_id', dietitianId)
     .gte('plan_date', startDate)
     .lte('plan_date', endDate);
-
-  // If selecting sort_order fails due to missing column, fallback to query without it
-  if (error && (error.code === 'PGRST200' || error.code === '42703')) {
-      console.warn("sort_order or time columns not found, fetching without them.");
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from('meal_plans')
-        .select(`
-          id,
-          plan_date,
-          notes,
-          meals (
-            id,
-            type,
-            title,
-            calories,
-            macros,
-            photo_url,
-            is_eaten
-          )
-        `)
-        .eq('client_id', clientId)
-        .eq('dietitian_id', dietitianId)
-        .gte('plan_date', startDate)
-        .lte('plan_date', endDate);
-      
-      if (fallbackError) throw fallbackError;
-      return fallbackData;
-  }
 
   if (error) throw error;
   return data;

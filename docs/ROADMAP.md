@@ -246,6 +246,8 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Plan ve öğünler yenileme sonrası kalıcı; web/mobil aynı veriyi okur; silme onaylı; fotoğraf kontrollü; başarısız işlem başarı göstermez.
 - **Manuel doğrulama:** Farklı hafta/danışan, öğün ekle-düzenle-sil, sıra/saat, görsel ve mobil okuma senaryoları.
 - **Teslim çıktıları:** Güvenilir plan servisi, şema/mobil uyum notu ve doğrulama raporu.
+- **İş Paketi 5.1 durumu:** Tamamlandı — haftalık plan tek `save_weekly_meal_plan` RPC çağrısıyla atomik kaydediliyor; plan/meal ID, `is_eaten`, ekleme-düzenleme-silme-sıralama, rollback, concurrent save, reload, active/pending/unverified/cross-tenant/client/anon sınırları ve geçersiz payload retleri DietBridge Staging'de doğrulandı. Final fixture cleanup sonucu Auth/public/meal plan/meal/Storage `0/0/0/0/0`, cleanup failure `0` oldu.
+- **WP5.1 recipe persistence sınırı:** Canonical `recipes` tablosu ve `meals.recipe_id` foreign key'i bulunmadığı için MVP yazma sözleşmesi fail-closed olarak yalnız `source = 'manual'` ve `recipe_id IS NULL` kabul eder. Mock/AI önerileri manual öğün olarak kaydedilir; tarif persistence ancak ayrı, hedefli bir recipes/FK migration'ı ve web–mobil uyumluluk doğrulaması sonrasında yeniden açılacaktır.
 - **Durum:** Bekliyor.
 
 ### Aşama 6 — Mesajlaşma ve görsel gönderimi

@@ -29,12 +29,13 @@ import { RECIPES, USER_AVATAR } from '../constants';
 import { Client, Recipe } from '../shared/types';
 import { fetchDietitianClients } from '../features/clients/services/clientService';
 import {
-  createDailyMealPlan,
   mapMealTypeToDb,
   fetchWeeklyMealPlan,
   getMealPlanErrorLogContext,
   getMealPlanUserMessage,
-  type MealInput,
+  saveWeeklyMealPlan,
+  type WeeklyMealInput,
+  type WeeklyMealPlanDayInput,
 } from '../features/meal-plans/services/mealPlanService';
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
@@ -74,8 +75,19 @@ interface MealRow {
 
 const LAST_MEAL_PLAN_CLIENT_KEY = 'dietbridge:lastMealPlanClientId';
 
+const getCurrentMondayIso = (): string => {
+  const today = new Date();
+  const daysFromMonday = (today.getDay() + 6) % 7;
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysFromMonday);
+  const year = monday.getFullYear();
+  const month = String(monday.getMonth() + 1).padStart(2, '0');
+  const day = String(monday.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 interface PlannedMealContent {
   id: string;
+  mealId?: string;
   name: string;
   image: string | null;
   calories: number;
@@ -95,7 +107,7 @@ const MealPlans = () => {
   const [loadingClients, setLoadingClients] = useState(true);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
-  const [weekStartDate, setWeekStartDate] = useState<string>(new Date().toISOString().split('T')[0]); // Default to today
+  const [weekStartDate, setWeekStartDate] = useState<string>(getCurrentMondayIso);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
   
@@ -309,6 +321,7 @@ const MealPlans = () => {
                          if (m.calories || m.macros || m.photo_url) {
                              const recipeObj: PlannedMealContent = {
                                  id: m.id,
+                                 mealId: m.id,
                                  name: m.title,
                                  calories: m.calories,
                                  macros: m.macros || { protein: 0, carbs: 0, fat: 0 },
@@ -595,7 +608,9 @@ const MealPlans = () => {
       const [year, month, day] = weekStartDate.split('-').map(Number);
       const start = new Date(Date.UTC(year, month - 1, day));
       
-      // Loop through each day of the week (0 to 6)
+      const weeklyPayload: WeeklyMealPlanDayInput[] = [];
+
+      // Build the complete Monday-Sunday payload before the single RPC call.
       for (let i = 0; i < 7; i++) {
         const currentDayDate = new Date(start);
         currentDayDate.setUTCDate(start.getUTCDate() + i);
@@ -603,7 +618,7 @@ const MealPlans = () => {
         const dayName = DAYS[i]; // 'Pazartesi', 'Salı', etc.
 
         // Collect meals for this day
-        const dayMeals: Omit<MealInput, 'plan_id'>[] = [];
+        const dayMeals: WeeklyMealInput[] = [];
         const dayPlan = weeklyPlan[dayName];
         
         if (dayPlan) {
@@ -614,41 +629,67 @@ const MealPlans = () => {
 
             const mealType = mapMealTypeToDb(mealRow.name);
             
-            const mealData: Omit<MealInput, 'plan_id'> = {
+            const mealData: WeeklyMealInput = {
               type: mealType,
               title: typeof content === 'string' ? content : content.name,
-              is_eaten: false,
               sort_order: meals.findIndex(m => m.id === mealRow.id),
               time: mealRow.time,
-              macros: { _rowName: mealRow.name }
+              macros: { _rowName: mealRow.name },
+              source: 'manual',
+              recipe_id: null,
             };
 
             if (typeof content !== 'string') {
-              const hasPersistedRecipeId = Object.prototype.hasOwnProperty.call(content, 'recipeId');
-              const recipeId = hasPersistedRecipeId ? content.recipeId : content.id;
-
+              if (content.mealId) mealData.id = content.mealId;
               mealData.calories = content.calories;
               mealData.macros = { ...mealData.macros, ...content.macros };
               mealData.photo_url = content.image;
-              mealData.source = content.source || 'recipe';
-              mealData.recipe_id =
-                mealData.source === 'recipe' && isValidUuid(recipeId) ? recipeId : null;
-            } else {
+              // Recipe persistence has no canonical table/FK yet. UI suggestions
+              // are persisted as manual meals without carrying mock recipe IDs.
               mealData.source = 'manual';
+              mealData.recipe_id = null;
             }
 
             dayMeals.push(mealData);
           }
         }
 
-        // Create plan for this day
-        await createDailyMealPlan({
-          client_id: selectedClient.id,
-          dietitian_id: user.id,
+        weeklyPayload.push({
           plan_date: dateStr,
-          notes: getClientDetails(selectedClient.id).notes
-        }, dayMeals);
+          notes: getClientDetails(selectedClient.id).notes,
+          meals: dayMeals,
+        });
       }
+
+      const savedWeek = await saveWeeklyMealPlan(selectedClient.id, weekStartDate, weeklyPayload);
+      setWeeklyPlan((currentPlan) => {
+        const nextPlan = { ...currentPlan };
+        savedWeek.plans.forEach((savedPlan, dayIndex) => {
+          const dayName = DAYS[dayIndex];
+          const currentDay = { ...(nextPlan[dayName] || {}) };
+          savedPlan.meals.forEach((savedMeal) => {
+            const mealRow = meals[savedMeal.sort_order];
+            if (!mealRow) return;
+            const currentContent = currentDay[mealRow.id];
+            if (typeof currentContent === 'object' && currentContent !== null) {
+              currentDay[mealRow.id] = { ...currentContent, mealId: savedMeal.id };
+            } else {
+              currentDay[mealRow.id] = {
+                id: savedMeal.id,
+                mealId: savedMeal.id,
+                name: savedMeal.title,
+                image: savedMeal.photo_url,
+                calories: savedMeal.calories ?? 0,
+                macros: savedMeal.macros as Recipe['macros'],
+                source: savedMeal.source,
+                recipeId: savedMeal.recipe_id,
+              };
+            }
+          });
+          nextPlan[dayName] = currentDay;
+        });
+        return nextPlan;
+      });
 
       alert('Haftalık plan başarıyla kaydedildi!');
     } catch (error: unknown) {
