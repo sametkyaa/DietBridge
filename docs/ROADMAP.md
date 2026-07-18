@@ -226,6 +226,8 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **İş Paketi 4.4A durumu:** Resmî yerel Supabase yapılandırması kabul edildi; migration replay, DB lint ve RLS/RPC güvenlik matrisi geçti. Staging onayı bekliyor. Aşama 4 devam ediyor.
 - **İş Paketi 4.4C durumu:** Tamamlandı — canonical profil/yaşam tarzı read-model'i, responsive ve 44 px touch-target kontrolleri ile staging güvenlik harness'i geçti. Cleanup Auth/public/Storage sonucu `0/0/0`; runtime harness migration history kontrolü yapamadı. Aşama 4 devam ediyor.
 - **İş Paketi 4.4B durumu:** WP4.4B tamamlandı — kod incelemesi ve staging canlı regresyonu geçti.
+- **İş Paketi 4.6 durumu:** Tamamlandı — `avatars` bucket private, private path okumaları 5 dakikalık signed URL ile sınırlandırılmıştır. Owner ve active ilişkili diyetisyen erişimi; pending/cross-tenant/anon retleri; canonical path, JPEG/PNG/WebP ve 5 MiB sınırları; initials fallback, avatar error isolation ve sıfır cleanup doğrulandı. Silme öncesi üretilmiş signed URL'nin TTL/CDN cache süresince okunabilmesi P2 non-blocking deferred limitasyondur; anında revocation doğrulanmış değildir.
+- **Açık Aşama 4 işi:** Measurement history limit/pagination.
 - **Durum:** Devam ediyor.
 
 ### Aşama 5 — Beslenme planı ve öğün yönetimi
@@ -525,3 +527,4 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 2026-07-17 | Aşama 4.4C | Canonical read-model staging matrisi geçti; active ve pending detay görünümlerindeki mobil yatay taşma kaynakları hedefli responsive container, wrap ve min-width sözleşmesiyle giderildi | Responsive kontrol tamamlandı | `codex/client-management` |
 | 2026-07-17 | Aşama 4.4C | Active/pending `Listeye Dön` ve pending `İsteği İptal Et` kontrolleri için açık 44×44 px minimum touch target sözleşmesi eklendi | Touch target ve klavye kontrolü tamamlandı | `codex/client-management` |
 | 2026-07-17 | Aşama 4.4C | Staging security harness Preflight/Onboarding/RLS/RPC/functional ve cleanup kapılarını geçti; Auth/public/Storage aggregate sonucu `0/0/0` oldu. Runtime harness migration history sorgulayamadı | WP4.4C tamamlandı; Aşama 4 ölçüm mutation, avatar güvenliği ve bölüm bazlı error/empty/retry işleriyle devam ediyor | `codex/client-management` |
+| 2026-07-18 | Aşama 4.6 | Private avatars bucket, 5 dakikalık signed URL, owner/active erişimi, pending/cross-tenant/anon retleri, canonical path, MIME/5 MiB sınırları, initials fallback ve sıfır cleanup doğrulandı | Tamamlandı; silme öncesi signed URL TTL/CDN cache davranışı P2 deferred, measurement history limit/pagination açık | `codex/client-management` |

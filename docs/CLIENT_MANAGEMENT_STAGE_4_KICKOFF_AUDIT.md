@@ -1571,3 +1571,17 @@ Nihai WP4.4C kararı:
 - Responsive runtime matrisi `1440×900`, `1024×768` ve `390×844` viewport'larında yatay taşma olmadığını doğruladı. Mobil başlangıçta desktop sidebar kapalı kaldı. Gerçek disposable staging satırında göz butonu ve satır tıklaması aynı `/clients/{clientId}` detay route'una birer SPA navigation üretti; göz butonunun danışana özgü erişilebilir label'ı ve her üç viewport'ta `44×44 px` hit area'sı doğrulandı.
 - Runtime fixture cleanup sonucu `PASS` oldu: Final Auth users `0`, public rows `0`, Storage buckets `0` ve measurement fixture rows `0`. Sentetik fixture kalmadı; migration uygulanmadı ve Production/GROUNDLESS'a bağlanılmadı.
 - Aşama 4 `Devam ediyor` kalır. Avatar upload/Storage güvenliği ve measurement history için sayfalama/sınırlandırma sonraki işlerdir; Aşama 5 başlatılmadı.
+
+## 37. WP4.6 — Private avatar ve Storage güvenliği kapanışı
+
+- `avatars` bucket private olarak yapılandırıldı. Uygulama canonical `<owner-user-id>/avatar.<jpg|jpeg|png|webp>` path değerini public URL'ye çevirmiyor; private path için yalnız `300 saniye` (`5 dakika`) geçerli signed URL üretiyor. Tam ve güvenilir HTTPS public URL değerleri geriye dönük uyumluluk için korunuyor.
+- Storage sözleşmesi owner'ın yalnız kendi canonical path'inde `INSERT`, `UPDATE` ve `DELETE` yapmasına izin verir. Dosya boyutu en fazla `5 MiB`; MIME türleri JPEG, PNG ve WebP ile sınırlıdır. Active ilişkili diyetisyen yalnız danışan profilinde kayıtlı canonical avatar path'ini okuyabilir.
+- DietBridge Staging runtime doğrulamasında owner upload/read ve active diyetisyen signed read geçti. Pending diyetisyen, cross-tenant diyetisyen ve anon erişimi reddedildi; foreign canonical path, invalid path, desteklenmeyen MIME ve `5 MiB` üstü dosya kontrolleri geçti.
+- Boş, bozuk veya okunamayan avatar değeri initials fallback'e iner. Avatar görseli yükleme hatası yalnız ilgili avatarı fallback'e geçirir; danışan listesini kapatmaz. Runtime doğrulamasında signed URL üretimi, initials fallback ve avatar error isolation geçti.
+- Runtime cleanup sonrasında Auth users `0`, public rows `0`, Storage objects `0` ve measurement fixture rows `0` doğrulandı.
+- Silme işleminden önce üretilmiş kısa süreli signed URL, Storage object silinmiş olsa bile kalan TTL veya CDN cache süresince geçici olarak okunabilir. Anında signed URL revocation doğrulanmış değildir. Bu, yeni bir yetkisiz erişim veya tenant sınırı kaçağı değil; süreli capability URL/cache yaşam döngüsü limitasyonudur ve **P2 — non-blocking deferred limitation** olarak izlenir. Web avatar upload/delete UI mevcut kapsamda değildir; bu limitasyon Aşama 4 MVP blocker'ı değildir.
+- Aşama 4 `Devam ediyor` kalır. Measurement history için limit/pagination hâlâ açık iştir; Aşama 5 başlatılmadı.
+
+Nihai WP4.6 kararı:
+
+`WP4.6 COMPLETE / P2 SIGNED URL CACHE LIMITATION DEFERRED / STAGE 4 CONTINUES`

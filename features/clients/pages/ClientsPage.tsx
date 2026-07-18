@@ -34,6 +34,51 @@ const compareClients = (left: Client, right: Client) => {
   return left.id.localeCompare(right.id);
 };
 
+const getClientInitials = (name: string) => {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase('tr-TR'))
+    .join('');
+
+  return initials || '?';
+};
+
+const ClientAvatar: React.FC<{
+  name: string;
+  src: string | null | undefined;
+  sizeClassName: string;
+}> = ({ name, src, sizeClassName }) => {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+
+  if (!src || imageFailed) {
+    return (
+      <div
+        role="img"
+        aria-label={`${name} profil fotoğrafı yok`}
+        className={`${sizeClassName} flex shrink-0 items-center justify-center rounded-full bg-emerald-100 font-bold text-emerald-700`}
+      >
+        {getClientInitials(name)}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={name}
+      onError={() => setImageFailed(true)}
+      className={`${sizeClassName} shrink-0 rounded-full object-cover`}
+    />
+  );
+};
+
 // Desktop/Tablet Table Row Component
 const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
   const navigate = useNavigate();
@@ -44,7 +89,11 @@ const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
     >
       <td className="px-6 py-4">
         <div className="flex items-center gap-4">
-          <img src={client.avatar} alt={client.name} className="w-10 h-10 rounded-full object-cover ring-2 ring-transparent group-hover:ring-primary/20 transition-all" />
+          <ClientAvatar
+            name={client.name}
+            src={client.profilePhotoUrl}
+            sizeClassName="h-10 w-10 ring-2 ring-transparent transition-all group-hover:ring-primary/20"
+          />
           <div>
             <p className="font-semibold text-slate-800">{client.name}</p>
             <p className="text-xs text-slate-500">{client.email}</p>
@@ -142,7 +191,11 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
       {/* Card Header */}
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center gap-3">
-          <img src={client.avatar} alt={client.name} className="w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-sm" />
+          <ClientAvatar
+            name={client.name}
+            src={client.profilePhotoUrl}
+            sizeClassName="h-12 w-12 ring-2 ring-white shadow-sm"
+          />
           <div>
             <h3 className="font-bold text-slate-800">{client.name}</h3>
             <p className="text-xs text-slate-500">{client.email}</p>

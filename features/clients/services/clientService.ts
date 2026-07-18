@@ -4,24 +4,67 @@ import { Client, ClientLifestyleReadModel } from '../../../shared/types';
 import { USER_AVATAR } from '../../../shared/constants';
 import { isValidUuid } from '../../../shared/utils/uuid';
 
-export function resolveProfilePhotoUrl(
-  storedValue: string | null | undefined
-): string | null {
-  if (!storedValue) return null;
+const AVATAR_BUCKET = 'avatars';
+const AVATAR_SIGNED_URL_TTL_SECONDS = 5 * 60;
+const AVATAR_OBJECT_PATH_PATTERN =
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/avatar\.(?:jpe?g|png|webp)$/i;
 
-  if (/^https?:\/\//i.test(storedValue)) {
-    return storedValue;
-  }
+type ProfilePhotoAccess = {
+  subjectUserId: string;
+  allowPrivatePath: boolean;
+};
 
+const resolveTrustedPublicAvatarUrl = (storedValue: string): string | null => {
   try {
-    const { data } = supabase.storage.from('avatars').getPublicUrl(storedValue);
-    if (data?.publicUrl) {
-      return data.publicUrl;
+    const parsedUrl = new URL(storedValue);
+    if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) return null;
+
+    const storageObjectPath = parsedUrl.pathname.toLowerCase();
+    if (
+      storageObjectPath.includes('/storage/v1/object/')
+      && !storageObjectPath.includes('/storage/v1/object/public/')
+    ) {
+      return null;
     }
-  } catch (e) {
-    console.error("Error resolving profile photo:", e);
+
+    if (
+      parsedUrl.searchParams.has('token')
+      || parsedUrl.searchParams.has('expires')
+      || parsedUrl.searchParams.has('signature')
+    ) {
+      return null;
+    }
+
+    return parsedUrl.toString();
+  } catch {
+    return null;
   }
-  return null;
+};
+
+export async function resolveProfilePhotoUrl(
+  storedValue: string | null | undefined,
+  access: ProfilePhotoAccess,
+): Promise<string | null> {
+  const normalizedValue = String(storedValue ?? '').trim();
+  if (!normalizedValue || !isValidUuid(access.subjectUserId)) return null;
+
+  if (/^[a-z][a-z\d+.-]*:/i.test(normalizedValue)) {
+    return resolveTrustedPublicAvatarUrl(normalizedValue);
+  }
+
+  if (!access.allowPrivatePath) return null;
+
+  const pathMatch = AVATAR_OBJECT_PATH_PATTERN.exec(normalizedValue);
+  if (!pathMatch || pathMatch[1].toLowerCase() !== access.subjectUserId.toLowerCase()) {
+    return null;
+  }
+
+  const { data, error } = await supabase.storage
+    .from(AVATAR_BUCKET)
+    .createSignedUrl(normalizedValue, AVATAR_SIGNED_URL_TTL_SECONDS);
+
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
 }
 
 interface CatalogLabelRow {
@@ -263,11 +306,11 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
     }
 
     const rows = (data ?? []) as unknown as DietitianClientListRow[];
-    const clients = rows.flatMap((item): Client[] => {
-      if (item.status !== 'active' && item.status !== 'pending') return [];
+    const clients = (await Promise.all(rows.map(async (item): Promise<Client | null> => {
+      if (item.status !== 'active' && item.status !== 'pending') return null;
 
       const client = Array.isArray(item.client) ? item.client[0] : item.client;
-      if (!client || !isValidUuid(client.id)) return [];
+      if (!client || !isValidUuid(client.id)) return null;
 
       const profile: Partial<ClientListProfileRow> = Array.isArray(client.client_profiles)
         ? client.client_profiles[0] || {}
@@ -313,12 +356,17 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
 
       const status: Client['status'] = item.status === 'active' ? 'Aktif' : 'Onay Bekliyor';
 
-      return [{
+      const profilePhotoUrl = await resolveProfilePhotoUrl(client.avatar_url, {
+        subjectUserId: client.id,
+        allowPrivatePath: item.status === 'active',
+      });
+
+      return {
         id: client.id,
         name: client.full_name || 'İsimsiz Danışan',
         email: client.email || '',
-        avatar: resolveProfilePhotoUrl(client.avatar_url) || USER_AVATAR,
-        profilePhotoUrl: resolveProfilePhotoUrl(client.avatar_url),
+        avatar: profilePhotoUrl || USER_AVATAR,
+        profilePhotoUrl,
         status,
         goal: goal || 'Yok',
         startDate: profile.diet_start_date ? new Date(profile.diet_start_date).toLocaleDateString('tr-TR') : '-',
@@ -335,8 +383,8 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
         lastLabDate: profile.last_lab_date ? new Date(profile.last_lab_date).toLocaleDateString('tr-TR') : undefined,
         activityLevel: activityLevel || undefined,
         sleepHours: profile.sleep_hours,
-      }];
-    });
+      };
+    }))).filter((client): client is Client => client !== null);
 
     return { status: 'success', clients };
   } catch {
@@ -558,7 +606,10 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
       }
       if (!pendingProfile) return { status: 'unavailable' };
 
-      const profilePhotoUrl = resolveProfilePhotoUrl(pendingProfile.avatar_url);
+      const profilePhotoUrl = await resolveProfilePhotoUrl(pendingProfile.avatar_url, {
+        subjectUserId: clientId,
+        allowPrivatePath: false,
+      });
 
       return {
         status: 'pending',
@@ -668,7 +719,10 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
     });
     const waterGoalLiters = profile.daily_water_goal_ml ? profile.daily_water_goal_ml / 1000 : undefined;
 
-    const profilePhotoUrl = resolveProfilePhotoUrl(clientData.avatar_url);
+    const profilePhotoUrl = await resolveProfilePhotoUrl(clientData.avatar_url, {
+      subjectUserId: clientId,
+      allowPrivatePath: true,
+    });
 
     return {
       status: 'active',
