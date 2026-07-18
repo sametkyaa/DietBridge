@@ -146,7 +146,7 @@ type ClientLifestyleKeys =
   | 'smokingStatus'
   | 'alcoholUse';
 
-export type ActiveClientDetails = Omit<Client, ClientLifestyleKeys> &
+export type ActiveClientDetails = Omit<Client, ClientLifestyleKeys | 'duration' | 'weeklyChange'> &
   ClientLifestyleReadModel & { relationId: string };
 
 interface ClientLifestyleReadSource {
@@ -171,6 +171,34 @@ const CLIENT_LIST_LOAD_ERROR =
 export type ClientListResult =
   | { status: 'success'; clients: Client[] }
   | { status: 'error'; kind: 'auth' | 'query' | 'unexpected'; userMessage: string };
+
+const formatDietDuration = (dietStartDate: string | null): string | null => {
+  if (!dietStartDate) return null;
+
+  const startDate = new Date(`${dietStartDate}T00:00:00`);
+  if (Number.isNaN(startDate.getTime())) return null;
+
+  const today = new Date();
+  const currentDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (startDate > currentDate) return null;
+
+  let completedMonths =
+    (currentDate.getFullYear() - startDate.getFullYear()) * 12
+    + currentDate.getMonth()
+    - startDate.getMonth();
+  if (currentDate.getDate() < startDate.getDate()) completedMonths -= 1;
+
+  if (completedMonths < 1) {
+    const elapsedDays = Math.floor((currentDate.getTime() - startDate.getTime()) / 86_400_000);
+    return elapsedDays === 0 ? 'Bugün başladı' : `${elapsedDays} gün`;
+  }
+
+  const completedYears = Math.floor(completedMonths / 12);
+  const remainingMonths = completedMonths % 12;
+  if (completedYears === 0) return `${completedMonths} ay`;
+  if (remainingMonths === 0) return `${completedYears} yıl`;
+  return `${completedYears} yıl ${remainingMonths} ay`;
+};
 
 
 /**
@@ -294,11 +322,11 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
         status,
         goal: goal || 'Yok',
         startDate: profile.diet_start_date ? new Date(profile.diet_start_date).toLocaleDateString('tr-TR') : '-',
-        duration: '1 Ay', // Calculated or static
+        duration: formatDietDuration(profile.diet_start_date),
         currentWeight: profile.current_weight ? `${profile.current_weight} kg` : '-',
         startWeight: profile.start_weight ? `${profile.start_weight} kg` : undefined,
         targetWeight: profile.target_weight ? `${profile.target_weight} kg` : undefined,
-        weeklyChange: 0, // Needs calculation from daily_logs
+        weeklyChange: null,
         compliance: profile.compliance_score || 0,
         bloodType,
         chronicConditions,
@@ -655,11 +683,9 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
         status: 'Aktif',
         ...lifestyle,
         startDate: profile.diet_start_date ? new Date(profile.diet_start_date).toLocaleDateString('tr-TR') : '-',
-        duration: '1 Ay',
         currentWeight: profile.current_weight ? `${profile.current_weight}` : '-',
         startWeight: profile.start_weight ? `${profile.start_weight}` : undefined,
         targetWeight: profile.target_weight ? `${profile.target_weight}` : undefined,
-        weeklyChange: 0,
         compliance: profile.compliance_score || 0,
         waterGoalLiters,
         heightCm: profile.height_cm,

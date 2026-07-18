@@ -9,11 +9,11 @@ export interface Client {
   status: 'Aktif' | 'Pasif' | 'Onay Bekliyor';
   goal: string; // Changed from union type to string to match DB text field
   startDate: string;
-  duration: string;
+  duration: string | null;
   currentWeight: string;
   startWeight?: string; // Added for detail view
   targetWeight?: string; // Added for detail view
-  weeklyChange: number;
+  weeklyChange: number | null;
   compliance: number;
   bloodType?: string;
   chronicConditions?: string[];

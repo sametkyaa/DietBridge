@@ -70,12 +70,16 @@ const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
       <td className="px-6 py-4 text-slate-600 font-medium">
         <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-slate-400" />
-            {client.duration}
+            {client.duration ?? 'Veri yok'}
         </div>
       </td>
       <td className="px-6 py-4 text-slate-800 font-semibold">{client.currentWeight}</td>
       <td className="px-6 py-4">
-        {client.weeklyChange < 0 ? (
+        {client.weeklyChange === null ? (
+          <span className="inline-flex items-center gap-1 text-slate-400 bg-slate-50 px-2 py-1 rounded-md text-xs font-medium">
+             Veri yok
+          </span>
+        ) : client.weeklyChange < 0 ? (
           <span className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md text-xs font-bold">
             <TrendingDown className="w-3 h-3" />
             {Math.abs(client.weeklyChange)} kg
@@ -110,7 +114,12 @@ const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
             <button className="p-2 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-full transition-colors">
               <MessageSquare className="w-4 h-4" />
             </button>
-            <button className="p-2 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-full transition-colors">
+            <button
+              type="button"
+              onClick={() => navigate(`/clients/${client.id}`)}
+              aria-label={`${client.name} danışan detayını görüntüle`}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
               <Eye className="w-4 h-4" />
             </button>
             <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
@@ -162,7 +171,7 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
            <p className="text-[10px] uppercase tracking-wide text-slate-400 font-bold mb-1">Diyet Süresi</p>
            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
              <Calendar className="w-3 h-3 text-slate-400" />
-             {client.duration}
+             {client.duration ?? 'Veri yok'}
            </div>
         </div>
         <div className="bg-slate-50 p-3 rounded-lg">
@@ -171,7 +180,11 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
         </div>
         <div className="bg-slate-50 p-3 rounded-lg">
            <p className="text-[10px] uppercase tracking-wide text-slate-400 font-bold mb-1">Haftalık Değişim</p>
-           {client.weeklyChange < 0 ? (
+           {client.weeklyChange === null ? (
+            <span className="text-xs font-medium text-slate-400">
+                Veri yok
+            </span>
+            ) : client.weeklyChange < 0 ? (
             <span className="flex items-center gap-1 text-emerald-600 text-xs font-bold">
                 <TrendingDown className="w-3 h-3" />
                 {Math.abs(client.weeklyChange)} kg
@@ -211,7 +224,12 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
             <button className="p-2 bg-slate-50 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-lg transition-colors">
               <MessageSquare className="w-4 h-4" />
             </button>
-            <button className="p-2 bg-slate-50 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-lg transition-colors">
+            <button
+              type="button"
+              onClick={() => navigate(`/clients/${client.id}`)}
+              aria-label={`${client.name} danışan detayını görüntüle`}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center bg-slate-50 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
               <Eye className="w-4 h-4" />
             </button>
          </div>
@@ -463,7 +481,7 @@ const ClientsPage = () => {
   const pendingClients = filteredClients.filter(c => c.status === 'Onay Bekliyor');
 
   return (
-    <div className="w-full max-w-[calc(100vw-2rem)] md:max-w-7xl p-4 md:p-8 mx-auto min-h-screen md:h-screen flex flex-col">
+    <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-hidden p-4 md:h-screen md:max-w-7xl md:p-8 mx-auto flex flex-col">
        {/* Responsive Header */}
        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-4 flex-shrink-0">
         <div className="w-full md:w-auto flex justify-between items-center">

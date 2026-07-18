@@ -1,7 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mail, MapPin, Phone, Calendar, Weight, Activity, TrendingUp, TrendingDown, Droplets, Utensils, FileText, HeartPulse, Pill, Moon, Coffee, Stethoscope, Clock, Trash2 } from 'lucide-react';
-import { fetchClientDetails, removeClient, fetchClientMeasurements, fetchClientDailyLogs, Measurement, DailyLog, PendingClientSummary, ActiveClientDetails } from '../features/clients/services/clientService';
+import { ArrowLeft, Mail, MapPin, Phone, Calendar, Weight, Activity, TrendingUp, TrendingDown, Droplets, Utensils, HeartPulse, Pill, Moon, Coffee, Stethoscope, Clock, Trash2 } from 'lucide-react';
+import {
+  fetchClientDetails,
+  removeClient,
+  fetchClientMeasurements,
+  fetchClientDailyLogs,
+  saveClientMeasurement,
+  Measurement,
+  DailyLog,
+  PendingClientSummary,
+  ActiveClientDetails,
+  SaveClientMeasurementInput,
+} from '../features/clients/services/clientService';
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
 
@@ -26,17 +37,112 @@ type ClientDetailsViewState =
 const CLIENT_DETAIL_LOAD_ERROR =
   'Danışan bilgileri şu anda yüklenemiyor. Lütfen tekrar deneyin.';
 
+const MEASUREMENT_LOAD_ERROR =
+  'Ölçüm kayıtları şu anda yüklenemiyor. Lütfen tekrar deneyin.';
+
+type MeasurementSectionStatus = 'idle' | 'loading' | 'ready' | 'error';
+type MeasurementNumericField = Exclude<
+  keyof SaveClientMeasurementInput,
+  'clientId' | 'measuredAt' | 'notes'
+>;
+type MeasurementFormField = MeasurementNumericField | 'measuredAt' | 'notes';
+type MeasurementFormValues = Record<MeasurementNumericField, string> & {
+  measuredAt: string;
+  notes: string;
+};
+type MeasurementFormErrors = Partial<Record<MeasurementFormField | 'form', string>>;
+
+const measurementFieldDefinitions: ReadonlyArray<{
+  key: MeasurementNumericField;
+  label: string;
+  min: number;
+  max: number;
+  step: string;
+}> = [
+  { key: 'weight', label: 'Kilo (kg)', min: 20, max: 500, step: 'any' },
+  { key: 'waist', label: 'Bel (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'hip', label: 'Kalça (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'arm', label: 'Kol (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'chest', label: 'Göğüs (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'thigh', label: 'Uyluk (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'calf', label: 'Baldır (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'neck', label: 'Boyun (cm)', min: 0, max: 500, step: 'any' },
+];
+
+const todayIsoDate = (): string => {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
+};
+
+const createEmptyMeasurementForm = (measuredAt = todayIsoDate()): MeasurementFormValues => ({
+  measuredAt,
+  weight: '',
+  waist: '',
+  hip: '',
+  arm: '',
+  chest: '',
+  thigh: '',
+  calf: '',
+  neck: '',
+  notes: '',
+});
+
+const measurementToForm = (measurement: Measurement): MeasurementFormValues => ({
+  measuredAt: measurement.measured_at,
+  weight: measurement.weight?.toString() ?? '',
+  waist: measurement.waist?.toString() ?? '',
+  hip: measurement.hip?.toString() ?? '',
+  arm: measurement.arm?.toString() ?? '',
+  chest: measurement.chest?.toString() ?? '',
+  thigh: measurement.thigh?.toString() ?? '',
+  calf: measurement.calf?.toString() ?? '',
+  neck: measurement.neck?.toString() ?? '',
+  notes: measurement.notes ?? '',
+});
+
 const ClientDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const routeClientId = isValidUuid(id) ? id : null;
   const [viewState, setViewState] = useState<ClientDetailsViewState>({ status: 'loading' });
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [measurementStatus, setMeasurementStatus] = useState<MeasurementSectionStatus>('idle');
+  const [measurementUserMessage, setMeasurementUserMessage] = useState<string | null>(null);
+  const [measurementForm, setMeasurementForm] = useState<MeasurementFormValues>(createEmptyMeasurementForm);
+  const [measurementFormErrors, setMeasurementFormErrors] = useState<MeasurementFormErrors>({});
+  const [measurementSaveFeedback, setMeasurementSaveFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const [isSavingMeasurement, setIsSavingMeasurement] = useState(false);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [isRemoving, setIsRemoving] = useState(false);
   const [profileImageError, setProfileImageError] = useState(false);
   const requestSequence = useRef(0);
+  const measurementRequestSequence = useRef(0);
   const isMounted = useRef(true);
+
+  const loadMeasurements = useCallback(async (): Promise<boolean> => {
+    if (!routeClientId) return false;
+
+    const requestId = ++measurementRequestSequence.current;
+    setMeasurementStatus('loading');
+    setMeasurementUserMessage(null);
+
+    try {
+      const data = await fetchClientMeasurements(routeClientId);
+      if (!isMounted.current || requestId !== measurementRequestSequence.current) return false;
+      setMeasurements(data);
+      setMeasurementStatus('ready');
+      return true;
+    } catch {
+      if (!isMounted.current || requestId !== measurementRequestSequence.current) return false;
+      setMeasurementStatus('error');
+      setMeasurementUserMessage(MEASUREMENT_LOAD_ERROR);
+      return false;
+    }
+  }, [routeClientId]);
 
   const loadData = useCallback(async (showLoading: boolean) => {
     const requestId = ++requestSequence.current;
@@ -44,12 +150,19 @@ const ClientDetails = () => {
     if (showLoading) {
       setViewState({ status: 'loading' });
       setMeasurements([]);
+      setMeasurementStatus('idle');
+      setMeasurementUserMessage(null);
+      setMeasurementForm(createEmptyMeasurementForm());
+      setMeasurementFormErrors({});
+      setMeasurementSaveFeedback(null);
       setDailyLogs([]);
     }
 
     if (!routeClientId) {
       if (requestId === requestSequence.current) {
+        measurementRequestSequence.current += 1;
         setMeasurements([]);
+        setMeasurementStatus('idle');
         setDailyLogs([]);
         setViewState({ status: 'invalid_id' });
       }
@@ -62,45 +175,56 @@ const ClientDetails = () => {
 
       switch (accessResult.status) {
         case 'invalid_id':
+          measurementRequestSequence.current += 1;
           setMeasurements([]);
+          setMeasurementStatus('idle');
           setDailyLogs([]);
           setViewState({ status: 'invalid_id' });
           return;
         case 'unavailable':
+          measurementRequestSequence.current += 1;
           setMeasurements([]);
+          setMeasurementStatus('idle');
           setDailyLogs([]);
           setViewState({ status: 'unavailable' });
           return;
         case 'error':
+          measurementRequestSequence.current += 1;
           setMeasurements([]);
+          setMeasurementStatus('idle');
           setDailyLogs([]);
           setViewState({ status: 'error', userMessage: accessResult.userMessage });
           return;
         case 'pending':
+          measurementRequestSequence.current += 1;
           setMeasurements([]);
+          setMeasurementStatus('idle');
           setDailyLogs([]);
           setViewState({ status: 'pending', client: accessResult.client });
           return;
         case 'active': {
-          const [measurementsData, logsData] = await Promise.all([
-            fetchClientMeasurements(routeClientId),
-            fetchClientDailyLogs(routeClientId),
-          ]);
-
-          if (requestId !== requestSequence.current) return;
-          setMeasurements(measurementsData);
-          setDailyLogs(logsData);
           setViewState({ status: 'active', client: accessResult.client });
+          void loadMeasurements();
+          try {
+            const logsData = await fetchClientDailyLogs(routeClientId);
+            if (requestId !== requestSequence.current) return;
+            setDailyLogs(logsData);
+          } catch {
+            if (requestId !== requestSequence.current) return;
+            setDailyLogs([]);
+          }
           return;
         }
       }
     } catch {
       if (requestId !== requestSequence.current) return;
+      measurementRequestSequence.current += 1;
       setMeasurements([]);
+      setMeasurementStatus('idle');
       setDailyLogs([]);
       setViewState({ status: 'error', userMessage: CLIENT_DETAIL_LOAD_ERROR });
     }
-  }, [routeClientId]);
+  }, [loadMeasurements, routeClientId]);
 
   const displayedClient =
     viewState.status === 'active' || viewState.status === 'pending'
@@ -118,6 +242,7 @@ const ClientDetails = () => {
     return () => {
       isMounted.current = false;
       requestSequence.current += 1;
+      measurementRequestSequence.current += 1;
     };
   }, [loadData]);
 
@@ -295,6 +420,115 @@ const ClientDetails = () => {
   }
 
   const client = viewState.client;
+  const isUpdatingMeasurement = measurements.some(
+    (measurement) => measurement.measured_at === measurementForm.measuredAt,
+  );
+
+  const handleMeasurementDateChange = (measuredAt: string) => {
+    const existingMeasurement = measurements.find(
+      (measurement) => measurement.measured_at === measuredAt,
+    );
+    setMeasurementForm(
+      existingMeasurement
+        ? measurementToForm(existingMeasurement)
+        : createEmptyMeasurementForm(measuredAt),
+    );
+    setMeasurementFormErrors({});
+    setMeasurementSaveFeedback(null);
+  };
+
+  const handleEditMeasurement = (measurement: Measurement) => {
+    setMeasurementForm(measurementToForm(measurement));
+    setMeasurementFormErrors({});
+    setMeasurementSaveFeedback(null);
+  };
+
+  const handleMeasurementSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isSavingMeasurement) return;
+
+    const errors: MeasurementFormErrors = {};
+    const numericValues = Object.fromEntries(
+      measurementFieldDefinitions.map(({ key }) => [key, null]),
+    ) as Record<MeasurementNumericField, number | null>;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(measurementForm.measuredAt)) {
+      errors.measuredAt = 'Geçerli bir tarih seçin.';
+    } else if (measurementForm.measuredAt > todayIsoDate()) {
+      errors.measuredAt = 'Gelecek tarihli ölçüm kaydedilemez.';
+    }
+
+    for (const definition of measurementFieldDefinitions) {
+      const rawValue = measurementForm[definition.key].trim();
+      if (!rawValue) continue;
+
+      const parsedValue = Number(rawValue);
+      if (!Number.isFinite(parsedValue)) {
+        errors[definition.key] = 'Geçerli bir sayı girin.';
+        continue;
+      }
+      const belowMinimum = definition.key === 'weight'
+        ? parsedValue < definition.min
+        : parsedValue <= definition.min;
+      if (belowMinimum || parsedValue > definition.max) {
+        errors[definition.key] = definition.key === 'weight'
+          ? 'Kilo 20–500 kg arasında olmalıdır.'
+          : 'Değer 0’dan büyük ve en fazla 500 cm olmalıdır.';
+        continue;
+      }
+      numericValues[definition.key] = parsedValue;
+    }
+
+    if (!Object.values(numericValues).some((value) => value !== null)) {
+      errors.form = 'En az bir sayısal ölçüm girin.';
+    }
+    if (measurementForm.notes.trim().length > 1000) {
+      errors.notes = 'Not en fazla 1000 karakter olabilir.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setMeasurementFormErrors(errors);
+      setMeasurementSaveFeedback(null);
+      return;
+    }
+
+    setIsSavingMeasurement(true);
+    setMeasurementFormErrors({});
+    setMeasurementSaveFeedback(null);
+
+    try {
+      await saveClientMeasurement({
+        clientId: client.id,
+        measuredAt: measurementForm.measuredAt,
+        ...numericValues,
+        notes: measurementForm.notes.trim() || null,
+      });
+      if (!isMounted.current) return;
+
+      const refreshed = await loadMeasurements();
+      if (!isMounted.current) return;
+      setMeasurementSaveFeedback(refreshed
+        ? {
+            type: 'success',
+            message: isUpdatingMeasurement
+              ? 'Ölçüm kaydı güncellendi.'
+              : 'Ölçüm kaydı eklendi.',
+          }
+        : {
+            type: 'error',
+            message: 'Ölçüm kaydedildi ancak liste yenilenemedi. Lütfen tekrar deneyin.',
+          });
+    } catch {
+      if (!isMounted.current) return;
+      setMeasurementSaveFeedback({
+        type: 'error',
+        message: 'Ölçüm kaydedilemedi. Bilgileri kontrol edip tekrar deneyin.',
+      });
+    } finally {
+      if (isMounted.current) setIsSavingMeasurement(false);
+    }
+  };
+
   const smokingStatusLabel = client.smokingStatus === null
     ? 'Yok'
     : client.smokingStatus
@@ -312,29 +546,34 @@ const ClientDetails = () => {
   };
 
   // Calculate Data
-  const currentWeightNum = parseFloat(client.currentWeight) || 0;
-  const startWeight = client.startWeight ? parseFloat(client.startWeight) : currentWeightNum;
+  const parsedCurrentWeight = Number.parseFloat(client.currentWeight);
+  const currentWeightNum = Number.isFinite(parsedCurrentWeight) ? parsedCurrentWeight : null;
+  const parsedStartWeight = client.startWeight ? Number.parseFloat(client.startWeight) : Number.NaN;
+  const startWeight = Number.isFinite(parsedStartWeight) ? parsedStartWeight : null;
   const heightM = client.heightCm ? client.heightCm / 100 : 0;
-  const bmi = heightM > 0 ? (currentWeightNum / (heightM * heightM)).toFixed(1) : '-';
+  const bmi = heightM > 0 && currentWeightNum !== null
+    ? (currentWeightNum / (heightM * heightM)).toFixed(1)
+    : '-';
 
   // Format Weight History
   const measurementsWithWeight = measurements.filter(
     (measurement): measurement is Measurement & { weight: number } => measurement.weight !== null
   );
-  const weightHistory = measurementsWithWeight.length > 0
-    ? measurementsWithWeight.slice(-8).map(m => {
-        const d = new Date(m.measured_at || m.created_at);
-        return {
-          date: `${d.getDate()} ${d.toLocaleString('tr-TR', { month: 'short' })}`,
-          weight: m.weight
-        };
-      })
-    : [{ date: 'Veri Yok', weight: currentWeightNum }];
-  
-  const currentW = weightHistory[weightHistory.length - 1].weight;
-  const previousWeight = weightHistory.length > 1 ? weightHistory[weightHistory.length - 2].weight : currentW;
-  const weeklyChange = (currentW - previousWeight).toFixed(1);
-  const isWeightLoss = parseFloat(weeklyChange) <= 0;
+  const weightHistory = measurementsWithWeight.slice(-8).map((measurement) => {
+    const date = new Date(`${measurement.measured_at}T00:00:00`);
+    return {
+      id: measurement.id,
+      date: `${date.getDate()} ${date.toLocaleString('tr-TR', { month: 'short' })}`,
+      weight: measurement.weight,
+    };
+  });
+  const weightValues = weightHistory.map(({ weight }) => weight);
+  const chartMinWeight = weightValues.length > 0 ? Math.min(...weightValues) : null;
+  const chartMaxWeight = weightValues.length > 0 ? Math.max(...weightValues) : null;
+  const lastWeightChange = weightHistory.length > 1
+    ? weightHistory[weightHistory.length - 1].weight - weightHistory[weightHistory.length - 2].weight
+    : null;
+  const isWeightLoss = lastWeightChange !== null && lastWeightChange <= 0;
 
   // Format Water Data
   const recentLogs = dailyLogs.slice(-7);
@@ -464,7 +703,7 @@ const ClientDetails = () => {
                     </div>
                     <div className="flex justify-between items-end border-b border-slate-50 pb-4">
                         <div className="text-sm text-slate-500">Başlangıç Kilosu</div>
-                        <div className="text-2xl font-bold text-slate-400">{startWeight} kg</div>
+                        <div className="text-2xl font-bold text-slate-400">{startWeight !== null ? `${startWeight} kg` : '-'}</div>
                     </div>
                     <div className="flex justify-between items-end border-b border-slate-50 pb-4">
                         <div className="text-sm text-slate-500">Hedef Kilo</div>
@@ -588,55 +827,253 @@ const ClientDetails = () => {
             <div className="bg-gradient-to-br from-primary to-primary-dark p-6 rounded-2xl text-white shadow-lg shadow-primary/20">
                 <div className="flex justify-between items-start mb-8">
                    <div>
-                       <p className="text-emerald-100 font-medium mb-1">Genel Başarı</p>
-                       <h3 className="text-3xl font-bold">Harika İş!</h3>
+                       <p className="text-emerald-100 font-medium mb-1">Program Uyumu</p>
+                       <h3 className="text-3xl font-bold">%{client.compliance}</h3>
                    </div>
                    <div className="p-2 bg-white/20 rounded-lg">
                        <TrendingUp className="w-6 h-6 text-white" />
                    </div>
                 </div>
                 <p className="text-emerald-100 text-sm leading-relaxed mb-6">
-                    {client.name.split(' ')[0]} programına %{client.compliance || 0} oranında uyum sağlıyor.
+                    {client.name.split(' ')[0]} için kayıtlı program uyum oranı.
                 </p>
                 <div className="w-full bg-black/20 rounded-full h-2">
-                    <div className="bg-white h-full rounded-full" style={{ width: `${client.compliance || 0}%` }}></div>
+                    <div className="bg-white h-full rounded-full" style={{ width: `${client.compliance}%` }}></div>
                 </div>
             </div>
         </div>
 
         {/* Middle Column - Activity/Charts */}
         <div className="min-w-0 md:col-span-2 space-y-6">
-            {/* Weekly Weight Chart */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2">Kilo Değişimi Geçmişi</h3>
-                    {weightHistory.length > 1 && (
-                        <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${isWeightLoss ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                            {isWeightLoss ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
-                            {Math.abs(parseFloat(weeklyChange))} kg
-                            <span className="text-slate-400 font-normal ml-1">son değişim</span>
+            <section className="min-w-0 space-y-6" aria-labelledby="measurement-section-title">
+                <div className="min-w-0 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <div className="mb-6">
+                        <h2 id="measurement-section-title" className="font-bold text-slate-800 flex items-center gap-2">
+                            <Weight className="w-5 h-5 text-primary" /> Ölçüm Ekle veya Güncelle
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-500">
+                            Aynı tarih için kayıt gönderildiğinde mevcut ölçüm güvenli biçimde güncellenir.
+                        </p>
+                    </div>
+
+                    <form className="min-w-0 space-y-5" onSubmit={handleMeasurementSubmit} noValidate>
+                        <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <label className="min-w-0 text-sm font-medium text-slate-700">
+                                Tarih
+                                <input
+                                  type="date"
+                                  value={measurementForm.measuredAt}
+                                  max={todayIsoDate()}
+                                  onChange={(event) => handleMeasurementDateChange(event.target.value)}
+                                  aria-invalid={Boolean(measurementFormErrors.measuredAt)}
+                                  aria-describedby={measurementFormErrors.measuredAt ? 'measurement-date-error' : undefined}
+                                  className="mt-1 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-slate-800 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                />
+                                {measurementFormErrors.measuredAt && (
+                                  <span id="measurement-date-error" className="mt-1 block text-xs text-red-600">
+                                    {measurementFormErrors.measuredAt}
+                                  </span>
+                                )}
+                            </label>
+
+                            {measurementFieldDefinitions.map((definition) => (
+                              <label key={definition.key} className="min-w-0 text-sm font-medium text-slate-700">
+                                  {definition.label}
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={definition.min}
+                                    max={definition.max}
+                                    step={definition.step}
+                                    value={measurementForm[definition.key]}
+                                    onChange={(event) => {
+                                      setMeasurementForm((current) => ({
+                                        ...current,
+                                        [definition.key]: event.target.value,
+                                      }));
+                                      setMeasurementFormErrors((current) => ({
+                                        ...current,
+                                        [definition.key]: undefined,
+                                        form: undefined,
+                                      }));
+                                      setMeasurementSaveFeedback(null);
+                                    }}
+                                    aria-invalid={Boolean(measurementFormErrors[definition.key])}
+                                    aria-describedby={measurementFormErrors[definition.key] ? `measurement-${definition.key}-error` : undefined}
+                                    className="mt-1 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-slate-800 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                  />
+                                  {measurementFormErrors[definition.key] && (
+                                    <span id={`measurement-${definition.key}-error`} className="mt-1 block text-xs text-red-600">
+                                      {measurementFormErrors[definition.key]}
+                                    </span>
+                                  )}
+                              </label>
+                            ))}
                         </div>
-                    )}
-                </div>
-                
-                <div className="h-64 flex items-end justify-between gap-3 px-2">
-                    {weightHistory.map((data, i) => (
-                        <div key={i} className="flex flex-col items-center gap-2 group flex-1">
-                            <span className="text-xs text-slate-800 font-bold mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -mt-6 bg-white shadow-sm px-2 py-0.5 rounded-md border border-slate-100 z-10">
-                                {data.weight} kg
+
+                        <label className="block min-w-0 text-sm font-medium text-slate-700">
+                            Not
+                            <textarea
+                              value={measurementForm.notes}
+                              maxLength={1000}
+                              onChange={(event) => {
+                                setMeasurementForm((current) => ({ ...current, notes: event.target.value }));
+                                setMeasurementFormErrors((current) => ({ ...current, notes: undefined }));
+                                setMeasurementSaveFeedback(null);
+                              }}
+                              aria-invalid={Boolean(measurementFormErrors.notes)}
+                              aria-describedby="measurement-notes-help"
+                              className="mt-1 min-h-28 w-full min-w-0 resize-y rounded-xl border border-slate-200 px-3 py-2 text-slate-800 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                            <span id="measurement-notes-help" className={`mt-1 block text-xs ${measurementFormErrors.notes ? 'text-red-600' : 'text-slate-400'}`}>
+                              {measurementFormErrors.notes || `${measurementForm.notes.length}/1000 karakter`}
                             </span>
-                            <div className="relative w-full flex justify-center items-end h-48 bg-slate-50 rounded-t-lg overflow-hidden">
-                                <div 
-                                    className="w-full mx-1 bg-emerald-200/60 rounded-t-md group-hover:bg-primary transition-colors duration-300 relative" 
-                                    style={{ height: `${Math.max(10, (data.weight - (currentW - 5)) * 12)}px` }}
-                                >
-                                </div>
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-medium">{data.date}</span>
+                        </label>
+
+                        {measurementFormErrors.form && (
+                          <p className="text-sm text-red-600" role="alert">{measurementFormErrors.form}</p>
+                        )}
+                        {measurementSaveFeedback && (
+                          <p
+                            className={`text-sm ${measurementSaveFeedback.type === 'success' ? 'text-emerald-700' : 'text-red-600'}`}
+                            role={measurementSaveFeedback.type === 'error' ? 'alert' : 'status'}
+                          >
+                            {measurementSaveFeedback.message}
+                          </p>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                              type="submit"
+                              disabled={isSavingMeasurement}
+                              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-primary px-5 py-2 font-medium text-white transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                            >
+                              {isSavingMeasurement
+                                ? 'Kaydediliyor...'
+                                : isUpdatingMeasurement
+                                  ? 'Ölçümü Güncelle'
+                                  : 'Ölçümü Kaydet'}
+                            </button>
+                            {isUpdatingMeasurement && (
+                              <span className="text-sm text-slate-500">Bu tarihteki mevcut kayıt güncellenecek.</span>
+                            )}
                         </div>
-                    ))}
+                    </form>
                 </div>
-            </div>
+
+                {(measurementStatus === 'idle' || measurementStatus === 'loading') && (
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100" role="status">
+                      <div className="flex items-center gap-3 text-sm text-slate-500">
+                          <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden="true" />
+                          Ölçüm kayıtları yükleniyor...
+                      </div>
+                  </div>
+                )}
+
+                {measurementStatus === 'error' && (
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-red-100">
+                      <p className="text-sm text-red-700" role="alert">{measurementUserMessage}</p>
+                      <button
+                        type="button"
+                        onClick={() => void loadMeasurements()}
+                        className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-red-200 px-4 py-2 font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+                      >
+                        Tekrar Dene
+                      </button>
+                  </div>
+                )}
+
+                {measurementStatus === 'ready' && measurements.length === 0 && (
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100" role="status">
+                      <p className="text-sm text-slate-500">Henüz ölçüm kaydı yok</p>
+                  </div>
+                )}
+
+                {measurementStatus === 'ready' && measurements.length > 0 && (
+                  <>
+                    <div className="min-w-0 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+                            <h3 className="font-bold text-slate-800">Kilo Değişimi Geçmişi</h3>
+                            {lastWeightChange !== null && (
+                              <div className={`flex w-fit items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${isWeightLoss ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                  {isWeightLoss ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                                  {Math.abs(lastWeightChange).toFixed(1)} kg
+                                  <span className="ml-1 font-normal text-slate-400">son değişim</span>
+                              </div>
+                            )}
+                        </div>
+
+                        {weightHistory.length === 0 ? (
+                          <p className="py-8 text-sm text-slate-500" role="status">
+                            Kilo içeren ölçüm kaydı yok.
+                          </p>
+                        ) : (
+                          <div className="grid min-w-0 grid-cols-4 gap-2 sm:grid-cols-8" aria-label="Son kilo ölçümleri">
+                              {weightHistory.map((data) => {
+                                const range = chartMinWeight !== null && chartMaxWeight !== null
+                                  ? chartMaxWeight - chartMinWeight
+                                  : 0;
+                                const height = range === 0 || chartMinWeight === null
+                                  ? 60
+                                  : 20 + ((data.weight - chartMinWeight) / range) * 80;
+                                return (
+                                  <div key={data.id} className="group flex min-w-0 flex-col items-center gap-2">
+                                      <span className="text-xs font-bold text-slate-700">{data.weight} kg</span>
+                                      <div className="flex h-40 w-full min-w-0 items-end overflow-hidden rounded-t-lg bg-slate-50">
+                                          <div
+                                            className="mx-1 w-full rounded-t-md bg-emerald-200/70 transition-colors group-hover:bg-primary"
+                                            style={{ height: `${height}%` }}
+                                          />
+                                      </div>
+                                      <span className="max-w-full break-words text-center text-[10px] font-medium text-slate-400">{data.date}</span>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
+                    </div>
+
+                    <div className="min-w-0 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+                        <h3 className="mb-4 font-bold text-slate-800">Ölçüm Geçmişi</h3>
+                        <div className="space-y-3">
+                            {[...measurements].reverse().map((measurement) => {
+                              const populatedValues = measurementFieldDefinitions.filter(
+                                ({ key }) => measurement[key] !== null,
+                              );
+                              return (
+                                <article key={measurement.id} className="min-w-0 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div className="min-w-0">
+                                            <h4 className="font-semibold text-slate-800">
+                                                {new Date(`${measurement.measured_at}T00:00:00`).toLocaleDateString('tr-TR')}
+                                            </h4>
+                                            <div className="mt-2 flex min-w-0 flex-wrap gap-2">
+                                                {populatedValues.map(({ key, label }) => (
+                                                  <span key={key} className="max-w-full break-words rounded-lg bg-white px-2 py-1 text-xs text-slate-600 [overflow-wrap:anywhere]">
+                                                      {label}: {measurement[key]}
+                                                  </span>
+                                                ))}
+                                            </div>
+                                            {measurement.notes && (
+                                              <p className="mt-3 break-words text-sm text-slate-600 [overflow-wrap:anywhere]">{measurement.notes}</p>
+                                            )}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleEditMeasurement(measurement)}
+                                          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                                        >
+                                            Düzenle
+                                        </button>
+                                    </div>
+                                </article>
+                              );
+                            })}
+                        </div>
+                    </div>
+                  </>
+                )}
+            </section>
 
             {/* Daily Charts Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -699,26 +1136,6 @@ const ClientDetails = () => {
                 </div>
             </div>
 
-            {/* Dietitian Notes */}
-            {measurements.filter(m => m.notes).length > 0 && (
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                            <FileText className="w-5 h-5 text-slate-400" /> Son Ölçüm Notları
-                        </h3>
-                    </div>
-                    <div className="space-y-3">
-                        {measurements.filter(m => m.notes).slice(-3).map((m, idx) => (
-                            <div key={idx} className="bg-yellow-50/50 border border-yellow-100 p-4 rounded-xl text-slate-600 text-sm leading-relaxed">
-                                <div className="font-medium text-slate-400 text-xs mb-1">
-                                    {new Date(m.measured_at || m.created_at).toLocaleDateString('tr-TR')}
-                                </div>
-                                {m.notes}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
 
       </div>
