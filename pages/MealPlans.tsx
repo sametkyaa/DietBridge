@@ -8,16 +8,11 @@ import {
   Save, 
   Trash2, 
   Copy, 
-  Wand2, 
   Info, 
   Flame, 
-  Clock, 
   AlertCircle,
-  ThumbsUp,
   X,
   Edit2,
-  MoreHorizontal,
-  Type,
   Check,
   Calendar as CalendarIcon,
   ArrowUp,
@@ -28,9 +23,13 @@ import {
   ChevronRight,
   RotateCcw,
 } from 'lucide-react';
-import { RECIPES, USER_AVATAR } from '../constants';
-import { Client, Recipe } from '../shared/types';
-import { fetchActiveDietitianClientList } from '../features/clients/services/clientService';
+import { USER_AVATAR } from '../constants';
+import { Client } from '../shared/types';
+import {
+  fetchActiveDietitianClientList,
+  fetchClientDetails,
+  type ActiveClientDetails,
+} from '../features/clients/services/clientService';
 import {
   mapMealTypeToDb,
   fetchWeeklyMealPlan,
@@ -61,29 +60,6 @@ import {
   shiftMealPlanWeek,
 } from '../features/meal-plans/services/mealPlanReadModel';
 
-// --- Extended Mock Data for Client Specifics ---
-const CLIENT_DETAILS: Record<string, { notes: string; likes: string[]; dislikes: string[]; allergies: string[] }> = {
-  '1': {
-    notes: 'Yüksek sodyumlu gıdalardan kaçınmalı. Sıcak kahvaltıları tercih ediyor.',
-    likes: ['Yumurta', 'Avokado', 'Izgara Somon'],
-    dislikes: ['Brokoli', 'Mantar'],
-    allergies: ['Laktoz İntoleransı']
-  },
-  '2': {
-    notes: 'Protein ağırlıklı beslenmek istiyor. Antrenman günleri karbonhidrat artırılabilir.',
-    likes: ['Tavuk', 'Pirinç', 'Kırmızı Et'],
-    dislikes: ['Kabak', 'Patlıcan'],
-    allergies: []
-  },
-  // Default fallback for others
-  'default': {
-    notes: 'Standart beslenme düzeni.',
-    likes: [],
-    dislikes: [],
-    allergies: []
-  }
-};
-
 const DAYS = MEAL_PLAN_WEEKDAY_LABELS;
 const MEAL_OPTIONS = ['Kahvaltı', 'Öğle', 'Akşam', 'Ara Öğün', 'Antrenman Öncesi', 'Antrenman Sonrası', 'Gece Ara Öğünü'];
 
@@ -109,14 +85,22 @@ interface PlannedMealContent {
   imagePreview?: string | null;
   pendingPhoto?: File | null;
   calories: number;
-  macros: Recipe['macros'];
-  source?: 'manual' | 'recipe';
+  macros: MealMacros;
+  source?: 'manual';
   recipeId?: string | null;
   isEaten?: boolean;
 }
 
+interface MealMacros {
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+  [key: string]: unknown;
+}
+
 // Plan State: { Day: { MealID: Content } }
 type PlanState = Record<string, Record<string, PlannedMealContent | string | null>>;
+type PlanNotesState = Record<string, string | null>;
 
 const DEFAULT_MEAL_ROWS: MealRow[] = [
   { id: 'm1', name: 'Kahvaltı', time: '08:00' },
@@ -143,7 +127,7 @@ const mapCanonicalPlansToEditor = (
   plans: MealPlanReadDay[],
   weekStart: string,
   photoPreviews: Map<string, string>,
-): { meals: MealRow[]; weeklyPlan: PlanState; isEmpty: boolean } => {
+): { meals: MealRow[]; weeklyPlan: PlanState; planNotes: PlanNotesState; isEmpty: boolean } => {
   const plansByDate = mapWeeklyPlansByDate(plans, weekStart);
   const orderedPlans = getMealPlanWeekDates(weekStart)
     .map((date) => plansByDate.get(date))
@@ -162,6 +146,7 @@ const mapCanonicalPlansToEditor = (
     : orderedRows.map((details, index) => ({ id: `meal-loaded-${index}`, name: details.rowName, time: details.time }));
   const rowIdByKey = new Map(orderedRows.map((details, index) => [details.key, meals[index].id]));
   const weeklyPlan: PlanState = {};
+  const planNotes: PlanNotesState = {};
   const weekDates = getMealPlanWeekDates(weekStart);
 
   orderedPlans.forEach((plan) => {
@@ -169,6 +154,7 @@ const mapCanonicalPlansToEditor = (
     if (dayIndex < 0) return;
     const dayName = DAYS[dayIndex];
     weeklyPlan[dayName] = {};
+    planNotes[dayName] = plan.notes ?? null;
     plan.meals.forEach((meal) => {
       const rowId = rowIdByKey.get(getMealRowDetails(meal).key);
       if (!rowId) return;
@@ -179,15 +165,64 @@ const mapCanonicalPlansToEditor = (
         image: meal.photo_url,
         imagePreview: isCanonicalMealPhotoPath(meal.photo_url) ? photoPreviews.get(meal.photo_url) ?? null : null,
         calories: meal.calories ?? 0,
-        macros: meal.macros as Recipe['macros'],
-        source: meal.source,
-        recipeId: meal.recipe_id,
+        macros: meal.macros as MealMacros,
+        source: 'manual',
+        recipeId: null,
         isEaten: meal.is_eaten,
       };
     });
   });
 
-  return { meals, weeklyPlan, isEmpty: orderedPlans.every((plan) => plan.meals.length === 0) };
+  return { meals, weeklyPlan, planNotes, isEmpty: orderedPlans.every((plan) => plan.meals.length === 0) };
+};
+
+const createPreviousWeekCopy = (
+  plans: MealPlanReadDay[],
+  previousWeekStart: string,
+): { meals: MealRow[]; weeklyPlan: PlanState; planNotes: PlanNotesState; isEmpty: boolean } => {
+  const plansByDate = mapWeeklyPlansByDate(plans, previousWeekStart);
+  const orderedPlans = getMealPlanWeekDates(previousWeekStart)
+    .map((date) => plansByDate.get(date))
+    .filter((plan): plan is MealPlanReadDay => Boolean(plan));
+  const rowDetails = new Map<string, ReturnType<typeof getMealRowDetails>>();
+
+  orderedPlans.forEach((plan) => plan.meals.forEach((meal) => {
+    const details = getMealRowDetails(meal);
+    if (!rowDetails.has(details.key)) rowDetails.set(details.key, details);
+  }));
+
+  const orderedRows = [...rowDetails.values()]
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.time.localeCompare(right.time) || left.key.localeCompare(right.key));
+  const meals = orderedRows.map((details, index) => ({ id: `copy-row-${index}`, name: details.rowName, time: details.time }));
+  const rowIdByKey = new Map(orderedRows.map((details, index) => [details.key, meals[index].id]));
+  const weeklyPlan: PlanState = {};
+  const planNotes: PlanNotesState = {};
+  const weekDates = getMealPlanWeekDates(previousWeekStart);
+
+  orderedPlans.forEach((plan) => {
+    const dayIndex = weekDates.indexOf(plan.plan_date);
+    if (dayIndex < 0) return;
+    const dayName = DAYS[dayIndex];
+    weeklyPlan[dayName] = {};
+    planNotes[dayName] = plan.notes ?? null;
+    plan.meals.forEach((meal) => {
+      const rowId = rowIdByKey.get(getMealRowDetails(meal).key);
+      if (!rowId) return;
+      weeklyPlan[dayName][rowId] = {
+        id: `copy-${dayName}-${rowId}`,
+        name: meal.title,
+        image: null,
+        imagePreview: null,
+        calories: meal.calories ?? 0,
+        macros: meal.macros as MealMacros,
+        source: 'manual',
+        recipeId: null,
+        isEaten: false,
+      };
+    });
+  });
+
+  return { meals, weeklyPlan, planNotes, isEmpty: orderedPlans.every((plan) => plan.meals.length === 0) };
 };
 
 const MealPlans = () => {
@@ -208,6 +243,24 @@ const MealPlans = () => {
   const [planError, setPlanError] = useState<string | null>(null);
   const [isPlanEmpty, setIsPlanEmpty] = useState(false);
   const planRequestRef = useRef(0);
+  const [planNotes, setPlanNotes] = useState<PlanNotesState>({});
+  const [clientDetails, setClientDetails] = useState<ActiveClientDetails | null>(null);
+  const [isLoadingClientDetails, setIsLoadingClientDetails] = useState(false);
+  const [clientDetailsError, setClientDetailsError] = useState<string | null>(null);
+  const [isClientDetailsEmpty, setIsClientDetailsEmpty] = useState(false);
+  const [clientDetailsLoadAttempt, setClientDetailsLoadAttempt] = useState(0);
+  const clientDetailsRequestRef = useRef(0);
+  const [isCopyingPreviousWeek, setIsCopyingPreviousWeek] = useState(false);
+  const [copyInfo, setCopyInfo] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [copyConfirmation, setCopyConfirmation] = useState<{
+    meals: MealRow[];
+    weeklyPlan: PlanState;
+    planNotes: PlanNotesState;
+  } | null>(null);
+  const copyRequestRef = useRef(0);
+  const copyInFlightRef = useRef(false);
+  const copyTargetRef = useRef('');
   
   // Dynamic Meals State (Editable)
   const [meals, setMeals] = useState<MealRow[]>(DEFAULT_MEAL_ROWS);
@@ -222,8 +275,6 @@ const MealPlans = () => {
   
   // Interaction State
   const [activeCell, setActiveCell] = useState<{ day: string; mealId: string } | null>(null);
-  const [recipeSearch, setRecipeSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('Tümü');
   const [customMealText, setCustomMealText] = useState('');
   const [customMealCalories, setCustomMealCalories] = useState('');
   const [customMealProtein, setCustomMealProtein] = useState('');
@@ -233,6 +284,8 @@ const MealPlans = () => {
   const [customMealPhotoPreview, setCustomMealPhotoPreview] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoCleanupWarning, setPhotoCleanupWarning] = useState<string | null>(null);
+
+  copyTargetRef.current = `${selectedClient?.id ?? ''}:${normalizeMealPlanWeekStart(weekStartDate)}`;
 
 
   const selectClient = useCallback((client: Client | null) => {
@@ -289,6 +342,7 @@ const MealPlans = () => {
     const requestId = ++planRequestRef.current;
     if (!selectedClient || !dietitianId) {
       setWeeklyPlan({});
+      setPlanNotes({});
       setIsPlanEmpty(false);
       setPlanError(null);
       setIsLoadingPlan(false);
@@ -319,6 +373,7 @@ const MealPlans = () => {
       const editor = mapCanonicalPlansToEditor(plans, snapshot.weekStart, photoPreviews);
       setMeals(editor.meals);
       setWeeklyPlan(editor.weeklyPlan);
+      setPlanNotes(editor.planNotes);
       setIsPlanEmpty(editor.isEmpty);
     } catch (error) {
       if (requestId !== planRequestRef.current) return;
@@ -334,8 +389,109 @@ const MealPlans = () => {
     void loadWeeklyPlan();
   }, [loadWeeklyPlan]);
 
-  // --- Helpers ---
-  const getClientDetails = (id: string) => CLIENT_DETAILS[id] || CLIENT_DETAILS['default'];
+  useEffect(() => {
+    const requestId = ++clientDetailsRequestRef.current;
+    if (!selectedClient) {
+      setClientDetails(null);
+      setClientDetailsError(null);
+      setIsClientDetailsEmpty(false);
+      setIsLoadingClientDetails(false);
+      return;
+    }
+
+    const loadClientDetails = async () => {
+      setIsLoadingClientDetails(true);
+      setClientDetailsError(null);
+      setIsClientDetailsEmpty(false);
+      try {
+        const result = await fetchClientDetails(selectedClient.id);
+        if (requestId !== clientDetailsRequestRef.current) return;
+        if (result.status === 'active') {
+          setClientDetails(result.client);
+          setIsClientDetailsEmpty(false);
+        } else if (result.status === 'error') {
+          setClientDetails(null);
+          setClientDetailsError(result.userMessage);
+          setIsClientDetailsEmpty(false);
+        } else {
+          setClientDetails(null);
+          setIsClientDetailsEmpty(true);
+        }
+      } catch {
+        if (requestId !== clientDetailsRequestRef.current) return;
+        setClientDetails(null);
+        setIsClientDetailsEmpty(false);
+        setClientDetailsError('Danışan bilgileri şu anda yüklenemiyor. Lütfen tekrar deneyin.');
+      }
+      if (requestId !== clientDetailsRequestRef.current) return;
+      setIsLoadingClientDetails(false);
+    };
+
+    void loadClientDetails();
+  }, [clientDetailsLoadAttempt, selectedClient]);
+
+  useEffect(() => {
+    copyRequestRef.current += 1;
+    setCopyConfirmation(null);
+    setCopyInfo(null);
+    setCopyError(null);
+  }, [selectedClient?.id, weekStartDate]);
+
+  const hasEditorMeals = Object.values(weeklyPlan)
+    .some((day) => Object.values(day).some(Boolean));
+
+  const applyPreviousWeekCopy = (copy: NonNullable<typeof copyConfirmation>) => {
+    setMeals(copy.meals);
+    setWeeklyPlan(copy.weeklyPlan);
+    setPlanNotes(copy.planNotes);
+    setIsPlanEmpty(Object.keys(copy.weeklyPlan).length === 0);
+    setActiveCell(null);
+    setCopyConfirmation(null);
+    setCopyInfo('Önceki haftanın planı editöre kopyalandı. Kalıcı hale getirmek için Planı Kaydet’i kullanın.');
+  };
+
+  const handleCopyPreviousWeek = async () => {
+    if (!selectedClient || !dietitianId || copyInFlightRef.current) return;
+    copyInFlightRef.current = true;
+    const requestId = ++copyRequestRef.current;
+    const snapshot = {
+      clientId: selectedClient.id,
+      dietitianId,
+      weekStart: normalizeMealPlanWeekStart(weekStartDate),
+    };
+    const targetKey = `${snapshot.clientId}:${snapshot.weekStart}`;
+    setIsCopyingPreviousWeek(true);
+    setCopyInfo(null);
+    setCopyError(null);
+
+    try {
+      const previousWeekStart = shiftMealPlanWeek(snapshot.weekStart, -1);
+      const plans = await fetchWeeklyMealPlan(
+        snapshot.clientId,
+        snapshot.dietitianId,
+        previousWeekStart,
+        getMealPlanWeekDates(previousWeekStart)[6],
+      );
+      if (requestId !== copyRequestRef.current || copyTargetRef.current !== targetKey) return;
+      const copy = createPreviousWeekCopy(plans, previousWeekStart);
+      if (copy.isEmpty) {
+        setCopyInfo('Önceki haftada kopyalanacak öğün yok.');
+        return;
+      }
+      if (hasEditorMeals) {
+        setCopyConfirmation(copy);
+        return;
+      }
+      applyPreviousWeekCopy(copy);
+    } catch (error) {
+      if (requestId !== copyRequestRef.current || copyTargetRef.current !== targetKey) return;
+      console.error('Previous meal plan copy failed:', getMealPlanErrorLogContext(error));
+      setCopyError('Önceki hafta planı yüklenemedi. Mevcut editör değişmedi; lütfen tekrar deneyin.');
+    } finally {
+      if (requestId === copyRequestRef.current) setIsCopyingPreviousWeek(false);
+      copyInFlightRef.current = false;
+    }
+  };
 
   const handleCellClick = (day: string, mealId: string) => {
     // If clicking the already active cell, just toggle off (optional, or keep it open)
@@ -360,20 +516,6 @@ const MealPlans = () => {
         setCustomMealText('');
       }
     }
-  };
-
-  const handleRecipeSelect = (recipe: Recipe) => {
-    if (!activeCell) return;
-    
-    setWeeklyPlan(prev => ({
-      ...prev,
-      [activeCell.day]: {
-        ...(prev[activeCell.day] || {}),
-        [activeCell.mealId]: recipe
-      }
-    }));
-    // Optional: Clear text input after recipe select
-    setCustomMealText('');
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -520,21 +662,6 @@ const MealPlans = () => {
     setMeals(meals.map(m => m.id === id ? { ...m, [field]: value } : m));
   };
 
-  const handleAutoSuggest = () => {
-    if (!selectedClient) return;
-    const newPlan = { ...weeklyPlan };
-    DAYS.forEach(day => {
-      if (!newPlan[day]) newPlan[day] = {};
-      meals.forEach(meal => {
-        if (!newPlan[day][meal.id]) {
-          const randomRecipe = RECIPES[Math.floor(Math.random() * RECIPES.length)];
-          newPlan[day][meal.id] = randomRecipe;
-        }
-      });
-    });
-    setWeeklyPlan(newPlan);
-  };
-
   const handleSavePlan = async () => {
     if (!selectedClient) {
       alert('Lütfen bir danışan seçiniz.');
@@ -609,8 +736,6 @@ const MealPlans = () => {
               } else {
                 mealData.photo_url = null;
               }
-              // Recipe persistence has no canonical table/FK yet. UI suggestions
-              // are persisted as manual meals without carrying mock recipe IDs.
               mealData.source = 'manual';
               mealData.recipe_id = null;
             }
@@ -621,7 +746,7 @@ const MealPlans = () => {
 
         weeklyPayload.push({
           plan_date: dateStr,
-          notes: getClientDetails(selectedClient.id).notes,
+          notes: planNotes[dayName] ?? null,
           meals: dayMeals,
         });
       }
@@ -635,6 +760,7 @@ const MealPlans = () => {
       const editor = mapCanonicalPlansToEditor(savedWeek.plans, normalizedWeekStart, photoPreviews);
       setMeals(editor.meals);
       setWeeklyPlan(editor.weeklyPlan);
+      setPlanNotes(editor.planNotes);
       setIsPlanEmpty(editor.isEmpty);
 
       const cleanup = await processPendingMealPhotoCleanup();
@@ -653,15 +779,6 @@ const MealPlans = () => {
       setIsSaving(false);
     }
   };
-
-  const filteredRecipes = RECIPES.filter(r => {
-    const matchesSearch = r.name.toLowerCase().includes(recipeSearch.toLowerCase());
-    const matchesCategory = selectedCategory === 'Tümü' || 
-                            (selectedCategory === 'Kahvaltı' && r.category === 'Kahvaltı') ||
-                            (selectedCategory === 'Ana Yemek' && (r.category === 'Öğle Yemeği' || r.category === 'Akşam Yemeği')) ||
-                            (selectedCategory === 'Ara Öğün' && (r.category === 'Ara Öğün' || r.category === 'Tatlı'));
-    return matchesSearch && matchesCategory;
-  });
 
   return (
     <div className="flex h-screen bg-background-light overflow-hidden">
@@ -793,6 +910,29 @@ const MealPlans = () => {
                    <span>{photoCleanupWarning}</span>
                  </div>
                )}
+               {copyError && (
+                 <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800" role="alert">
+                   <p className="font-semibold">{copyError}</p>
+                   <button type="button" onClick={() => void handleCopyPreviousWeek()} disabled={isCopyingPreviousWeek} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-lg border border-rose-300 bg-white px-4 text-sm font-semibold disabled:opacity-50">
+                     <RotateCcw className="h-4 w-4" /> Tekrar dene
+                   </button>
+                 </div>
+               )}
+               {copyInfo && (
+                 <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sky-800" role="status">
+                   {copyInfo}
+                 </div>
+               )}
+               {copyConfirmation && (
+                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900" role="alert">
+                   <p className="font-semibold">Mevcut hafta editöründe öğünler var.</p>
+                   <p className="mt-1 text-sm">Önceki haftayı kopyalamak, yalnız editördeki mevcut öğünleri değiştirir; henüz veritabanına kayıt yapılmaz.</p>
+                   <div className="mt-3 flex flex-wrap gap-2">
+                     <button type="button" onClick={() => { setCopyConfirmation(null); setCopyInfo('Kopyalama iptal edildi.'); }} className="min-h-11 rounded-lg border border-amber-300 bg-white px-4 text-sm font-semibold">İptal</button>
+                     <button type="button" onClick={() => applyPreviousWeekCopy(copyConfirmation)} className="min-h-11 rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white">Editörde değiştir</button>
+                   </div>
+                 </div>
+               )}
                {planError && (
                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert">
                    <p className="font-semibold">{planError}</p>
@@ -803,17 +943,14 @@ const MealPlans = () => {
                {/* Grid Controls */}
                <div className="flex justify-between items-center mb-6">
                   <div className="flex gap-2">
-                    <button onClick={() => setWeeklyPlan({})} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-sm font-medium shadow-sm">
+                    <button onClick={() => { setWeeklyPlan({}); setPlanNotes({}); }} className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-sm font-medium shadow-sm">
                       <Trash2 className="w-4 h-4" /> Temizle
                     </button>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium shadow-sm">
-                      <Copy className="w-4 h-4" /> Geçen Haftayı Kopyala
+                    <button type="button" onClick={() => void handleCopyPreviousWeek()} disabled={isCopyingPreviousWeek} className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
+                      {isCopyingPreviousWeek ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />} {isCopyingPreviousWeek ? 'Kopyalanıyor...' : 'Geçen Haftayı Kopyala'}
                     </button>
                   </div>
                   <div className="flex gap-3">
-                     <button onClick={handleAutoSuggest} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-bold shadow-sm">
-                        <Wand2 className="w-4 h-4" /> AI Öneri (Otomatik Doldur)
-                     </button>
                      <button 
                         onClick={handleSavePlan}
                         disabled={isSaving || !selectedClient}
@@ -942,7 +1079,7 @@ const MealPlans = () => {
                                  {cellContent}
                                </div>
                              ) : (
-                               // Recipe Card Content or Modern Manual Object
+                               // Manual meal content
                                <div className="h-full bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex flex-col gap-2 relative group/card animate-in zoom-in-95 duration-200">
                                   <button 
                                     onClick={(e) => handleClearCell(e, day, meal.id)}
@@ -1002,50 +1139,32 @@ const MealPlans = () => {
         {/* 1. Client Info Panel (Conditional) */}
         {selectedClient ? (
           <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-             <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
-                  <Info className="w-4 h-4 text-primary" /> Danışan Bilgileri
-                </h3>
-             </div>
-             
-             <div className="space-y-4">
-                {/* Notes */}
-                <div className="bg-white p-3 rounded-xl border border-yellow-100 shadow-sm">
-                   <p className="text-xs font-bold text-yellow-600 mb-1">Diyetisyen Notu</p>
-                   <p className="text-xs text-slate-600 leading-relaxed">
-                     {getClientDetails(selectedClient.id).notes}
-                   </p>
+            <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-800 flex items-center gap-2">
+              <Info className="w-4 h-4 text-primary" /> Danışan Bilgileri
+            </h3>
+            {isLoadingClientDetails ? (
+              <p className="text-xs text-slate-500">Danışan ayrıntıları yükleniyor...</p>
+            ) : clientDetailsError ? (
+              <div className="text-xs text-rose-700" role="alert">
+                <p>{clientDetailsError}</p>
+                <button type="button" onClick={() => setClientDetailsLoadAttempt((attempt) => attempt + 1)} className="mt-2 min-h-11 rounded-lg border border-rose-200 bg-white px-3 font-semibold">Tekrar dene</button>
+              </div>
+            ) : clientDetails ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white p-3 rounded-xl border border-red-100 shadow-sm">
+                  <p className="text-xs font-bold text-red-500 mb-2 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Alerji / Kısıt</p>
+                  <div className="flex flex-wrap gap-1">
+                    {clientDetails.foodIntolerances.length > 0 ? clientDetails.foodIntolerances.map((item) => <span key={item} className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-medium">{item}</span>) : <span className="text-[10px] text-slate-400">Yok</span>}
+                  </div>
                 </div>
-
-                {/* Tags Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                   {/* Allergies */}
-                   <div className="bg-white p-3 rounded-xl border border-red-100 shadow-sm">
-                      <p className="text-xs font-bold text-red-500 mb-2 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" /> Alerji / Kısıt
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                         {getClientDetails(selectedClient.id).allergies.length > 0 ? (
-                           getClientDetails(selectedClient.id).allergies.map(a => (
-                             <span key={a} className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-medium">{a}</span>
-                           ))
-                         ) : <span className="text-[10px] text-slate-400">Yok</span>}
-                      </div>
-                   </div>
-                   
-                   {/* Likes */}
-                   <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
-                      <p className="text-xs font-bold text-emerald-600 mb-2 flex items-center gap-1">
-                        <ThumbsUp className="w-3 h-3" /> Tercihler
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                         {getClientDetails(selectedClient.id).likes.map(l => (
-                             <span key={l} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-medium">{l}</span>
-                         ))}
-                      </div>
-                   </div>
+                <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
+                  <p className="text-xs font-bold text-emerald-600 mb-2">Sevmedikleri</p>
+                  <div className="flex flex-wrap gap-1">
+                    {clientDetails.dislikedFoods.length > 0 ? clientDetails.dislikedFoods.map((item) => <span key={item} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-medium">{item}</span>) : <span className="text-[10px] text-slate-400">Yok</span>}
+                  </div>
                 </div>
-             </div>
+              </div>
+            ) : <p className="text-xs text-slate-400">{isClientDetailsEmpty ? 'Yok' : 'Danışan ayrıntısı bulunamadı.'}</p>}
           </div>
         ) : (
           <div className="p-6 border-b border-slate-100 bg-slate-50 flex items-center justify-center text-slate-400 text-sm">
@@ -1149,86 +1268,8 @@ const MealPlans = () => {
                    </div>
                 </div>
               )}
-              
-              <div className="flex justify-between items-end mb-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase">Kayıtlı Tarifler</span>
-              </div>
-
-              {/* Search */}
-              <div className="relative mb-3">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                 <input 
-                   type="text" 
-                   placeholder="Tarif ara..." 
-                   className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                   value={recipeSearch}
-                   onChange={(e) => setRecipeSearch(e.target.value)}
-                 />
-              </div>
-
-              {/* Category Pills */}
-              <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
-                 {['Tümü', 'Kahvaltı', 'Ana Yemek', 'Ara Öğün'].map(cat => (
-                   <button
-                     key={cat}
-                     onClick={() => setSelectedCategory(cat)}
-                     className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                       selectedCategory === cat 
-                         ? 'bg-slate-800 text-white' 
-                         : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                     }`}
-                   >
-                     {cat}
-                   </button>
-                 ))}
-              </div>
-           </div>
-
-           {/* Recipe List */}
-           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {activeCell && (
-                 <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-lg mb-4 text-xs text-emerald-700 flex items-center gap-2 sticky top-0 z-10 shadow-sm animate-in slide-in-from-top-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    {/* Find meal name for active cell */}
-                    <strong>{activeCell.day} - {meals.find(m => m.id === activeCell.mealId)?.name}</strong> seçildi.
-                 </div>
-              )}
-
-              {filteredRecipes.map(recipe => (
-                <div 
-                  key={recipe.id}
-                  onClick={() => handleRecipeSelect(recipe)}
-                  className={`flex gap-3 p-2 rounded-xl border transition-all cursor-pointer group ${
-                    activeCell 
-                      ? 'hover:border-primary hover:bg-emerald-50/30 border-slate-100' 
-                      : 'hover:border-slate-300 border-slate-100 opacity-60'
-                  }`}
-                >
-                   <img src={recipe.image} alt={recipe.name} className="w-16 h-16 rounded-lg object-cover bg-slate-100" />
-                   <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start">
-                         <h4 className="font-bold text-slate-800 text-sm truncate pr-2">{recipe.name}</h4>
-                         {activeCell && (
-                           <Plus className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                         )}
-                      </div>
-                      <p className="text-xs text-slate-500 mb-1">{recipe.category}</p>
-                      <div className="flex items-center gap-3 mt-1.5">
-                         <span className="text-[10px] font-bold text-orange-500 flex items-center gap-1">
-                            <Flame className="w-3 h-3" /> {recipe.calories}
-                         </span>
-                         <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> {recipe.prepTime}
-                         </span>
-                      </div>
-                   </div>
-                </div>
-              ))}
-              
-              {filteredRecipes.length === 0 && (
-                <div className="text-center py-8 text-slate-400 text-xs">
-                   Tarif bulunamadı.
-                </div>
+              {!activeCell && (
+                <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Manuel öğün eklemek veya düzenlemek için plandan bir hücre seçin.</p>
               )}
            </div>
         </div>
@@ -1264,7 +1305,7 @@ const MealPlans = () => {
                            if ('showPicker' in HTMLInputElement.prototype) {
                              (e.target as HTMLInputElement).showPicker();
                            }
-                         } catch (err) {
+                         } catch {
                            // Ignore unsupported
                          }
                        }}
