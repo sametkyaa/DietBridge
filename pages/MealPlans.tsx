@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation , useNavigate} from 'react-router-dom';
 import { 
   Search, 
@@ -23,17 +23,22 @@ import {
   ArrowUp,
   ArrowDown,
   Upload,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
 } from 'lucide-react';
 import { RECIPES, USER_AVATAR } from '../constants';
 import { Client, Recipe } from '../shared/types';
-import { fetchDietitianClients } from '../features/clients/services/clientService';
+import { fetchActiveDietitianClientList } from '../features/clients/services/clientService';
 import {
   mapMealTypeToDb,
   fetchWeeklyMealPlan,
   getMealPlanErrorLogContext,
   getMealPlanUserMessage,
   saveWeeklyMealPlan,
+  type CanonicalDailyMealPlan,
+  type CanonicalMeal,
   type WeeklyMealInput,
   type WeeklyMealPlanDayInput,
 } from '../features/meal-plans/services/mealPlanService';
@@ -48,6 +53,13 @@ import {
 } from '../features/meal-plans/services/mealPhotoService';
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
+import {
+  getMealPlanWeekDates,
+  mapWeeklyPlansByDate,
+  MEAL_PLAN_WEEKDAY_LABELS,
+  normalizeMealPlanWeekStart,
+  shiftMealPlanWeek,
+} from '../features/meal-plans/services/mealPlanReadModel';
 
 // --- Extended Mock Data for Client Specifics ---
 const CLIENT_DETAILS: Record<string, { notes: string; likes: string[]; dislikes: string[]; allergies: string[] }> = {
@@ -72,7 +84,7 @@ const CLIENT_DETAILS: Record<string, { notes: string; likes: string[]; dislikes:
   }
 };
 
-const DAYS = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+const DAYS = MEAL_PLAN_WEEKDAY_LABELS;
 const MEAL_OPTIONS = ['Kahvaltı', 'Öğle', 'Akşam', 'Ara Öğün', 'Antrenman Öncesi', 'Antrenman Sonrası', 'Gece Ara Öğünü'];
 
 // Interface for Dynamic Meals
@@ -82,16 +94,11 @@ interface MealRow {
   time: string;
 }
 
-const LAST_MEAL_PLAN_CLIENT_KEY = 'dietbridge:lastMealPlanClientId';
-
 const getCurrentMondayIso = (): string => {
   const today = new Date();
-  const daysFromMonday = (today.getDay() + 6) % 7;
-  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysFromMonday);
-  const year = monday.getFullYear();
-  const month = String(monday.getMonth() + 1).padStart(2, '0');
-  const day = String(monday.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return normalizeMealPlanWeekStart(
+    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
+  );
 };
 
 interface PlannedMealContent {
@@ -105,10 +112,83 @@ interface PlannedMealContent {
   macros: Recipe['macros'];
   source?: 'manual' | 'recipe';
   recipeId?: string | null;
+  isEaten?: boolean;
 }
 
 // Plan State: { Day: { MealID: Content } }
 type PlanState = Record<string, Record<string, PlannedMealContent | string | null>>;
+
+const DEFAULT_MEAL_ROWS: MealRow[] = [
+  { id: 'm1', name: 'Kahvaltı', time: '08:00' },
+  { id: 'm2', name: 'Öğle', time: '12:30' },
+  { id: 'm3', name: 'Akşam', time: '19:00' },
+];
+
+type MealPlanReadMeal = Omit<CanonicalMeal, 'plan_id'>;
+type MealPlanReadDay = Omit<CanonicalDailyMealPlan, 'meals'> & { meals: MealPlanReadMeal[] };
+
+const getMealRowDetails = (meal: MealPlanReadMeal) => {
+  const mealMacros = meal.macros as Record<string, unknown>;
+  const rowName = typeof mealMacros?._rowName === 'string'
+    ? mealMacros._rowName
+    : meal.type === 'breakfast' ? 'Kahvaltı'
+      : meal.type === 'lunch' ? 'Öğle'
+        : meal.type === 'dinner' ? 'Akşam'
+          : 'Ara Öğün';
+  const time = meal.time || (typeof mealMacros?._time === 'string' ? mealMacros._time : '15:00');
+  return { rowName, time, sortOrder: meal.sort_order, key: `${rowName}-${time}-${meal.sort_order}` };
+};
+
+const mapCanonicalPlansToEditor = (
+  plans: MealPlanReadDay[],
+  weekStart: string,
+  photoPreviews: Map<string, string>,
+): { meals: MealRow[]; weeklyPlan: PlanState; isEmpty: boolean } => {
+  const plansByDate = mapWeeklyPlansByDate(plans, weekStart);
+  const orderedPlans = getMealPlanWeekDates(weekStart)
+    .map((date) => plansByDate.get(date))
+    .filter((plan): plan is MealPlanReadDay => Boolean(plan));
+  const rowDetails = new Map<string, ReturnType<typeof getMealRowDetails>>();
+
+  orderedPlans.forEach((plan) => plan.meals.forEach((meal) => {
+    const details = getMealRowDetails(meal);
+    if (!rowDetails.has(details.key)) rowDetails.set(details.key, details);
+  }));
+
+  const orderedRows = [...rowDetails.values()]
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.time.localeCompare(right.time) || left.key.localeCompare(right.key));
+  const meals = orderedRows.length === 0
+    ? DEFAULT_MEAL_ROWS.map((meal) => ({ ...meal }))
+    : orderedRows.map((details, index) => ({ id: `meal-loaded-${index}`, name: details.rowName, time: details.time }));
+  const rowIdByKey = new Map(orderedRows.map((details, index) => [details.key, meals[index].id]));
+  const weeklyPlan: PlanState = {};
+  const weekDates = getMealPlanWeekDates(weekStart);
+
+  orderedPlans.forEach((plan) => {
+    const dayIndex = weekDates.indexOf(plan.plan_date);
+    if (dayIndex < 0) return;
+    const dayName = DAYS[dayIndex];
+    weeklyPlan[dayName] = {};
+    plan.meals.forEach((meal) => {
+      const rowId = rowIdByKey.get(getMealRowDetails(meal).key);
+      if (!rowId) return;
+      weeklyPlan[dayName][rowId] = {
+        id: meal.id,
+        mealId: meal.id,
+        name: meal.title,
+        image: meal.photo_url,
+        imagePreview: isCanonicalMealPhotoPath(meal.photo_url) ? photoPreviews.get(meal.photo_url) ?? null : null,
+        calories: meal.calories ?? 0,
+        macros: meal.macros as Recipe['macros'],
+        source: meal.source,
+        recipeId: meal.recipe_id,
+        isEaten: meal.is_eaten,
+      };
+    });
+  });
+
+  return { meals, weeklyPlan, isEmpty: orderedPlans.every((plan) => plan.meals.length === 0) };
+};
 
 const MealPlans = () => {
   const navigate = useNavigate();
@@ -116,18 +196,21 @@ const MealPlans = () => {
   // --- State ---
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const [clientLoadAttempt, setClientLoadAttempt] = useState(0);
+  const [dietitianId, setDietitianId] = useState<string | null>(null);
+  const [clientSearch, setClientSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
   const [weekStartDate, setWeekStartDate] = useState<string>(getCurrentMondayIso);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [isPlanEmpty, setIsPlanEmpty] = useState(false);
+  const planRequestRef = useRef(0);
   
   // Dynamic Meals State (Editable)
-  const [meals, setMeals] = useState<MealRow[]>([
-    { id: 'm1', name: 'Kahvaltı', time: '08:00' },
-    { id: 'm2', name: 'Öğle', time: '12:30' },
-    { id: 'm3', name: 'Akşam', time: '19:00' }
-  ]);
+  const [meals, setMeals] = useState<MealRow[]>(DEFAULT_MEAL_ROWS);
 
   const [weeklyPlan, setWeeklyPlan] = useState<PlanState>({});
 
@@ -151,237 +234,105 @@ const MealPlans = () => {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoCleanupWarning, setPhotoCleanupWarning] = useState<string | null>(null);
 
-  // Fetch Clients
+
+  const selectClient = useCallback((client: Client | null) => {
+    setSelectedClient(client);
+    if (!dietitianId) return;
+    const storageKey = `dietbridge:meal-plans:last-client:${dietitianId}`;
+    if (client) localStorage.setItem(storageKey, client.id);
+    else localStorage.removeItem(storageKey);
+  }, [dietitianId]);
+
   useEffect(() => {
+    let active = true;
     const loadClients = async () => {
       setLoadingClients(true);
-      try {
-        const data = await fetchDietitianClients();
-        setClients(data);
-      } catch (err) {
-        console.error("Failed to load clients for meal plans:", err);
-      } finally {
-        setLoadingClients(false);
-      }
-    };
-    loadClients();
-  }, []);
-
-  // Automatically select client if passed from navigation state or local storage
-  useEffect(() => {
-    const storedClientId = localStorage.getItem(LAST_MEAL_PLAN_CLIENT_KEY);
-    if (storedClientId && !isValidUuid(storedClientId)) {
-      localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
-    }
-
-    if (clients.length === 0) return;
-
-    const navState = location.state as { clientId?: string } | null;
-    
-    // Priority 1: Navigation state
-    if (navState?.clientId && isValidUuid(navState.clientId)) {
-      const client = clients.find(c => c.id === navState.clientId);
-      if (client) {
-        setSelectedClient(prev => {
-            if (prev?.id === client.id) return prev;
-            return client;
-        });
-        localStorage.setItem(LAST_MEAL_PLAN_CLIENT_KEY, client.id);
-        return;
-      }
-    }
-
-    // Priority 2: LocalStorage
-    setSelectedClient((currentSelected) => {
-        if (!currentSelected) {
-            const lastClientId = localStorage.getItem(LAST_MEAL_PLAN_CLIENT_KEY);
-            if (lastClientId) {
-                const client = clients.find(c => c.id === lastClientId);
-                if (client) {
-                    return client;
-                } else {
-                    localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
-                }
-            }
-        } else {
-            if (!isValidUuid(currentSelected.id)) {
-                localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
-                return null;
-            }
-
-            const stillExists = clients.some(c => c.id === currentSelected.id);
-            if (!stillExists) {
-                localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
-                return null;
-            }
-        }
-        return currentSelected;
-    });
-  }, [location.state, clients]);
-
-  // Fetch Weekly Plan
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadWeeklyPlan = async () => {
-      if (!selectedClient) {
-        setWeeklyPlan({});
-        return;
-      }
-      
-      setIsLoadingPlan(true);
-      setWeeklyPlan({}); // Clear immediately to avoid showing stale data
-      
+      setClientError(null);
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user || !isMounted) return;
+        if (!user || !isValidUuid(user.id)) throw new Error('AUTH_REQUIRED');
+        const result = await fetchActiveDietitianClientList();
+        if (!active) return;
+        if (result.status === 'error') throw new Error(result.userMessage);
 
-        // Calculate dates (UTC)
-        const [year, month, day] = weekStartDate.split('-').map(Number);
-        const start = new Date(Date.UTC(year, month - 1, day));
-        const end = new Date(start);
-        end.setUTCDate(start.getUTCDate() + 6);
-        const endDateStr = end.toISOString().split('T')[0];
-
-        const plans = await fetchWeeklyMealPlan(selectedClient.id, user.id, weekStartDate, endDateStr);
-        const photoPreviews = await getMealPhotoPreviewUrls(
-          plans.flatMap((plan) => plan.meals.flatMap((meal) => (
-            isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
-          ))),
-        );
-        
-        if (!isMounted) return;
-
-        if (!plans || plans.length === 0) {
-            // Reset to default meals if no plan exists
-            setMeals([
-                { id: 'm1', name: 'Kahvaltı', time: '08:00' },
-                { id: 'm2', name: 'Öğle', time: '12:30' },
-                { id: 'm3', name: 'Akşam', time: '19:00' }
-            ]);
-            return;
+        const activeClients = result.clients;
+        setDietitianId(user.id);
+        setClients(activeClients);
+        const storageKey = `dietbridge:meal-plans:last-client:${user.id}`;
+        const storedClientId = localStorage.getItem(storageKey);
+        const navClientId = (location.state as { clientId?: string } | null)?.clientId;
+        const preferredId = [navClientId, storedClientId].find((id) => id && isValidUuid(id));
+        const nextClient = activeClients.find((client) => client.id === preferredId)
+          ?? activeClients[0]
+          ?? null;
+        if (storedClientId && !activeClients.some((client) => client.id === storedClientId)) {
+          localStorage.removeItem(storageKey);
         }
-
-        // Process plans to reconstruct unique meal rows
-        let localMeals: MealRow[] = [];
-        const mealRowMap = new Map<string, any>();
-        
-        plans.forEach(p => {
-            p.meals.forEach((m: any) => {
-                const rowName = m.macros?._rowName || (
-                    m.type === 'breakfast' ? 'Kahvaltı' :
-                    m.type === 'lunch' ? 'Öğle' :
-                    m.type === 'dinner' ? 'Akşam' : 'Ara Öğün'
-                );
-                const time = m.time || m.macros?._time || (m.type === 'breakfast' ? '08:00' : m.type === 'lunch' ? '12:30' : m.type === 'dinner' ? '19:00' : '15:00');
-                const sortOrder = m.sort_order ?? m.macros?._sortOrder ?? 0;
-                
-                const key = `${rowName}-${time}-${sortOrder}`;
-                if (!mealRowMap.has(key)) {
-                    mealRowMap.set(key, { name: rowName, time, sortOrder });
-                }
-            });
-        });
-
-        if (mealRowMap.size > 0) {
-            localMeals = Array.from(mealRowMap.values())
-                .sort((a, b) => {
-                    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-                    return a.time.localeCompare(b.time);
-                })
-                .map((m, i) => ({
-                    id: `meal-loaded-${i}`,
-                    name: m.name,
-                    time: m.time
-                }));
-        } else {
-            localMeals = [
-                { id: 'm1', name: 'Kahvaltı', time: '08:00' },
-                { id: 'm2', name: 'Öğle', time: '12:30' },
-                { id: 'm3', name: 'Akşam', time: '19:00' }
-            ];
-        }
-
-        const newWeeklyPlan: PlanState = {};
-        
-        const findRowId = (m: any) => {
-            const rowName = m.macros?._rowName || (
-                    m.type === 'breakfast' ? 'Kahvaltı' :
-                    m.type === 'lunch' ? 'Öğle' :
-                    m.type === 'dinner' ? 'Akşam' : 'Ara Öğün'
-            );
-            const time = m.time || m.macros?._time || (m.type === 'breakfast' ? '08:00' : m.type === 'lunch' ? '12:30' : m.type === 'dinner' ? '19:00' : '15:00');
-            const sortOrder = m.sort_order ?? m.macros?._sortOrder ?? 0;
-            const index = Array.from(mealRowMap.keys()).indexOf(`${rowName}-${time}-${sortOrder}`);
-            if (index !== -1 && localMeals[index]) return localMeals[index].id;
-            
-            return localMeals.find(r => mapMealTypeToDb(r.name) === m.type)?.id;
-        };
-
-        plans.forEach(p => {
-            // Parse plan_date safely as UTC
-            const [pYear, pMonth, pDay] = p.plan_date.split('-').map(Number);
-            const pDate = new Date(Date.UTC(pYear, pMonth - 1, pDay));
-            
-            // sDate is already UTC (start variable)
-            const diffTime = pDate.getTime() - start.getTime();
-            const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-            
-            if (diffDays >= 0 && diffDays < 7) {
-                const dayName = DAYS[diffDays];
-                if (!newWeeklyPlan[dayName]) newWeeklyPlan[dayName] = {};
-
-                p.meals.forEach((m: any) => {
-                    const rowId = findRowId(m);
-
-                    if (rowId) {
-                         if (m.calories || m.macros || m.photo_url) {
-                             const recipeObj: PlannedMealContent = {
-                                 id: m.id,
-                                 mealId: m.id,
-                                 name: m.title,
-                                 calories: m.calories,
-                                 macros: m.macros || { protein: 0, carbs: 0, fat: 0 },
-                                 image: m.photo_url,
-                                 imagePreview: isCanonicalMealPhotoPath(m.photo_url)
-                                   ? photoPreviews.get(m.photo_url) ?? null
-                                   : null,
-                                 source: m.source === 'manual' ? 'manual' : 'recipe',
-                                 recipeId: m.recipe_id ?? null,
-                             };
-                             newWeeklyPlan[dayName][rowId] = recipeObj;
-                         } else {
-                             newWeeklyPlan[dayName][rowId] = m.title;
-                         }
-                    }
-                });
-            }
-        });
-
-        setMeals(localMeals);
-        setWeeklyPlan(newWeeklyPlan);
-
+        setSelectedClient(nextClient);
+        if (nextClient) localStorage.setItem(storageKey, nextClient.id);
       } catch (error) {
-        console.error('Error loading plan:', error);
-        // Reset to default meals on error to avoid stale structure
-        if (isMounted) {
-            setMeals([
-                { id: 'm1', name: 'Kahvaltı', time: '08:00' },
-                { id: 'm2', name: 'Öğle', time: '12:30' },
-                { id: 'm3', name: 'Akşam', time: '19:00' }
-            ]);
-        }
+        if (!active) return;
+        console.error('Failed to load active clients for meal plans:', error);
+        setDietitianId(null);
+        setClients([]);
+        setSelectedClient(null);
+        setClientError('Aktif danışanlar yüklenemedi. Lütfen tekrar deneyin.');
       } finally {
-        if (isMounted) setIsLoadingPlan(false);
+        if (active) setLoadingClients(false);
       }
     };
+    void loadClients();
+    return () => { active = false; };
+  }, [clientLoadAttempt, location.state]);
 
-    loadWeeklyPlan();
+  const loadWeeklyPlan = useCallback(async () => {
+    const requestId = ++planRequestRef.current;
+    if (!selectedClient || !dietitianId) {
+      setWeeklyPlan({});
+      setIsPlanEmpty(false);
+      setPlanError(null);
+      setIsLoadingPlan(false);
+      return;
+    }
 
-    return () => {
-        isMounted = false;
+    const snapshot = {
+      clientId: selectedClient.id,
+      dietitianId,
+      weekStart: normalizeMealPlanWeekStart(weekStartDate),
     };
-  }, [selectedClient, weekStartDate]);
+    setIsLoadingPlan(true);
+    setPlanError(null);
+    setWeeklyPlan({});
+    try {
+      const plans = await fetchWeeklyMealPlan(
+        snapshot.clientId,
+        snapshot.dietitianId,
+        snapshot.weekStart,
+        getMealPlanWeekDates(snapshot.weekStart)[6],
+      );
+      const photoPreviews = await getMealPhotoPreviewUrls(
+        plans.flatMap((plan) => plan.meals.flatMap((meal) => (
+          isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
+        ))),
+      );
+      if (requestId !== planRequestRef.current) return;
+      const editor = mapCanonicalPlansToEditor(plans, snapshot.weekStart, photoPreviews);
+      setMeals(editor.meals);
+      setWeeklyPlan(editor.weeklyPlan);
+      setIsPlanEmpty(editor.isEmpty);
+    } catch (error) {
+      if (requestId !== planRequestRef.current) return;
+      console.error('Error loading plan:', getMealPlanErrorLogContext(error));
+      setPlanError('Plan yüklenemedi. Lütfen aynı hafta için tekrar deneyin.');
+      setIsPlanEmpty(false);
+    } finally {
+      if (requestId === planRequestRef.current) setIsLoadingPlan(false);
+    }
+  }, [dietitianId, selectedClient, weekStartDate]);
+
+  useEffect(() => {
+    void loadWeeklyPlan();
+  }, [loadWeeklyPlan]);
 
   // --- Helpers ---
   const getClientDetails = (id: string) => CLIENT_DETAILS[id] || CLIENT_DETAILS['default'];
@@ -592,8 +543,7 @@ const MealPlans = () => {
 
     if (!isValidUuid(selectedClient.id)) {
       console.warn('[MealPlans] Geçersiz UUID alanı: meal_plans.client_id');
-      localStorage.removeItem(LAST_MEAL_PLAN_CLIENT_KEY);
-      setSelectedClient(null);
+      selectClient(null);
       alert('Seçili danışan bilgisi geçersiz. Danışanı yeniden seçip tekrar deneyin.');
       return;
     }
@@ -609,17 +559,15 @@ const MealPlans = () => {
         return;
       }
 
-      const [year, month, day] = weekStartDate.split('-').map(Number);
-      const start = new Date(Date.UTC(year, month - 1, day));
+      const normalizedWeekStart = normalizeMealPlanWeekStart(weekStartDate);
+      const weekDates = getMealPlanWeekDates(normalizedWeekStart);
       
       const weeklyPayload: WeeklyMealPlanDayInput[] = [];
       setIsUploadingPhoto(true);
 
       // Build the complete Monday-Sunday payload before the single RPC call.
       for (let i = 0; i < 7; i++) {
-        const currentDayDate = new Date(start);
-        currentDayDate.setUTCDate(start.getUTCDate() + i);
-        const dateStr = currentDayDate.toISOString().split('T')[0];
+        const dateStr = weekDates[i];
         const dayName = DAYS[i]; // 'Pazartesi', 'Salı', etc.
 
         // Collect meals for this day
@@ -678,53 +626,16 @@ const MealPlans = () => {
         });
       }
 
-      const savedWeek = await saveWeeklyMealPlan(selectedClient.id, weekStartDate, weeklyPayload);
+      const savedWeek = await saveWeeklyMealPlan(selectedClient.id, normalizedWeekStart, weeklyPayload);
       const photoPreviews = await getMealPhotoPreviewUrls(
         savedWeek.plans.flatMap((plan) => plan.meals.flatMap((meal) => (
           isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
         ))),
       );
-      setWeeklyPlan((currentPlan) => {
-        const nextPlan = { ...currentPlan };
-        savedWeek.plans.forEach((savedPlan, dayIndex) => {
-          const dayName = DAYS[dayIndex];
-          const currentDay = { ...(nextPlan[dayName] || {}) };
-          savedPlan.meals.forEach((savedMeal) => {
-            const mealRow = meals[savedMeal.sort_order];
-            if (!mealRow) return;
-            const currentContent = currentDay[mealRow.id];
-            if (typeof currentContent === 'object' && currentContent !== null) {
-              currentDay[mealRow.id] = {
-                ...currentContent,
-                mealId: savedMeal.id,
-                image: savedMeal.photo_url,
-                imagePreview: isCanonicalMealPhotoPath(savedMeal.photo_url)
-                  ? photoPreviews.get(savedMeal.photo_url) ?? null
-                  : (isCanonicalMealPhotoPath(currentContent.image)
-                    ? null
-                    : currentContent.imagePreview ?? currentContent.image),
-                pendingPhoto: null,
-              };
-            } else {
-              currentDay[mealRow.id] = {
-                id: savedMeal.id,
-                mealId: savedMeal.id,
-                name: savedMeal.title,
-                image: savedMeal.photo_url,
-                imagePreview: isCanonicalMealPhotoPath(savedMeal.photo_url)
-                  ? photoPreviews.get(savedMeal.photo_url) ?? null
-                  : null,
-                calories: savedMeal.calories ?? 0,
-                macros: savedMeal.macros as Recipe['macros'],
-                source: savedMeal.source,
-                recipeId: savedMeal.recipe_id,
-              };
-            }
-          });
-          nextPlan[dayName] = currentDay;
-        });
-        return nextPlan;
-      });
+      const editor = mapCanonicalPlansToEditor(savedWeek.plans, normalizedWeekStart, photoPreviews);
+      setMeals(editor.meals);
+      setWeeklyPlan(editor.weeklyPlan);
+      setIsPlanEmpty(editor.isEmpty);
 
       const cleanup = await processPendingMealPhotoCleanup();
       setPhotoCleanupWarning(cleanup.warning);
@@ -793,12 +704,21 @@ const MealPlans = () => {
                     <div className="p-2">
                        <div className="relative mb-2">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                          <input type="text" placeholder="Ara..." className="w-full pl-9 pr-3 py-2 bg-slate-50 rounded-lg text-sm border-none focus:ring-1 focus:ring-primary" />
+                          <input
+                            type="search"
+                            value={clientSearch}
+                            onChange={(event) => setClientSearch(event.target.value)}
+                            placeholder="Ara..."
+                            className="w-full pl-9 pr-3 py-2 bg-slate-50 rounded-lg text-sm border-none focus:ring-1 focus:ring-primary"
+                          />
                        </div>
-                       {clients.map(client => (
+                       {clients.filter((client) => (
+                         `${client.name} ${client.goal}`.toLocaleLowerCase('tr-TR')
+                           .includes(clientSearch.trim().toLocaleLowerCase('tr-TR'))
+                       )).map(client => (
                          <button
                            key={client.id}
-                           onClick={() => { setSelectedClient(client); localStorage.setItem(LAST_MEAL_PLAN_CLIENT_KEY, client.id); setIsClientDropdownOpen(false); }}
+                           onClick={() => { selectClient(client); setIsClientDropdownOpen(false); }}
                            className="w-full flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors group"
                          >
                            <img src={client.avatar} className="w-8 h-8 rounded-full object-cover group-hover:ring-2 ring-primary/20" alt={client.name} />
@@ -808,7 +728,13 @@ const MealPlans = () => {
                            </div>
                          </button>
                        ))}
-                       {clients.length === 0 && !loadingClients && (
+                       {clientError && (
+                         <div className="p-3 text-center text-rose-600 text-sm">
+                           <p>{clientError}</p>
+                           <button type="button" onClick={() => setClientLoadAttempt((attempt) => attempt + 1)} className="mt-2 min-h-11 px-3 text-sm font-semibold underline">Tekrar dene</button>
+                         </div>
+                       )}
+                       {!clientError && clients.length === 0 && !loadingClients && (
                          <div className="p-4 text-center text-slate-400 text-sm">Danışan bulunamadı.</div>
                        )}
                        {loadingClients && (
@@ -823,17 +749,21 @@ const MealPlans = () => {
             <div className="h-8 w-px bg-slate-200"></div>
 
             {/* Date Picker */}
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl">
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-xl">
+              <button type="button" aria-label="Önceki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, -1))} className="min-h-11 min-w-11 rounded-lg text-slate-500 hover:bg-white"><ChevronLeft className="mx-auto h-4 w-4" /></button>
               <CalendarIcon className="w-4 h-4 text-slate-400" />
               <div className="flex flex-col">
                 <span className="text-[10px] text-slate-400 font-bold uppercase leading-none">Başlangıç Tarihi</span>
                 <input 
                   type="date" 
                   value={weekStartDate}
-                  onChange={(e) => setWeekStartDate(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value) setWeekStartDate(normalizeMealPlanWeekStart(e.target.value));
+                  }}
                   className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none p-0 h-4 leading-none w-28"
                 />
               </div>
+              <button type="button" aria-label="Sonraki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, 1))} className="min-h-11 min-w-11 rounded-lg text-slate-500 hover:bg-white"><ChevronRight className="mx-auto h-4 w-4" /></button>
             </div>
 
             <div className="h-8 w-px bg-slate-200"></div>
@@ -851,8 +781,9 @@ const MealPlans = () => {
                 <div className="bg-slate-100 p-6 rounded-full mb-4">
                   <Search className="w-12 h-12 text-slate-400" />
                 </div>
-                <h2 className="text-xl font-bold text-slate-700">Plan Oluşturmaya Başlayın</h2>
-                <p className="text-slate-500 mt-2 max-w-md">Sol üst köşedeki menüden bir danışan seçerek haftalık beslenme programını oluşturmaya başlayabilirsiniz.</p>
+                <h2 className="text-xl font-bold text-slate-700">{loadingClients ? 'Aktif danışanlar yükleniyor' : clientError ? 'Danışanlar yüklenemedi' : 'Aktif danışan yok'}</h2>
+                <p className="text-slate-500 mt-2 max-w-md">{loadingClients ? 'Aktif danışanlar güvenli biçimde doğrulanıyor.' : clientError ? clientError : 'Plan oluşturmak için aktif danışan ilişkisinin bulunması gerekir.'}</p>
+                {clientError && <button type="button" onClick={() => setClientLoadAttempt((attempt) => attempt + 1)} className="mt-4 min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700">Tekrar dene</button>}
              </div>
            ) : (
              <>
@@ -862,6 +793,13 @@ const MealPlans = () => {
                    <span>{photoCleanupWarning}</span>
                  </div>
                )}
+               {planError && (
+                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-rose-800" role="alert">
+                   <p className="font-semibold">{planError}</p>
+                   <button type="button" onClick={() => void loadWeeklyPlan()} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-lg border border-rose-300 bg-white px-4 text-sm font-semibold"><RotateCcw className="h-4 w-4" /> Aynı haftayı tekrar dene</button>
+                 </div>
+               )}
+               {!planError && <>
                {/* Grid Controls */}
                <div className="flex justify-between items-center mb-6">
                   <div className="flex gap-2">
@@ -907,14 +845,21 @@ const MealPlans = () => {
                     </div>
                   )}
 
+                  {isPlanEmpty && !isLoadingPlan && (
+                    <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+                      Bu hafta için kaydedilmiş öğün yok. Boş bir plan oluşturabilirsiniz.
+                    </div>
+                  )}
+
                   {/* Header Row */}
                   <div className="grid grid-cols-8 divide-x divide-slate-100 border-b border-slate-200 bg-slate-50">
                      <div className="p-4 flex items-center justify-center font-bold text-slate-400 text-xs uppercase tracking-wider bg-slate-50/80">
                         Öğünler
                      </div>
-                     {DAYS.map(day => (
+                     {DAYS.map((day, index) => (
                        <div key={day} className="p-4 text-center font-bold text-slate-700 text-sm">
-                         {day}
+                         <div>{day}</div>
+                         <div className="mt-1 text-xs font-medium text-slate-400">{getMealPlanWeekDates(weekStartDate)[index]}</div>
                        </div>
                      ))}
                   </div>
@@ -1045,6 +990,7 @@ const MealPlans = () => {
                     </button>
                   </div>
                </div>
+               </>}
              </>
            )}
         </div>
