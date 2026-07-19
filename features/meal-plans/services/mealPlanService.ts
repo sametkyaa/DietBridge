@@ -1,6 +1,7 @@
 
 import { supabase } from '../../../lib/supabaseClient';
 import { isValidUuid } from '../../../shared/utils/uuid';
+import { isCanonicalMealPhotoPath } from './mealPhotoService';
 
 export type MealPlanValidationErrorCode =
   | 'INVALID_CLIENT_ID'
@@ -9,6 +10,7 @@ export type MealPlanValidationErrorCode =
   | 'INVALID_MEAL_ID'
   | 'INVALID_RECIPE_ID'
   | 'RECIPE_SOURCE_NOT_SUPPORTED'
+  | 'INVALID_MEAL_PHOTO_PATH'
   | 'INVALID_WEEK_PAYLOAD'
   | 'INVALID_RPC_RESPONSE';
 
@@ -49,6 +51,10 @@ export const getMealPlanUserMessage = (error: unknown): string => {
 
     if (error.code === 'RECIPE_SOURCE_NOT_SUPPORTED') {
       return 'Tarif kaynaklı öğün kaydı henüz desteklenmiyor.';
+    }
+
+    if (error.code === 'INVALID_MEAL_PHOTO_PATH') {
+      return 'Öğün görseli geçersiz veya bu plan için yetkili değil.';
     }
   }
 
@@ -175,6 +181,9 @@ const assertWeeklyPayload = (weekStart: string, days: WeeklyMealPlanDayInput[]):
       if (meal.recipe_id != null) {
         throw new MealPlanValidationError('INVALID_RECIPE_ID', `${field}.recipe_id`);
       }
+      if (meal.photo_url != null && !isCanonicalMealPhotoPath(meal.photo_url)) {
+        throw new MealPlanValidationError('INVALID_MEAL_PHOTO_PATH', `${field}.photo_url`);
+      }
     });
   });
 };
@@ -225,7 +234,7 @@ const assertCanonicalResponse = (
           || rawMeal.source !== 'manual'
           || !isRecord(rawMeal.macros)
           || (rawMeal.calories !== null && typeof rawMeal.calories !== 'number')
-          || (rawMeal.photo_url !== null && typeof rawMeal.photo_url !== 'string')) {
+          || (rawMeal.photo_url !== null && !isCanonicalMealPhotoPath(rawMeal.photo_url))) {
         throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}]`);
       }
 
@@ -319,6 +328,23 @@ export const fetchWeeklyMealPlan = async (
     .lte('plan_date', endDate);
 
   if (error) throw error;
+  if (!Array.isArray(data)) {
+    throw new MealPlanValidationError('INVALID_RPC_RESPONSE', 'meal_plans');
+  }
+
+  data.forEach((plan, planIndex) => {
+    if (!plan || !Array.isArray(plan.meals)) {
+      throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `meal_plans[${planIndex}]`);
+    }
+    plan.meals.forEach((meal, mealIndex) => {
+      if (meal.photo_url != null && !isCanonicalMealPhotoPath(meal.photo_url)) {
+        throw new MealPlanValidationError(
+          'INVALID_MEAL_PHOTO_PATH',
+          `meal_plans[${planIndex}].meals[${mealIndex}].photo_url`,
+        );
+      }
+    });
+  });
   return data;
 };
 

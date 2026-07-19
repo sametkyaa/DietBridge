@@ -37,6 +37,15 @@ import {
   type WeeklyMealInput,
   type WeeklyMealPlanDayInput,
 } from '../features/meal-plans/services/mealPlanService';
+import {
+  cleanupFailedMealPhotoUploads,
+  createMealPhotoLocalPreview,
+  getMealPhotoPreviewUrls,
+  isCanonicalMealPhotoPath,
+  processPendingMealPhotoCleanup,
+  uploadMealPhoto,
+  validateMealPhotoFile,
+} from '../features/meal-plans/services/mealPhotoService';
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
 
@@ -90,6 +99,8 @@ interface PlannedMealContent {
   mealId?: string;
   name: string;
   image: string | null;
+  imagePreview?: string | null;
+  pendingPhoto?: File | null;
   calories: number;
   macros: Recipe['macros'];
   source?: 'manual' | 'recipe';
@@ -138,6 +149,7 @@ const MealPlans = () => {
   const [customMealPhoto, setCustomMealPhoto] = useState<File | null>(null);
   const [customMealPhotoPreview, setCustomMealPhotoPreview] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoCleanupWarning, setPhotoCleanupWarning] = useState<string | null>(null);
 
   // Fetch Clients
   useEffect(() => {
@@ -232,6 +244,11 @@ const MealPlans = () => {
         const endDateStr = end.toISOString().split('T')[0];
 
         const plans = await fetchWeeklyMealPlan(selectedClient.id, user.id, weekStartDate, endDateStr);
+        const photoPreviews = await getMealPhotoPreviewUrls(
+          plans.flatMap((plan) => plan.meals.flatMap((meal) => (
+            isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
+          ))),
+        );
         
         if (!isMounted) return;
 
@@ -326,6 +343,9 @@ const MealPlans = () => {
                                  calories: m.calories,
                                  macros: m.macros || { protein: 0, carbs: 0, fat: 0 },
                                  image: m.photo_url,
+                                 imagePreview: isCanonicalMealPhotoPath(m.photo_url)
+                                   ? photoPreviews.get(m.photo_url) ?? null
+                                   : null,
                                  source: m.source === 'manual' ? 'manual' : 'recipe',
                                  recipeId: m.recipe_id ?? null,
                              };
@@ -408,39 +428,19 @@ const MealPlans = () => {
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (!['image/jpeg', 'image/png', 'image/webp', 'image/jpg'].includes(file.type)) {
-         alert("Lütfen geçerli bir görsel yükleyin (jpg, png, webp)");
-         return;
+      try {
+        validateMealPhotoFile(file);
+      } catch {
+        alert('Lütfen en fazla 5 MiB boyutunda JPEG, PNG veya WebP görsel seçin.');
+        return;
       }
       setCustomMealPhoto(file);
-      setCustomMealPhotoPreview(URL.createObjectURL(file));
+      setCustomMealPhotoPreview(createMealPhotoLocalPreview(file));
     }
   };
 
-  const handleAddCustomMeal = async () => {
+  const handleAddCustomMeal = () => {
     if (!activeCell || !customMealText.trim() || !selectedClient) return;
-
-    let photo_url = null;
-    if (customMealPhoto) {
-       setIsUploadingPhoto(true);
-       const fileExt = customMealPhoto.name.split('.').pop();
-       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-       const filePath = `meal-plans/${selectedClient.id}/${fileName}`;
-
-       const { error: uploadError } = await supabase.storage
-         .from('meal-photos')
-         .upload(filePath, customMealPhoto);
-
-       if (uploadError) {
-          setIsUploadingPhoto(false);
-          alert("Görsel yüklenirken bir hata oluştu: " + uploadError.message);
-          return;
-       }
-
-       const { data: publicUrlData } = supabase.storage.from('meal-photos').getPublicUrl(filePath);
-       photo_url = publicUrlData.publicUrl;
-       setIsUploadingPhoto(false);
-    }
 
     const manualMeal: PlannedMealContent = {
        id: `manual-${Date.now()}`,
@@ -451,7 +451,9 @@ const MealPlans = () => {
           carbs: parseInt(customMealCarbs) || 0,
           fat: parseInt(customMealFat) || 0
        },
-       image: photo_url,
+       image: null,
+       imagePreview: customMealPhotoPreview,
+       pendingPhoto: customMealPhoto,
        source: 'manual',
        recipeId: null,
     };
@@ -597,6 +599,8 @@ const MealPlans = () => {
     }
 
     setIsSaving(true);
+    setPhotoCleanupWarning(null);
+    const uploadedPhotoPaths: string[] = [];
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !isValidUuid(user.id)) {
@@ -609,6 +613,7 @@ const MealPlans = () => {
       const start = new Date(Date.UTC(year, month - 1, day));
       
       const weeklyPayload: WeeklyMealPlanDayInput[] = [];
+      setIsUploadingPhoto(true);
 
       // Build the complete Monday-Sunday payload before the single RPC call.
       for (let i = 0; i < 7; i++) {
@@ -643,7 +648,19 @@ const MealPlans = () => {
               if (content.mealId) mealData.id = content.mealId;
               mealData.calories = content.calories;
               mealData.macros = { ...mealData.macros, ...content.macros };
-              mealData.photo_url = content.image;
+              if (content.pendingPhoto) {
+                const uploadedPath = await uploadMealPhoto({
+                  file: content.pendingPhoto,
+                  clientId: selectedClient.id,
+                  dietitianId: user.id,
+                });
+                uploadedPhotoPaths.push(uploadedPath);
+                mealData.photo_url = uploadedPath;
+              } else if (isCanonicalMealPhotoPath(content.image)) {
+                mealData.photo_url = content.image;
+              } else {
+                mealData.photo_url = null;
+              }
               // Recipe persistence has no canonical table/FK yet. UI suggestions
               // are persisted as manual meals without carrying mock recipe IDs.
               mealData.source = 'manual';
@@ -662,6 +679,11 @@ const MealPlans = () => {
       }
 
       const savedWeek = await saveWeeklyMealPlan(selectedClient.id, weekStartDate, weeklyPayload);
+      const photoPreviews = await getMealPhotoPreviewUrls(
+        savedWeek.plans.flatMap((plan) => plan.meals.flatMap((meal) => (
+          isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
+        ))),
+      );
       setWeeklyPlan((currentPlan) => {
         const nextPlan = { ...currentPlan };
         savedWeek.plans.forEach((savedPlan, dayIndex) => {
@@ -672,13 +694,26 @@ const MealPlans = () => {
             if (!mealRow) return;
             const currentContent = currentDay[mealRow.id];
             if (typeof currentContent === 'object' && currentContent !== null) {
-              currentDay[mealRow.id] = { ...currentContent, mealId: savedMeal.id };
+              currentDay[mealRow.id] = {
+                ...currentContent,
+                mealId: savedMeal.id,
+                image: savedMeal.photo_url,
+                imagePreview: isCanonicalMealPhotoPath(savedMeal.photo_url)
+                  ? photoPreviews.get(savedMeal.photo_url) ?? null
+                  : (isCanonicalMealPhotoPath(currentContent.image)
+                    ? null
+                    : currentContent.imagePreview ?? currentContent.image),
+                pendingPhoto: null,
+              };
             } else {
               currentDay[mealRow.id] = {
                 id: savedMeal.id,
                 mealId: savedMeal.id,
                 name: savedMeal.title,
                 image: savedMeal.photo_url,
+                imagePreview: isCanonicalMealPhotoPath(savedMeal.photo_url)
+                  ? photoPreviews.get(savedMeal.photo_url) ?? null
+                  : null,
                 calories: savedMeal.calories ?? 0,
                 macros: savedMeal.macros as Recipe['macros'],
                 source: savedMeal.source,
@@ -691,11 +726,19 @@ const MealPlans = () => {
         return nextPlan;
       });
 
+      const cleanup = await processPendingMealPhotoCleanup();
+      setPhotoCleanupWarning(cleanup.warning);
+
       alert('Haftalık plan başarıyla kaydedildi!');
     } catch (error: unknown) {
+      if (uploadedPhotoPaths.length > 0) {
+        const cleanup = await cleanupFailedMealPhotoUploads(uploadedPhotoPaths);
+        setPhotoCleanupWarning(cleanup.warning);
+      }
       console.error('Plan kaydedilirken hata:', getMealPlanErrorLogContext(error));
       alert(getMealPlanUserMessage(error));
     } finally {
+      setIsUploadingPhoto(false);
       setIsSaving(false);
     }
   };
@@ -813,6 +856,12 @@ const MealPlans = () => {
              </div>
            ) : (
              <>
+               {photoCleanupWarning && (
+                 <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">
+                   <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                   <span>{photoCleanupWarning}</span>
+                 </div>
+               )}
                {/* Grid Controls */}
                <div className="flex justify-between items-center mb-6">
                   <div className="flex gap-2">
@@ -957,12 +1006,16 @@ const MealPlans = () => {
                                     <X className="w-3 h-3" />
                                   </button>
                                   <div className="h-20 w-full rounded-lg overflow-hidden relative bg-slate-100 flex items-center justify-center">
-                                     {cellContent.image ? (
-                                         <img src={cellContent.image} alt={cellContent.name} className="w-full h-full object-cover" />
+                                     {(cellContent.imagePreview ?? (isCanonicalMealPhotoPath(cellContent.image) ? null : cellContent.image)) ? (
+                                         <img
+                                           src={cellContent.imagePreview ?? (isCanonicalMealPhotoPath(cellContent.image) ? '' : cellContent.image ?? '')}
+                                           alt={cellContent.name}
+                                           className="w-full h-full object-cover"
+                                         />
                                      ) : (
                                          <span className="text-slate-400 text-xs font-medium px-2 text-center">{cellContent.name}</span>
                                      )}
-                                     {cellContent.image && (
+                                     {(cellContent.imagePreview ?? (isCanonicalMealPhotoPath(cellContent.image) ? null : cellContent.image)) && (
                                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2">
                                             <p className="text-white text-[10px] font-bold line-clamp-1">{cellContent.name}</p>
                                          </div>
