@@ -11,6 +11,7 @@ export type MealPlanValidationErrorCode =
   | 'INVALID_RECIPE_ID'
   | 'RECIPE_SOURCE_NOT_SUPPORTED'
   | 'INVALID_MEAL_PHOTO_PATH'
+  | 'INVALID_MEAL_MACROS'
   | 'INVALID_WEEK_PAYLOAD'
   | 'INVALID_RPC_RESPONSE';
 
@@ -56,6 +57,10 @@ export const getMealPlanUserMessage = (error: unknown): string => {
     if (error.code === 'INVALID_MEAL_PHOTO_PATH') {
       return 'Öğün görseli geçersiz veya bu plan için yetkili değil.';
     }
+
+    if (error.code === 'INVALID_MEAL_MACROS') {
+      return 'Protein, karbonhidrat ve yağ alanları sayısal, sonlu ve sıfır veya daha büyük olmalıdır.';
+    }
   }
 
   return 'Plan kaydedilemedi. Lütfen bilgileri kontrol edip tekrar deneyin.';
@@ -80,12 +85,18 @@ export const getMealPlanErrorLogContext = (
   return { code: 'UNKNOWN_MEAL_PLAN_ERROR' };
 };
 
+export interface CanonicalMealMacros {
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
 export interface WeeklyMealInput {
   id?: string;
   type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   title: string;
   calories?: number | null;
-  macros?: Record<string, unknown>;
+  macros: CanonicalMealMacros;
   photo_url?: string | null;
   sort_order: number;
   time: string;
@@ -184,6 +195,7 @@ const assertWeeklyPayload = (weekStart: string, days: WeeklyMealPlanDayInput[]):
       if (meal.photo_url != null && !isCanonicalMealPhotoPath(meal.photo_url)) {
         throw new MealPlanValidationError('INVALID_MEAL_PHOTO_PATH', `${field}.photo_url`);
       }
+      normalizeCanonicalMealMacros(meal.macros, `${field}.macros`);
     });
   });
 };
@@ -191,6 +203,36 @@ const assertWeeklyPayload = (weekStart: string, days: WeeklyMealPlanDayInput[]):
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
+
+export const normalizeCanonicalMealMacros = (
+  value: unknown,
+  field = 'macros',
+): CanonicalMealMacros => {
+  if (!isRecord(value)) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  const keys = Object.keys(value).sort();
+  if (
+    keys.length !== 3
+    || keys[0] !== 'carbs'
+    || keys[1] !== 'fat'
+    || keys[2] !== 'protein'
+  ) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  const { protein, carbs, fat } = value;
+  if (
+    typeof protein !== 'number' || !Number.isFinite(protein) || protein < 0
+    || typeof carbs !== 'number' || !Number.isFinite(carbs) || carbs < 0
+    || typeof fat !== 'number' || !Number.isFinite(fat) || fat < 0
+  ) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  return { protein, carbs, fat };
+};
 
 const assertCanonicalResponse = (
   value: unknown,
@@ -232,7 +274,6 @@ const assertCanonicalResponse = (
           || typeof rawMeal.time !== 'string'
           || !TIME_PATTERN.test(rawMeal.time)
           || rawMeal.source !== 'manual'
-          || !isRecord(rawMeal.macros)
           || (rawMeal.calories !== null && typeof rawMeal.calories !== 'number')
           || (rawMeal.photo_url !== null && !isCanonicalMealPhotoPath(rawMeal.photo_url))) {
         throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}]`);
@@ -246,10 +287,19 @@ const assertCanonicalResponse = (
       if (sortOrder < previousSortOrder || (sortOrder === previousSortOrder && rawMeal.id <= previousId)) {
         throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals`);
       }
+      let macros: CanonicalMealMacros;
+      try {
+        macros = normalizeCanonicalMealMacros(rawMeal.macros, `plans[${dayIndex}].meals[${mealIndex}].macros`);
+      } catch {
+        throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}].macros`);
+      }
       previousSortOrder = sortOrder;
       previousId = rawMeal.id;
       seenMealIds.add(rawMeal.id);
-      return rawMeal as unknown as CanonicalMeal;
+      return {
+        ...rawMeal,
+        macros,
+      } as CanonicalMeal;
     });
 
     return {
@@ -343,6 +393,7 @@ export const fetchWeeklyMealPlan = async (
           `meal_plans[${planIndex}].meals[${mealIndex}].photo_url`,
         );
       }
+      normalizeCanonicalMealMacros(meal.macros, `meal_plans[${planIndex}].meals[${mealIndex}].macros`);
     });
   });
   return data;

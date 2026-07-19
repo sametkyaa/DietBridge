@@ -35,9 +35,12 @@ import {
   fetchWeeklyMealPlan,
   getMealPlanErrorLogContext,
   getMealPlanUserMessage,
+  MealPlanValidationError,
+  normalizeCanonicalMealMacros,
   saveWeeklyMealPlan,
   type CanonicalDailyMealPlan,
   type CanonicalMeal,
+  type CanonicalMealMacros,
   type WeeklyMealInput,
   type WeeklyMealPlanDayInput,
 } from '../features/meal-plans/services/mealPlanService';
@@ -85,17 +88,10 @@ interface PlannedMealContent {
   imagePreview?: string | null;
   pendingPhoto?: File | null;
   calories: number;
-  macros: MealMacros;
+  macros: CanonicalMealMacros;
   source?: 'manual';
   recipeId?: string | null;
   isEaten?: boolean;
-}
-
-interface MealMacros {
-  protein?: number;
-  carbs?: number;
-  fat?: number;
-  [key: string]: unknown;
 }
 
 // Plan State: { Day: { MealID: Content } }
@@ -110,23 +106,22 @@ const DEFAULT_MEAL_ROWS: MealRow[] = [
 
 type MealPlanReadMeal = Omit<CanonicalMeal, 'plan_id'>;
 type MealPlanReadDay = Omit<CanonicalDailyMealPlan, 'meals'> & { meals: MealPlanReadMeal[] };
+type MealRowNameByPlacement = Map<string, string>;
 
-const getMealRowDetails = (meal: MealPlanReadMeal) => {
-  const mealMacros = meal.macros as Record<string, unknown>;
-  const rowName = typeof mealMacros?._rowName === 'string'
-    ? mealMacros._rowName
-    : meal.type === 'breakfast' ? 'Kahvaltı'
-      : meal.type === 'lunch' ? 'Öğle'
-        : meal.type === 'dinner' ? 'Akşam'
-          : 'Ara Öğün';
-  const time = meal.time || (typeof mealMacros?._time === 'string' ? mealMacros._time : '15:00');
-  return { rowName, time, sortOrder: meal.sort_order, key: `${rowName}-${time}-${meal.sort_order}` };
+const getMealRowDetails = (meal: MealPlanReadMeal, rowNamesByPlacement?: MealRowNameByPlacement) => {
+  const placementKey = `${meal.type}-${meal.time}-${meal.sort_order}`;
+  const rowName = rowNamesByPlacement?.get(placementKey) ?? (meal.type === 'breakfast' ? 'Kahvaltı'
+    : meal.type === 'lunch' ? 'Öğle'
+      : meal.type === 'dinner' ? 'Akşam'
+        : 'Ara Öğün');
+  return { rowName, time: meal.time, sortOrder: meal.sort_order, key: `${rowName}-${meal.time}-${meal.sort_order}` };
 };
 
 const mapCanonicalPlansToEditor = (
   plans: MealPlanReadDay[],
   weekStart: string,
   photoPreviews: Map<string, string>,
+  rowNamesByPlacement?: MealRowNameByPlacement,
 ): { meals: MealRow[]; weeklyPlan: PlanState; planNotes: PlanNotesState; isEmpty: boolean } => {
   const plansByDate = mapWeeklyPlansByDate(plans, weekStart);
   const orderedPlans = getMealPlanWeekDates(weekStart)
@@ -135,7 +130,7 @@ const mapCanonicalPlansToEditor = (
   const rowDetails = new Map<string, ReturnType<typeof getMealRowDetails>>();
 
   orderedPlans.forEach((plan) => plan.meals.forEach((meal) => {
-    const details = getMealRowDetails(meal);
+    const details = getMealRowDetails(meal, rowNamesByPlacement);
     if (!rowDetails.has(details.key)) rowDetails.set(details.key, details);
   }));
 
@@ -156,7 +151,7 @@ const mapCanonicalPlansToEditor = (
     weeklyPlan[dayName] = {};
     planNotes[dayName] = plan.notes ?? null;
     plan.meals.forEach((meal) => {
-      const rowId = rowIdByKey.get(getMealRowDetails(meal).key);
+      const rowId = rowIdByKey.get(getMealRowDetails(meal, rowNamesByPlacement).key);
       if (!rowId) return;
       weeklyPlan[dayName][rowId] = {
         id: meal.id,
@@ -165,7 +160,7 @@ const mapCanonicalPlansToEditor = (
         image: meal.photo_url,
         imagePreview: isCanonicalMealPhotoPath(meal.photo_url) ? photoPreviews.get(meal.photo_url) ?? null : null,
         calories: meal.calories ?? 0,
-        macros: meal.macros as MealMacros,
+        macros: meal.macros,
         source: 'manual',
         recipeId: null,
         isEaten: meal.is_eaten,
@@ -214,7 +209,7 @@ const createPreviousWeekCopy = (
         image: null,
         imagePreview: null,
         calories: meal.calories ?? 0,
-        macros: meal.macros as MealMacros,
+        macros: meal.macros,
         source: 'manual',
         recipeId: null,
         isEaten: false,
@@ -532,18 +527,38 @@ const MealPlans = () => {
     }
   };
 
+  const readManualMacro = (value: string, field: string): number => {
+    if (!value.trim()) {
+      throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+    }
+
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+    }
+    return parsed;
+  };
+
   const handleAddCustomMeal = () => {
     if (!activeCell || !customMealText.trim() || !selectedClient) return;
+
+    let macros: CanonicalMealMacros;
+    try {
+      macros = normalizeCanonicalMealMacros({
+        protein: readManualMacro(customMealProtein, 'protein'),
+        carbs: readManualMacro(customMealCarbs, 'carbs'),
+        fat: readManualMacro(customMealFat, 'fat'),
+      });
+    } catch (error) {
+      alert(getMealPlanUserMessage(error));
+      return;
+    }
 
     const manualMeal: PlannedMealContent = {
        id: `manual-${Date.now()}`,
        name: customMealText,
        calories: parseInt(customMealCalories) || 0,
-       macros: {
-          protein: parseInt(customMealProtein) || 0,
-          carbs: parseInt(customMealCarbs) || 0,
-          fat: parseInt(customMealFat) || 0
-       },
+       macros,
        image: null,
        imagePreview: customMealPhotoPreview,
        pendingPhoto: customMealPhoto,
@@ -709,35 +724,34 @@ const MealPlans = () => {
 
             const mealType = mapMealTypeToDb(mealRow.name);
             
+            if (typeof content === 'string') {
+              throw new MealPlanValidationError('INVALID_MEAL_MACROS', `days[${i}].meals[${mealId}].macros`);
+            }
+
             const mealData: WeeklyMealInput = {
               type: mealType,
-              title: typeof content === 'string' ? content : content.name,
+              title: content.name,
               sort_order: meals.findIndex(m => m.id === mealRow.id),
               time: mealRow.time,
-              macros: { _rowName: mealRow.name },
+              macros: normalizeCanonicalMealMacros(content.macros, `days[${i}].meals[${mealId}].macros`),
               source: 'manual',
               recipe_id: null,
             };
 
-            if (typeof content !== 'string') {
-              if (content.mealId) mealData.id = content.mealId;
-              mealData.calories = content.calories;
-              mealData.macros = { ...mealData.macros, ...content.macros };
-              if (content.pendingPhoto) {
-                const uploadedPath = await uploadMealPhoto({
-                  file: content.pendingPhoto,
-                  clientId: selectedClient.id,
-                  dietitianId: user.id,
-                });
-                uploadedPhotoPaths.push(uploadedPath);
-                mealData.photo_url = uploadedPath;
-              } else if (isCanonicalMealPhotoPath(content.image)) {
-                mealData.photo_url = content.image;
-              } else {
-                mealData.photo_url = null;
-              }
-              mealData.source = 'manual';
-              mealData.recipe_id = null;
+            if (content.mealId) mealData.id = content.mealId;
+            mealData.calories = content.calories;
+            if (content.pendingPhoto) {
+              const uploadedPath = await uploadMealPhoto({
+                file: content.pendingPhoto,
+                clientId: selectedClient.id,
+                dietitianId: user.id,
+              });
+              uploadedPhotoPaths.push(uploadedPath);
+              mealData.photo_url = uploadedPath;
+            } else if (isCanonicalMealPhotoPath(content.image)) {
+              mealData.photo_url = content.image;
+            } else {
+              mealData.photo_url = null;
             }
 
             dayMeals.push(mealData);
@@ -751,13 +765,19 @@ const MealPlans = () => {
         });
       }
 
+      const rowNamesByPlacement: MealRowNameByPlacement = new Map(
+        meals.map((mealRow, sortOrder) => [
+          `${mapMealTypeToDb(mealRow.name)}-${mealRow.time}-${sortOrder}`,
+          mealRow.name,
+        ]),
+      );
       const savedWeek = await saveWeeklyMealPlan(selectedClient.id, normalizedWeekStart, weeklyPayload);
       const photoPreviews = await getMealPhotoPreviewUrls(
         savedWeek.plans.flatMap((plan) => plan.meals.flatMap((meal) => (
           isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
         ))),
       );
-      const editor = mapCanonicalPlansToEditor(savedWeek.plans, normalizedWeekStart, photoPreviews);
+      const editor = mapCanonicalPlansToEditor(savedWeek.plans, normalizedWeekStart, photoPreviews, rowNamesByPlacement);
       setMeals(editor.meals);
       setWeeklyPlan(editor.weeklyPlan);
       setPlanNotes(editor.planNotes);
@@ -1107,7 +1127,7 @@ const MealPlans = () => {
                                      <span className="text-[10px] font-bold text-orange-500 flex items-center gap-0.5">
                                        <Flame className="w-3 h-3" /> {cellContent.calories || 0}
                                      </span>
-                                     <span className="text-[10px] text-slate-400">{cellContent.macros?.protein || 0}g Prot</span>
+                                     <span className="text-[10px] text-slate-400">{cellContent.macros.protein}g Prot</span>
                                   </div>
                                </div>
                              )}
