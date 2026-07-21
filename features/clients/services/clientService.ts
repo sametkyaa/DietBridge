@@ -247,7 +247,9 @@ const formatDietDuration = (dietStartDate: string | null): string | null => {
 /**
  * Fetches clients associated with the logged-in dietitian.
  */
-export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
+export const fetchDietitianClientList = async (
+  relationStatuses: Array<'active' | 'pending'> = ['active', 'pending'],
+): Promise<ClientListResult> => {
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -299,7 +301,7 @@ export const fetchDietitianClientList = async (): Promise<ClientListResult> => {
         )
       `)
       .eq('dietitian_id', user.id)
-      .in('status', ['active', 'pending']);
+      .in('status', relationStatuses);
 
     if (error) {
       return { status: 'error', kind: 'query', userMessage: CLIENT_LIST_LOAD_ERROR };
@@ -396,6 +398,16 @@ export const fetchDietitianClients = async (): Promise<Client[]> => {
   const result = await fetchDietitianClientList();
   if (result.status === 'error') throw new Error(result.userMessage);
   return result.clients;
+};
+
+export const fetchActiveDietitianClientList = async (): Promise<ClientListResult> => {
+  const result = await fetchDietitianClientList(['active']);
+  if (result.status === 'error') return result;
+
+  return {
+    status: 'success',
+    clients: result.clients.filter((client) => client.status === 'Aktif'),
+  };
 };
 
 /**
