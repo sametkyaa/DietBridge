@@ -37,6 +37,7 @@ import {
   getMealPlanUserMessage,
   MealPlanValidationError,
   normalizeCanonicalMealMacros,
+  normalizeMealTime,
   saveWeeklyMealPlan,
   type CanonicalDailyMealPlan,
   type CanonicalMeal,
@@ -114,7 +115,8 @@ const getMealRowDetails = (meal: MealPlanReadMeal, rowNamesByPlacement?: MealRow
     : meal.type === 'lunch' ? 'Öğle'
       : meal.type === 'dinner' ? 'Akşam'
         : 'Ara Öğün');
-  return { rowName, time: meal.time, sortOrder: meal.sort_order, key: `${rowName}-${meal.time}-${meal.sort_order}` };
+  const time = normalizeMealTime(meal.time, 'meal.time');
+  return { rowName, time, sortOrder: meal.sort_order, key: `${rowName}-${time}-${meal.sort_order}` };
 };
 
 const mapCanonicalPlansToEditor = (
@@ -205,6 +207,7 @@ const createPreviousWeekCopy = (
       if (!rowId) return;
       weeklyPlan[dayName][rowId] = {
         id: `copy-${dayName}-${rowId}`,
+        mealId: undefined,
         name: meal.title,
         image: null,
         imagePreview: null,
@@ -732,7 +735,7 @@ const MealPlans = () => {
               type: mealType,
               title: content.name,
               sort_order: meals.findIndex(m => m.id === mealRow.id),
-              time: mealRow.time,
+              time: normalizeMealTime(mealRow.time, `days[${i}].meals[${mealId}].time`),
               macros: normalizeCanonicalMealMacros(content.macros, `days[${i}].meals[${mealId}].macros`),
               source: 'manual',
               recipe_id: null,
@@ -792,7 +795,9 @@ const MealPlans = () => {
         const cleanup = await cleanupFailedMealPhotoUploads(uploadedPhotoPaths);
         setPhotoCleanupWarning(cleanup.warning);
       }
-      console.error('Plan kaydedilirken hata:', getMealPlanErrorLogContext(error));
+      if (import.meta.env.DEV) {
+        console.error('[MealPlans] weekly plan save failed:', getMealPlanErrorLogContext(error));
+      }
       alert(getMealPlanUserMessage(error));
     } finally {
       setIsUploadingPhoto(false);

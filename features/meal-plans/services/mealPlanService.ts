@@ -68,18 +68,19 @@ export const getMealPlanUserMessage = (error: unknown): string => {
 
 export const getMealPlanErrorLogContext = (
   error: unknown
-): { code: string; field?: string } => {
+): { code: string; field?: string; message?: string; details?: string; status?: number } => {
   if (error instanceof MealPlanValidationError) {
-    return { code: error.code, field: error.field };
+    return { code: error.code, field: error.field, message: error.message };
   }
 
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof error.code === 'string'
-  ) {
-    return { code: error.code };
+  if (typeof error === 'object' && error !== null) {
+    const record = error as Record<string, unknown>;
+    return {
+      code: typeof record.code === 'string' ? record.code : 'UNKNOWN_MEAL_PLAN_ERROR',
+      ...(typeof record.message === 'string' ? { message: record.message } : {}),
+      ...(typeof record.details === 'string' ? { details: record.details } : {}),
+      ...(typeof record.status === 'number' ? { status: record.status } : {}),
+    };
   }
 
   return { code: 'UNKNOWN_MEAL_PLAN_ERROR' };
@@ -136,7 +137,21 @@ export interface CanonicalWeeklyMealPlan {
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const TIME_WITH_OPTIONAL_SECONDS_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/;
 const MEAL_TYPES = new Set<WeeklyMealInput['type']>(['breakfast', 'lunch', 'dinner', 'snack']);
+
+export const normalizeMealTime = (value: unknown, field = 'time'): string => {
+  if (typeof value !== 'string') {
+    throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', field);
+  }
+
+  const match = TIME_WITH_OPTIONAL_SECONDS_PATTERN.exec(value);
+  if (!match) {
+    throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', field);
+  }
+
+  return `${match[1]}:${match[2]}`;
+};
 
 const addUtcDays = (isoDate: string, days: number): string => {
   if (!ISO_DATE_PATTERN.test(isoDate)) {
@@ -263,6 +278,12 @@ const assertCanonicalResponse = (
     let previousSortOrder = -1;
     let previousId = '';
     const meals = rawPlan.meals.map((rawMeal, mealIndex): CanonicalMeal => {
+      let time: string;
+      try {
+        time = normalizeMealTime(rawMeal.time, `plans[${dayIndex}].meals[${mealIndex}].time`);
+      } catch {
+        throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}].time`);
+      }
       if (!isRecord(rawMeal)
           || !isValidUuid(rawMeal.id)
           || rawMeal.plan_id !== rawPlan.id
@@ -271,8 +292,7 @@ const assertCanonicalResponse = (
           || typeof rawMeal.is_eaten !== 'boolean'
           || !Number.isInteger(rawMeal.sort_order)
           || (rawMeal.sort_order as number) < 0
-          || typeof rawMeal.time !== 'string'
-          || !TIME_PATTERN.test(rawMeal.time)
+          || !TIME_PATTERN.test(time)
           || rawMeal.source !== 'manual'
           || (rawMeal.calories !== null && typeof rawMeal.calories !== 'number')
           || (rawMeal.photo_url !== null && !isCanonicalMealPhotoPath(rawMeal.photo_url))) {
@@ -298,6 +318,7 @@ const assertCanonicalResponse = (
       seenMealIds.add(rawMeal.id);
       return {
         ...rawMeal,
+        time,
         macros,
       } as CanonicalMeal;
     });
@@ -325,7 +346,14 @@ export const saveWeeklyMealPlan = async (
   days: WeeklyMealPlanDayInput[],
 ): Promise<CanonicalWeeklyMealPlan> => {
   assertValidUuid(clientId, 'INVALID_CLIENT_ID', 'meal_plans.client_id');
-  assertWeeklyPayload(weekStart, days);
+  const normalizedDays = days.map((plan, dayIndex) => ({
+    ...plan,
+    meals: plan.meals.map((meal, mealIndex) => ({
+      ...meal,
+      time: normalizeMealTime(meal.time, `days[${dayIndex}].meals[${mealIndex}].time`),
+    })),
+  }));
+  assertWeeklyPayload(weekStart, normalizedDays);
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
@@ -336,7 +364,7 @@ export const saveWeeklyMealPlan = async (
   const { data, error } = await supabase.rpc('save_weekly_meal_plan', {
     p_client_id: clientId,
     p_week_start: weekStart,
-    p_days: days,
+    p_days: normalizedDays,
   });
   if (error) throw error;
 
@@ -387,6 +415,7 @@ export const fetchWeeklyMealPlan = async (
       throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `meal_plans[${planIndex}]`);
     }
     plan.meals.forEach((meal, mealIndex) => {
+      meal.time = normalizeMealTime(meal.time, `meal_plans[${planIndex}].meals[${mealIndex}].time`);
       if (meal.photo_url != null && !isCanonicalMealPhotoPath(meal.photo_url)) {
         throw new MealPlanValidationError(
           'INVALID_MEAL_PHOTO_PATH',
