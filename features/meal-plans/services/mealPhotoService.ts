@@ -44,6 +44,42 @@ export function assertCanonicalMealPhotoPath(value: unknown): asserts value is s
   }
 }
 
+const LEGACY_MEAL_PHOTO_HOST = 'images.unsplash.com';
+
+/**
+ * Read-only compatibility validator for legacy production rows whose photo_url
+ * holds a full HTTPS URL instead of a canonical Storage object path.
+ *
+ * Write paths must never accept this shape; uploads and new records still
+ * require isCanonicalMealPhotoPath. Only the exact images.unsplash.com host
+ * over https is accepted (no credentials, no port or subdomain variations).
+ */
+export const isLegacyMealPhotoUrl = (value: unknown): value is string => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+
+  return parsed.protocol === 'https:'
+    && parsed.host === LEGACY_MEAL_PHOTO_HOST
+    && parsed.username === ''
+    && parsed.password === '';
+};
+
+/**
+ * Accepts every photo reference that is safe to read from existing rows:
+ * a canonical Supabase Storage object path or an allowlisted legacy URL.
+ */
+export const isReadableMealPhotoReference = (value: unknown): value is string => (
+  isCanonicalMealPhotoPath(value) || isLegacyMealPhotoUrl(value)
+);
+
 export const validateMealPhotoFile = (file: File): void => {
   if (!(file instanceof File) || !MIME_TO_EXTENSION[file.type]) {
     throw new MealPhotoValidationError('INVALID_MEAL_PHOTO_FILE');

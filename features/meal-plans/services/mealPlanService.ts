@@ -1,7 +1,7 @@
 
 import { supabase } from '../../../lib/supabaseClient';
 import { isValidUuid } from '../../../shared/utils/uuid';
-import { isCanonicalMealPhotoPath } from './mealPhotoService';
+import { isCanonicalMealPhotoPath, isReadableMealPhotoReference } from './mealPhotoService';
 
 export type MealPlanValidationErrorCode =
   | 'INVALID_CLIENT_ID'
@@ -219,6 +219,22 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
+/**
+ * Read-side source normalization. Write payloads stay manual-only (see
+ * assertWeeklyPayload); existing production rows may still carry the legacy
+ * source='recipe' + recipe_id=null shape for manually entered meals, which is
+ * accepted only while reading and normalized to 'manual' in the UI model.
+ */
+const normalizeReadableMealSource = (source: unknown, recipeId: unknown): 'manual' | null => {
+  if (recipeId !== null) {
+    return null;
+  }
+  if (source === 'manual' || source === 'recipe') {
+    return 'manual';
+  }
+  return null;
+};
+
 export const normalizeCanonicalMealMacros = (
   value: unknown,
   field = 'macros',
@@ -284,6 +300,9 @@ const assertCanonicalResponse = (
       } catch {
         throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}].time`);
       }
+      const readableSource = isRecord(rawMeal)
+        ? normalizeReadableMealSource(rawMeal.source, rawMeal.recipe_id ?? null)
+        : null;
       if (!isRecord(rawMeal)
           || !isValidUuid(rawMeal.id)
           || rawMeal.plan_id !== rawPlan.id
@@ -293,9 +312,9 @@ const assertCanonicalResponse = (
           || !Number.isInteger(rawMeal.sort_order)
           || (rawMeal.sort_order as number) < 0
           || !TIME_PATTERN.test(time)
-          || rawMeal.source !== 'manual'
+          || readableSource === null
           || (rawMeal.calories !== null && typeof rawMeal.calories !== 'number')
-          || (rawMeal.photo_url !== null && !isCanonicalMealPhotoPath(rawMeal.photo_url))) {
+          || (rawMeal.photo_url !== null && !isReadableMealPhotoReference(rawMeal.photo_url))) {
         throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}]`);
       }
 
@@ -319,6 +338,8 @@ const assertCanonicalResponse = (
       return {
         ...rawMeal,
         time,
+        source: readableSource,
+        recipe_id: null,
         macros,
       } as CanonicalMeal;
     });
@@ -416,12 +437,21 @@ export const fetchWeeklyMealPlan = async (
     }
     plan.meals.forEach((meal, mealIndex) => {
       meal.time = normalizeMealTime(meal.time, `meal_plans[${planIndex}].meals[${mealIndex}].time`);
-      if (meal.photo_url != null && !isCanonicalMealPhotoPath(meal.photo_url)) {
+      if (meal.photo_url != null && !isReadableMealPhotoReference(meal.photo_url)) {
         throw new MealPlanValidationError(
           'INVALID_MEAL_PHOTO_PATH',
           `meal_plans[${planIndex}].meals[${mealIndex}].photo_url`,
         );
       }
+      const readableSource = normalizeReadableMealSource(meal.source, meal.recipe_id ?? null);
+      if (readableSource === null) {
+        throw new MealPlanValidationError(
+          'INVALID_RPC_RESPONSE',
+          `meal_plans[${planIndex}].meals[${mealIndex}].source`,
+        );
+      }
+      meal.source = readableSource;
+      meal.recipe_id = null;
       normalizeCanonicalMealMacros(meal.macros, `meal_plans[${planIndex}].meals[${mealIndex}].macros`);
     });
   });

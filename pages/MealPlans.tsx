@@ -50,6 +50,7 @@ import {
   createMealPhotoLocalPreview,
   getMealPhotoPreviewUrls,
   isCanonicalMealPhotoPath,
+  isLegacyMealPhotoUrl,
   processPendingMealPhotoCleanup,
   uploadMealPhoto,
   validateMealPhotoFile,
@@ -79,6 +80,19 @@ const getCurrentMondayIso = (): string => {
   return normalizeMealPlanWeekStart(
     `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
   );
+};
+
+const WEEK_RANGE_DAY_MONTH_FORMAT = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' });
+const WEEK_RANGE_FULL_FORMAT = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+
+const formatMealPlanWeekRangeLabel = (weekStart: string): string => {
+  const weekDates = getMealPlanWeekDates(weekStart);
+  const start = new Date(`${weekDates[0]}T00:00:00`);
+  const end = new Date(`${weekDates[6]}T00:00:00`);
+  if (start.getFullYear() === end.getFullYear()) {
+    return `${WEEK_RANGE_DAY_MONTH_FORMAT.format(start)} – ${WEEK_RANGE_FULL_FORMAT.format(end)}`;
+  }
+  return `${WEEK_RANGE_FULL_FORMAT.format(start)} – ${WEEK_RANGE_FULL_FORMAT.format(end)}`;
 };
 
 interface PlannedMealContent {
@@ -160,7 +174,11 @@ const mapCanonicalPlansToEditor = (
         mealId: meal.id,
         name: meal.title,
         image: meal.photo_url,
-        imagePreview: isCanonicalMealPhotoPath(meal.photo_url) ? photoPreviews.get(meal.photo_url) ?? null : null,
+        imagePreview: isCanonicalMealPhotoPath(meal.photo_url)
+          ? photoPreviews.get(meal.photo_url) ?? null
+          : isLegacyMealPhotoUrl(meal.photo_url)
+            ? meal.photo_url
+            : null,
         calories: meal.calories ?? 0,
         macros: meal.macros,
         source: 'manual',
@@ -241,6 +259,7 @@ const MealPlans = () => {
   const [planError, setPlanError] = useState<string | null>(null);
   const [isPlanEmpty, setIsPlanEmpty] = useState(false);
   const planRequestRef = useRef(0);
+  const weekPickerInputRef = useRef<HTMLInputElement | null>(null);
   const [planNotes, setPlanNotes] = useState<PlanNotesState>({});
   const [clientDetails, setClientDetails] = useState<ActiveClientDetails | null>(null);
   const [isLoadingClientDetails, setIsLoadingClientDetails] = useState(false);
@@ -680,6 +699,26 @@ const MealPlans = () => {
     setMeals(meals.map(m => m.id === id ? { ...m, [field]: value } : m));
   };
 
+  const handleOpenWeekPicker = () => {
+    const input = weekPickerInputRef.current;
+    if (!input) return;
+    try {
+      if ('showPicker' in HTMLInputElement.prototype) {
+        input.showPicker();
+        return;
+      }
+    } catch {
+      // Native picker unavailable; focusing lets the user type a date instead.
+    }
+    input.focus();
+  };
+
+  const handleWeekDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.value) {
+      setWeekStartDate(normalizeMealPlanWeekStart(event.target.value));
+    }
+  };
+
   const handleSavePlan = async () => {
     if (!selectedClient) {
       alert('Lütfen bir danışan seçiniz.');
@@ -812,7 +851,7 @@ const MealPlans = () => {
       <div className="flex-1 flex flex-col h-full min-w-0">
         
         {/* Header Section */}
-        <header className="px-8 py-6 bg-white border-b border-slate-200 flex justify-between items-center z-20 shadow-sm flex-shrink-0">
+        <header className="px-8 py-6 bg-white border-b border-slate-200 flex flex-wrap gap-y-3 justify-between items-center z-20 shadow-sm flex-shrink-0">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Haftalık Yemek Planı</h1>
             <p className="text-sm text-slate-500 mt-1">Danışan için haftalık beslenme programını oluşturun.</p>
@@ -893,16 +932,28 @@ const MealPlans = () => {
             {/* Date Picker */}
             <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-xl">
               <button type="button" aria-label="Önceki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, -1))} className="min-h-11 min-w-11 rounded-lg text-slate-500 hover:bg-white"><ChevronLeft className="mx-auto h-4 w-4" /></button>
-              <CalendarIcon className="w-4 h-4 text-slate-400" />
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 font-bold uppercase leading-none">Başlangıç Tarihi</span>
-                <input 
-                  type="date" 
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={handleOpenWeekPicker}
+                  aria-label={`Hafta seç: ${formatMealPlanWeekRangeLabel(weekStartDate)}`}
+                  title="Tarih seç"
+                  className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-left hover:bg-white"
+                >
+                  <CalendarIcon className="w-4 h-4 text-slate-400" />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase leading-none">Hafta</span>
+                    <span className="whitespace-nowrap text-sm font-bold leading-tight text-slate-700">{formatMealPlanWeekRangeLabel(weekStartDate)}</span>
+                  </div>
+                </button>
+                <input
+                  ref={weekPickerInputRef}
+                  type="date"
                   value={weekStartDate}
-                  onChange={(e) => {
-                    if (e.target.value) setWeekStartDate(normalizeMealPlanWeekStart(e.target.value));
-                  }}
-                  className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none p-0 h-4 leading-none w-28"
+                  onChange={handleWeekDateChange}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-1 w-full opacity-0"
                 />
               </div>
               <button type="button" aria-label="Sonraki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, 1))} className="min-h-11 min-w-11 rounded-lg text-slate-500 hover:bg-white"><ChevronRight className="mx-auto h-4 w-4" /></button>
