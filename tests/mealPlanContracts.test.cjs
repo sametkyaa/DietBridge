@@ -10,12 +10,13 @@
  *  5. http://images.unsplash.com/... is rejected
  *  6. Other HTTPS hosts are rejected
  *  7. Invalid URL / non-string values are rejected
- *  8. Legacy source='recipe' + recipe_id=null read is accepted and normalized to manual
- *  9. Write payload source stays manual-only
+ *  8. Deleted recipe snapshots keep source='recipe' with recipe_id=null
+ *  9. Recipe snapshots retain their source, recipe id, description and image path
  * 10. Date selection maps to the correct Monday week start
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const buildDir = process.env.MEAL_PLAN_CONTRACT_BUILD_DIR;
@@ -43,6 +44,8 @@ const WEEK_DATES = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '202
 
 const CANONICAL_PHOTO_PATH = `meal-plans/${CLIENT_ID}/${DIETITIAN_ID}/${PHOTO_FILE_ID}.jpg`;
 const LEGACY_PHOTO_URL = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400';
+const RECIPE_IMAGE_PATH = `recipes/${DIETITIAN_ID}/${RECIPE_ID}/${PHOTO_FILE_ID}.webp`;
+const SNAPSHOT_MIGRATION = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20260723182501_persist_recipe_meal_snapshots.sql'), 'utf8');
 
 const buildSaveDays = (mealOverrides = {}) => WEEK_DATES.map((date, index) => ({
   plan_date: date,
@@ -51,6 +54,7 @@ const buildSaveDays = (mealOverrides = {}) => WEEK_DATES.map((date, index) => ({
     type: 'breakfast',
     title: 'Yumurta',
     calories: 200,
+    description: null,
     macros: { protein: 10, carbs: 5, fat: 8 },
     photo_url: CANONICAL_PHOTO_PATH,
     sort_order: 0,
@@ -76,6 +80,7 @@ const buildRpcWeek = (mealOverrides = {}) => ({
       type: 'breakfast',
       title: 'Yumurta',
       calories: 200,
+      description: null,
       macros: { protein: 10, carbs: 5, fat: 8 },
       photo_url: CANONICAL_PHOTO_PATH,
       is_eaten: false,
@@ -97,6 +102,7 @@ const buildFetchRows = (mealOverrides = {}) => [{
     type: 'breakfast',
     title: 'Yumurta',
     calories: 200,
+    description: null,
     macros: { protein: 10, carbs: 5, fat: 8 },
     photo_url: LEGACY_PHOTO_URL,
     is_eaten: false,
@@ -154,21 +160,21 @@ test('3: legacy Unsplash URL is accepted by the RPC response normalizer', async 
   assert.equal(result.plans[0].meals[0].photo_url, LEGACY_PHOTO_URL);
 });
 
-test('3+8: legacy Unsplash URL and source=recipe row is normalized on fetch', async () => {
+test('3+8: recipe snapshot with a cleared FK remains readable on fetch', async () => {
   stubFetchRows(buildFetchRows());
   const rows = await planService.fetchWeeklyMealPlan(CLIENT_ID, DIETITIAN_ID, WEEK_START, WEEK_END);
   const meal = rows[0].meals[0];
   assert.equal(meal.photo_url, LEGACY_PHOTO_URL);
-  assert.equal(meal.source, 'manual');
+  assert.equal(meal.source, 'recipe');
   assert.equal(meal.recipe_id, null);
   assert.equal(meal.time, '08:00');
 });
 
-test('8: legacy source=recipe + recipe_id=null is normalized to manual in the RPC response', async () => {
+test('8: recipe snapshot with a cleared FK remains recipe-sourced in the RPC response', async () => {
   stubRpcResponse(buildRpcWeek({ source: 'recipe', recipe_id: null }));
   const result = await planService.saveWeeklyMealPlan(CLIENT_ID, WEEK_START, buildSaveDays({ photo_url: null }));
   const meal = result.plans[0].meals[0];
-  assert.equal(meal.source, 'manual');
+  assert.equal(meal.source, 'recipe');
   assert.equal(meal.recipe_id, null);
 });
 
@@ -180,12 +186,32 @@ test('4: legacy Unsplash URL is rejected from the write payload', async () => {
   );
 });
 
-test('9: write payload rejects source=recipe and non-null recipe_id', async () => {
+test('9: recipe snapshot write and read retain authoritative reference fields', async () => {
+  stubRpcResponse(buildRpcWeek({
+    source: 'recipe',
+    recipe_id: RECIPE_ID,
+    title: 'Tarif başlığı',
+    description: 'Tarif açıklaması',
+    calories: 320,
+    macros: { protein: 18, carbs: 12, fat: 20 },
+    photo_url: RECIPE_IMAGE_PATH,
+  }));
+  const result = await planService.saveWeeklyMealPlan(CLIENT_ID, WEEK_START, buildSaveDays({
+    source: 'recipe', recipe_id: RECIPE_ID, photo_url: RECIPE_IMAGE_PATH, description: 'Tarayıcı değeri',
+  }));
+  const savedMeal = result.plans[0].meals[0];
+  assert.equal(savedMeal.source, 'recipe');
+  assert.equal(savedMeal.recipe_id, RECIPE_ID);
+  assert.equal(savedMeal.description, 'Tarif açıklaması');
+  assert.equal(savedMeal.photo_url, RECIPE_IMAGE_PATH);
+
+  stubFetchRows(buildFetchRows({ source: 'recipe', recipe_id: RECIPE_ID, photo_url: RECIPE_IMAGE_PATH, description: 'Tarif açıklaması' }));
+  const fetchedMeal = (await planService.fetchWeeklyMealPlan(CLIENT_ID, DIETITIAN_ID, WEEK_START, WEEK_END))[0].meals[0];
+  assert.equal(fetchedMeal.source, 'recipe');
+  assert.equal(fetchedMeal.recipe_id, RECIPE_ID);
+  assert.equal(fetchedMeal.description, 'Tarif açıklaması');
+
   stubRpcResponse(buildRpcWeek());
-  await assert.rejects(
-    planService.saveWeeklyMealPlan(CLIENT_ID, WEEK_START, buildSaveDays({ source: 'recipe', recipe_id: null, photo_url: null })),
-    (error) => error && error.code === 'RECIPE_SOURCE_NOT_SUPPORTED',
-  );
   await assert.rejects(
     planService.saveWeeklyMealPlan(CLIENT_ID, WEEK_START, buildSaveDays({ recipe_id: RECIPE_ID, photo_url: null })),
     (error) => error && error.code === 'INVALID_RECIPE_ID',
@@ -243,13 +269,13 @@ test('read reference accepts canonical path, legacy URL and rejects the rest', a
   assert.equal(photoService.isReadableMealPhotoReference('meal-plans/not-a-uuid/x/y.jpg'), false);
 });
 
-test('read rejects recipe rows that carry a real recipe_id (fail-closed)', async () => {
-  stubFetchRows(buildFetchRows({ recipe_id: RECIPE_ID }));
+test('read rejects invalid recipe source combinations (fail-closed)', async () => {
+  stubFetchRows(buildFetchRows({ source: 'manual', recipe_id: RECIPE_ID }));
   await assert.rejects(
     planService.fetchWeeklyMealPlan(CLIENT_ID, DIETITIAN_ID, WEEK_START, WEEK_END),
     (error) => error && error.code === 'INVALID_RPC_RESPONSE',
   );
-  stubRpcResponse(buildRpcWeek({ source: 'recipe', recipe_id: RECIPE_ID }));
+  stubRpcResponse(buildRpcWeek({ source: 'recipe', recipe_id: 'not-a-uuid' }));
   await assert.rejects(
     planService.saveWeeklyMealPlan(CLIENT_ID, WEEK_START, buildSaveDays({ photo_url: null })),
     (error) => error && error.code === 'INVALID_RPC_RESPONSE',
@@ -371,6 +397,15 @@ test('recipe contracts: invalid names, meal types, calories and macros fail clos
   }
   assert.equal(recipeService.isCanonicalRecipeImagePath(`recipes/${DIETITIAN_ID}/${RECIPE_ID}/not-a-uuid.jpg`), false);
   assert.equal(recipeService.isCanonicalRecipeImagePath(`recipes/${DIETITIAN_ID}/${RECIPE_ID}/${PHOTO_FILE_ID}.gif`), false);
+});
+
+test('recipe snapshot migration derives protected fields server-side and preserves snapshots after deletion', () => {
+  assert.match(SNAPSHOT_MIGRATION, /where id = v_recipe_id and dietitian_id = v_actor_id/i);
+  assert.match(SNAPSHOT_MIGRATION, /'description', v_recipe\.description/i);
+  assert.match(SNAPSHOT_MIGRATION, /foreign key \(recipe_id\) references public\.recipes\(id\) on delete set null/i);
+  assert.match(SNAPSHOT_MIGRATION, /meal\.recipe_id is null/i);
+  assert.match(SNAPSHOT_MIGRATION, /private\.save_weekly_meal_plan_impl\(p_client_id, p_week_start, v_impl_days\)/i);
+  assert.match(SNAPSHOT_MIGRATION, /v_path !~ '\^meal-plans\/'/i);
 });
 
 test('auth lifecycle: same-user refresh events update the session without resolving access again', () => {

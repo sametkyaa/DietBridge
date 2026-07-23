@@ -48,9 +48,7 @@ import {
 import {
   cleanupFailedMealPhotoUploads,
   createMealPhotoLocalPreview,
-  getMealPhotoPreviewUrls,
   isCanonicalMealPhotoPath,
-  isLegacyMealPhotoUrl,
   processPendingMealPhotoCleanup,
   uploadMealPhoto,
   validateMealPhotoFile,
@@ -67,8 +65,10 @@ import {
 import {
   fetchRecipes,
   getRecipeUserMessage,
+  isCanonicalRecipeImagePath,
   type Recipe,
 } from '../features/recipes/services/recipeService';
+import { getMealImagePreviewUrls } from '../features/meal-plans/services/mealImagePreviewService';
 
 const DAYS = MEAL_PLAN_WEEKDAY_LABELS;
 const MEAL_OPTIONS = ['Kahvaltı', 'Öğle', 'Akşam', 'Ara Öğün', 'Antrenman Öncesi', 'Antrenman Sonrası', 'Gece Ara Öğünü'];
@@ -108,8 +108,9 @@ interface PlannedMealContent {
   imagePreview?: string | null;
   pendingPhoto?: File | null;
   calories: number;
+  description?: string | null;
   macros: CanonicalMealMacros;
-  source?: 'manual';
+  source?: 'manual' | 'recipe';
   recipeId?: string | null;
   isEaten?: boolean;
 }
@@ -179,15 +180,12 @@ const mapCanonicalPlansToEditor = (
         mealId: meal.id,
         name: meal.title,
         image: meal.photo_url,
-        imagePreview: isCanonicalMealPhotoPath(meal.photo_url)
-          ? photoPreviews.get(meal.photo_url) ?? null
-          : isLegacyMealPhotoUrl(meal.photo_url)
-            ? meal.photo_url
-            : null,
+        imagePreview: meal.photo_url ? photoPreviews.get(meal.photo_url) ?? null : null,
         calories: meal.calories ?? 0,
+        description: meal.description,
         macros: meal.macros,
-        source: 'manual',
-        recipeId: null,
+        source: meal.source,
+        recipeId: meal.recipe_id,
         isEaten: meal.is_eaten,
       };
     });
@@ -408,10 +406,8 @@ const MealPlans = () => {
         snapshot.weekStart,
         getMealPlanWeekDates(snapshot.weekStart)[6],
       );
-      const photoPreviews = await getMealPhotoPreviewUrls(
-        plans.flatMap((plan) => plan.meals.flatMap((meal) => (
-          isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
-        ))),
+      const photoPreviews = await getMealImagePreviewUrls(
+        plans.flatMap((plan) => plan.meals.map((meal) => meal.photo_url)),
       );
       if (requestId !== planRequestRef.current) return;
       const editor = mapCanonicalPlansToEditor(plans, snapshot.weekStart, photoPreviews);
@@ -610,6 +606,7 @@ const MealPlans = () => {
        id: `manual-${Date.now()}`,
        name: customMealText,
        calories: parseInt(customMealCalories) || 0,
+       description: null,
        macros,
        image: null,
        imagePreview: customMealPhotoPreview,
@@ -649,16 +646,17 @@ const MealPlans = () => {
         [activeCell.mealId]: {
           id: `recipe-snapshot-${Date.now()}`,
           name: recipe.name,
-          image: null,
+          image: recipe.imagePath,
           imagePreview: recipe.imagePreview,
           calories: recipe.calories,
+          description: recipe.description,
           macros: {
             protein: recipe.macros.protein,
             carbs: recipe.macros.carbs,
             fat: recipe.macros.fat,
           },
-          source: 'manual',
-          recipeId: null,
+          source: 'recipe',
+          recipeId: recipe.id,
           isEaten: false,
         },
       },
@@ -836,8 +834,9 @@ const MealPlans = () => {
               sort_order: meals.findIndex(m => m.id === mealRow.id),
               time: normalizeMealTime(mealRow.time, `days[${i}].meals[${mealId}].time`),
               macros: normalizeCanonicalMealMacros(content.macros, `days[${i}].meals[${mealId}].macros`),
-              source: 'manual',
-              recipe_id: null,
+              description: content.description ?? null,
+              source: content.source ?? 'manual',
+              recipe_id: content.source === 'recipe' ? content.recipeId ?? null : null,
             };
 
             if (content.mealId) mealData.id = content.mealId;
@@ -850,7 +849,7 @@ const MealPlans = () => {
               });
               uploadedPhotoPaths.push(uploadedPath);
               mealData.photo_url = uploadedPath;
-            } else if (isCanonicalMealPhotoPath(content.image)) {
+            } else if (isCanonicalMealPhotoPath(content.image) || isCanonicalRecipeImagePath(content.image)) {
               mealData.photo_url = content.image;
             } else {
               mealData.photo_url = null;
@@ -874,10 +873,8 @@ const MealPlans = () => {
         ]),
       );
       const savedWeek = await saveWeeklyMealPlan(selectedClient.id, normalizedWeekStart, weeklyPayload);
-      const photoPreviews = await getMealPhotoPreviewUrls(
-        savedWeek.plans.flatMap((plan) => plan.meals.flatMap((meal) => (
-          isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
-        ))),
+      const photoPreviews = await getMealImagePreviewUrls(
+        savedWeek.plans.flatMap((plan) => plan.meals.map((meal) => meal.photo_url)),
       );
       const editor = mapCanonicalPlansToEditor(savedWeek.plans, normalizedWeekStart, photoPreviews, rowNamesByPlacement);
       setMeals(editor.meals);
@@ -1224,16 +1221,16 @@ const MealPlans = () => {
                                     <X className="w-3 h-3" />
                                   </button>
                                   <div className="h-20 w-full rounded-lg overflow-hidden relative bg-slate-100 flex items-center justify-center">
-                                     {(cellContent.imagePreview ?? (isCanonicalMealPhotoPath(cellContent.image) ? null : cellContent.image)) ? (
+                                     {(cellContent.imagePreview ?? ((isCanonicalMealPhotoPath(cellContent.image) || isCanonicalRecipeImagePath(cellContent.image)) ? null : cellContent.image)) ? (
                                          <img
-                                           src={cellContent.imagePreview ?? (isCanonicalMealPhotoPath(cellContent.image) ? '' : cellContent.image ?? '')}
+                                           src={cellContent.imagePreview ?? ((isCanonicalMealPhotoPath(cellContent.image) || isCanonicalRecipeImagePath(cellContent.image)) ? '' : cellContent.image ?? '')}
                                            alt={cellContent.name}
                                            className="w-full h-full object-cover"
                                          />
                                      ) : (
                                          <span className="text-slate-400 text-xs font-medium px-2 text-center">{cellContent.name}</span>
                                      )}
-                                     {(cellContent.imagePreview ?? (isCanonicalMealPhotoPath(cellContent.image) ? null : cellContent.image)) && (
+                                     {(cellContent.imagePreview ?? ((isCanonicalMealPhotoPath(cellContent.image) || isCanonicalRecipeImagePath(cellContent.image)) ? null : cellContent.image)) && (
                                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2">
                                             <p className="text-white text-[10px] font-bold line-clamp-1">{cellContent.name}</p>
                                          </div>

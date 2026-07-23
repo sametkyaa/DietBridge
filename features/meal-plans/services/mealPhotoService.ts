@@ -175,11 +175,22 @@ export interface MealPhotoCleanupResult {
   warning: string | null;
 }
 
+const isCleanupInfrastructureUnavailable = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null) return false;
+  const record = error as Record<string, unknown>;
+  const message = typeof record.message === 'string' ? record.message : '';
+  return record.code === 'PGRST202'
+    || record.status === 404
+    || /could not find the function|function .* does not exist/i.test(message);
+};
+
 const getPendingCleanupRows = async (): Promise<Array<{ cleanupId: string; objectPath: string }>> => {
   const { data, error } = await supabase.rpc('list_my_pending_meal_photo_cleanup');
-  if (error || !Array.isArray(data)) {
+  if (error) {
+    if (isCleanupInfrastructureUnavailable(error)) return [];
     throw new MealPhotoValidationError('MEAL_PHOTO_UPLOAD_FAILED');
   }
+  if (!Array.isArray(data)) throw new MealPhotoValidationError('MEAL_PHOTO_UPLOAD_FAILED');
 
   return (data as CleanupRow[]).flatMap((row) => {
     if (!isValidUuid(row.cleanup_id) || !isCanonicalMealPhotoPath(row.object_path)) {
@@ -193,7 +204,8 @@ export const processPendingMealPhotoCleanup = async (): Promise<MealPhotoCleanup
   let pending: Array<{ cleanupId: string; objectPath: string }>;
   try {
     pending = await getPendingCleanupRows();
-  } catch {
+  } catch (error) {
+    if (isCleanupInfrastructureUnavailable(error)) return { warning: null };
     return {
       warning: 'Eski öğün görsellerinin temizlik durumu doğrulanamadı; plan kaydı korundu ve temizlik yeniden denenecek.',
     };
@@ -239,7 +251,7 @@ export const cleanupFailedMealPhotoUploads = async (objectPaths: string[]): Prom
     const { error } = await supabase.rpc('enqueue_my_unreferenced_meal_photo_cleanup', {
       p_object_path: objectPath,
     });
-    if (error) queueFailures += 1;
+    if (error && !isCleanupInfrastructureUnavailable(error)) queueFailures += 1;
   }
 
   const cleanup = await processPendingMealPhotoCleanup();

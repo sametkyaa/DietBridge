@@ -10,6 +10,7 @@ export const RECIPE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const RECIPE_IMAGE_SIGNED_URL_SECONDS = 5 * 60;
 
 const RECIPE_IMAGE_PATH = /^recipes\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpe?g|png|webp)$/;
+const SIGNED_URL_REFRESH_WINDOW_MS = 4 * 60 * 1000;
 const MIME_TO_EXTENSION: Record<string, 'jpg' | 'png' | 'webp'> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -74,6 +75,8 @@ type RecipeRow = {
   created_at: unknown;
   updated_at: unknown;
 };
+
+const recipeImagePreviewCache = new Map<string, { url: string; refreshAfter: number }>();
 
 const assertAuthenticatedDietitianId = async (): Promise<string> => {
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -176,12 +179,18 @@ export const getRecipeImagePreview = async (imagePath: string): Promise<string> 
   if (!isCanonicalRecipeImagePath(imagePath)) {
     throw new RecipeValidationError('INVALID_RECIPE_IMAGE', 'image_path');
   }
+  const cached = recipeImagePreviewCache.get(imagePath);
+  if (cached && cached.refreshAfter > Date.now()) return cached.url;
   const { data, error } = await supabase.storage
     .from(RECIPE_IMAGE_BUCKET)
     .createSignedUrl(imagePath, RECIPE_IMAGE_SIGNED_URL_SECONDS);
   if (error || !data?.signedUrl) {
     throw new RecipeValidationError('INVALID_RECIPE_IMAGE', 'image_path');
   }
+  recipeImagePreviewCache.set(imagePath, {
+    url: data.signedUrl,
+    refreshAfter: Date.now() + SIGNED_URL_REFRESH_WINDOW_MS,
+  });
   return data.signedUrl;
 };
 
