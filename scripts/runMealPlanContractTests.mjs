@@ -20,6 +20,7 @@ const SOURCES = [
   'features/meal-plans/services/mealPhotoService.ts',
   'features/meal-plans/services/mealPlanService.ts',
   'features/meal-plans/services/mealPlanReadModel.ts',
+  'features/recipes/services/recipeService.ts',
   'shared/utils/uuid.ts',
 ];
 
@@ -27,6 +28,7 @@ const EXPECTED_OUTPUTS = [
   'features/meal-plans/services/mealPhotoService.js',
   'features/meal-plans/services/mealPlanService.js',
   'features/meal-plans/services/mealPlanReadModel.js',
+  'features/recipes/services/recipeService.js',
   'shared/utils/uuid.js',
 ];
 

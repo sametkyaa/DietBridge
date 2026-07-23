@@ -26,6 +26,7 @@ if (!buildDir) {
 const photoService = require(path.join(buildDir, 'features/meal-plans/services/mealPhotoService.js'));
 const planService = require(path.join(buildDir, 'features/meal-plans/services/mealPlanService.js'));
 const readModel = require(path.join(buildDir, 'features/meal-plans/services/mealPlanReadModel.js'));
+const recipeService = require(path.join(buildDir, 'features/recipes/services/recipeService.js'));
 const supabaseStub = require(path.join(buildDir, 'lib/supabaseClient.js'));
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -324,4 +325,49 @@ test('10: picked dates map to the Monday of their week', async () => {
   assert.deepEqual(readModel.getMealPlanWeekDates('2026-07-23'), WEEK_DATES);
   assert.equal(readModel.shiftMealPlanWeek('2026-07-20', 1), '2026-07-27');
   assert.equal(readModel.shiftMealPlanWeek('2026-07-20', -1), '2026-07-13');
+});
+
+test('recipe contracts: canonical input and image paths are accepted', () => {
+  const input = recipeService.normalizeRecipeInput({
+    name: '  Sebzeli Omlet  ',
+    description: '  Pratik tarif  ',
+    mealType: 'breakfast',
+    calories: 320,
+    macros: { protein: 18, carbs: 12, fat: 20 },
+  });
+  assert.deepEqual(input, {
+    name: 'Sebzeli Omlet',
+    description: 'Pratik tarif',
+    mealType: 'breakfast',
+    calories: 320,
+    macros: { protein: 18, carbs: 12, fat: 20 },
+  });
+  assert.equal(recipeService.isCanonicalRecipeImagePath(`recipes/${DIETITIAN_ID}/${RECIPE_ID}/${PHOTO_FILE_ID}.webp`), true);
+});
+
+test('recipe contracts: invalid names, meal types, calories and macros fail closed', () => {
+  const base = {
+    name: 'Tarif',
+    mealType: 'breakfast',
+    calories: 100,
+    macros: { protein: 1, carbs: 2, fat: 3 },
+  };
+  const invalidInputs = [
+    { ...base, name: '   ' },
+    { ...base, mealType: 'brunch' },
+    { ...base, calories: -1 },
+    { ...base, calories: Number.NaN },
+    { ...base, calories: Number.POSITIVE_INFINITY },
+    { ...base, macros: { protein: -1, carbs: 2, fat: 3 } },
+    { ...base, macros: { protein: Number.NaN, carbs: 2, fat: 3 } },
+    { ...base, macros: { protein: 1, carbs: 2, fat: 3, legacy: true } },
+  ];
+  for (const input of invalidInputs) {
+    assert.throws(
+      () => recipeService.normalizeRecipeInput(input),
+      (error) => error && error.code && String(error.code).startsWith('INVALID_RECIPE_'),
+    );
+  }
+  assert.equal(recipeService.isCanonicalRecipeImagePath(`recipes/${DIETITIAN_ID}/${RECIPE_ID}/not-a-uuid.jpg`), false);
+  assert.equal(recipeService.isCanonicalRecipeImagePath(`recipes/${DIETITIAN_ID}/${RECIPE_ID}/${PHOTO_FILE_ID}.gif`), false);
 });

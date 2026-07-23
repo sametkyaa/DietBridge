@@ -64,6 +64,11 @@ import {
   normalizeMealPlanWeekStart,
   shiftMealPlanWeek,
 } from '../features/meal-plans/services/mealPlanReadModel';
+import {
+  fetchRecipes,
+  getRecipeUserMessage,
+  type Recipe,
+} from '../features/recipes/services/recipeService';
 
 const DAYS = MEAL_PLAN_WEEKDAY_LABELS;
 const MEAL_OPTIONS = ['Kahvaltı', 'Öğle', 'Akşam', 'Ara Öğün', 'Antrenman Öncesi', 'Antrenman Sonrası', 'Gece Ara Öğünü'];
@@ -301,6 +306,11 @@ const MealPlans = () => {
   const [customMealPhotoPreview, setCustomMealPhotoPreview] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoCleanupWarning, setPhotoCleanupWarning] = useState<string | null>(null);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [isLoadingRecipes, setIsLoadingRecipes] = useState(true);
+  const [recipeError, setRecipeError] = useState<string | null>(null);
+  const [recipeSearch, setRecipeSearch] = useState('');
+  const [recipeSelectionInfo, setRecipeSelectionInfo] = useState<string | null>(null);
 
   copyTargetRef.current = `${selectedClient?.id ?? ''}:${normalizeMealPlanWeekStart(weekStartDate)}`;
 
@@ -354,6 +364,23 @@ const MealPlans = () => {
     void loadClients();
     return () => { active = false; };
   }, [clientLoadAttempt, location.state]);
+
+  const loadRecipes = useCallback(async () => {
+    setIsLoadingRecipes(true);
+    setRecipeError(null);
+    try {
+      setRecipes(await fetchRecipes());
+    } catch (error) {
+      console.error('Failed to load recipes for meal plans:', error);
+      setRecipeError(getRecipeUserMessage(error));
+    } finally {
+      setIsLoadingRecipes(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRecipes();
+  }, [loadRecipes]);
 
   const loadWeeklyPlan = useCallback(async () => {
     const requestId = ++planRequestRef.current;
@@ -456,6 +483,9 @@ const MealPlans = () => {
 
   const hasEditorMeals = Object.values(weeklyPlan)
     .some((day) => Object.values(day).some(Boolean));
+  const filteredRecipes = recipes.filter((recipe) => recipe.name
+    .toLocaleLowerCase('tr-TR')
+    .includes(recipeSearch.trim().toLocaleLowerCase('tr-TR')));
 
   const applyPreviousWeekCopy = (copy: NonNullable<typeof copyConfirmation>) => {
     setMeals(copy.meals);
@@ -604,6 +634,36 @@ const MealPlans = () => {
     setCustomMealFat('');
     setCustomMealPhoto(null);
     setCustomMealPhotoPreview(null);
+  };
+
+  const handleAddRecipeToActiveCell = (recipe: Recipe) => {
+    if (!activeCell) {
+      setRecipeSelectionInfo('Önce plandan bir öğün hücresi seçin.');
+      return;
+    }
+
+    setWeeklyPlan((previous) => ({
+      ...previous,
+      [activeCell.day]: {
+        ...(previous[activeCell.day] || {}),
+        [activeCell.mealId]: {
+          id: `recipe-snapshot-${Date.now()}`,
+          name: recipe.name,
+          image: null,
+          imagePreview: recipe.imagePreview,
+          calories: recipe.calories,
+          macros: {
+            protein: recipe.macros.protein,
+            carbs: recipe.macros.carbs,
+            fat: recipe.macros.fat,
+          },
+          source: 'manual',
+          recipeId: null,
+          isEaten: false,
+        },
+      },
+    }));
+    setRecipeSelectionInfo(`“${recipe.name}” seçili öğün hücresine eklendi.`);
   };
 
   const handleClearCell = (e: React.MouseEvent, day: string, mealId: string) => {
@@ -1347,6 +1407,56 @@ const MealPlans = () => {
               {!activeCell && (
                 <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Manuel öğün eklemek veya düzenlemek için plandan bir hücre seçin.</p>
               )}
+           </div>
+           <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100">
+             <div className="p-4 pb-3">
+               <h3 className="px-1 text-sm font-bold text-slate-800">Kayıtlı Tarifler</h3>
+               <label className="relative mt-3 block">
+                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                 <input
+                   type="search"
+                   value={recipeSearch}
+                   onChange={(event) => setRecipeSearch(event.target.value)}
+                   placeholder="Tarif ara..."
+                   className="min-h-11 w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                 />
+               </label>
+               {recipeSelectionInfo && <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800" role="status">{recipeSelectionInfo}</p>}
+             </div>
+             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+               {isLoadingRecipes ? (
+                 <p className="p-4 text-center text-xs text-slate-500">Tarifler yükleniyor...</p>
+               ) : recipeError ? (
+                 <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">
+                   <p>{recipeError}</p>
+                   <button type="button" onClick={() => void loadRecipes()} className="mt-2 min-h-11 rounded-lg border border-rose-300 bg-white px-3 font-semibold">Tekrar dene</button>
+                 </div>
+               ) : recipes.length === 0 ? (
+                 <p className="p-4 text-center text-xs text-slate-500">Henüz kayıtlı tarif bulunmuyor.</p>
+               ) : filteredRecipes.length === 0 ? (
+                 <p className="p-4 text-center text-xs text-slate-500">Aramanızla eşleşen tarif bulunamadı.</p>
+               ) : (
+                 <div className="space-y-2">
+                   {filteredRecipes.map((recipe) => (
+                     <button
+                       key={recipe.id}
+                       type="button"
+                       onClick={() => handleAddRecipeToActiveCell(recipe)}
+                       aria-disabled={!activeCell}
+                       title={activeCell ? 'Tarifi seçili hücreye ekle' : 'Önce plandan bir öğün hücresi seçin'}
+                       className="flex w-full gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:border-primary hover:bg-emerald-50/30"
+                     >
+                       {recipe.imagePreview ? <img src={recipe.imagePreview} alt="" className="h-14 w-14 flex-shrink-0 rounded-lg object-cover" /> : <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-semibold text-slate-400">Tarif</div>}
+                       <div className="min-w-0 flex-1">
+                         <p className="truncate text-sm font-bold text-slate-800">{recipe.name}</p>
+                         <p className="mt-1 text-[11px] font-medium text-emerald-700">{recipe.mealType === 'breakfast' ? 'Kahvaltı' : recipe.mealType === 'lunch' ? 'Öğle' : recipe.mealType === 'dinner' ? 'Akşam' : 'Ara Öğün'} · {recipe.calories} kcal</p>
+                         <p className="mt-1 text-[10px] text-slate-500">P {recipe.macros.protein}g · K {recipe.macros.carbs}g · Y {recipe.macros.fat}g</p>
+                       </div>
+                     </button>
+                   ))}
+                 </div>
+               )}
+             </div>
            </div>
         </div>
       </aside>
