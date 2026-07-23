@@ -254,6 +254,68 @@ test('read rejects recipe rows that carry a real recipe_id (fail-closed)', async
   );
 });
 
+test('macro contracts: canonical macros stay valid for read and write', async () => {
+  const macros = { protein: 6, carbs: 32, fat: 4 };
+  assert.deepEqual(planService.normalizeCanonicalMealMacros(macros), macros);
+  assert.deepEqual(planService.normalizeReadableMealMacros(macros), macros);
+
+  const captured = stubRpcResponse(buildRpcWeek());
+  await planService.saveWeeklyMealPlan(CLIENT_ID, WEEK_START, buildSaveDays({ macros }));
+  assert.deepEqual(captured.calls[0].args.p_days[0].meals[0].macros, macros);
+});
+
+test('macro contracts: legacy placement metadata is accepted only on fetch and removed', async () => {
+  const legacyMacros = {
+    protein: 6,
+    carbs: 32,
+    fat: 4,
+    _time: '08:00',
+    _rowName: 'Kahvaltı',
+    _sortOrder: 0,
+  };
+  stubFetchRows(buildFetchRows({ macros: legacyMacros }));
+  const rows = await planService.fetchWeeklyMealPlan(CLIENT_ID, DIETITIAN_ID, WEEK_START, WEEK_END);
+  assert.deepEqual(rows[0].meals[0].macros, { protein: 6, carbs: 32, fat: 4 });
+  assert.deepEqual(
+    Object.keys(rows[0].meals[0].macros).sort(),
+    ['carbs', 'fat', 'protein'],
+  );
+
+  stubRpcResponse(buildRpcWeek());
+  await assert.rejects(
+    planService.saveWeeklyMealPlan(CLIENT_ID, WEEK_START, buildSaveDays({ macros: legacyMacros })),
+    (error) => error && error.code === 'INVALID_MEAL_MACROS',
+  );
+
+  stubRpcResponse(buildRpcWeek({ macros: legacyMacros }));
+  await assert.rejects(
+    planService.saveWeeklyMealPlan(CLIENT_ID, WEEK_START, buildSaveDays()),
+    (error) => error && error.code === 'INVALID_RPC_RESPONSE',
+  );
+});
+
+test('macro contracts: unknown keys and invalid legacy metadata are rejected on read', () => {
+  const invalidMacros = [
+    { protein: 6, carbs: 32, fat: 4, unexpected: true },
+    { protein: 6, carbs: 32, fat: 4, _sortOrder: '0' },
+    { protein: 6, carbs: 32, fat: 4, _sortOrder: -1 },
+    { protein: 6, carbs: 32, fat: 4, _sortOrder: 0.5 },
+    { protein: 6, carbs: 32, fat: 4, _time: 800 },
+    { protein: 6, carbs: 32, fat: 4, _rowName: {} },
+    { protein: 6, carbs: 32 },
+    { protein: -1, carbs: 32, fat: 4 },
+    { protein: Number.NaN, carbs: 32, fat: 4 },
+    { protein: 6, carbs: Number.POSITIVE_INFINITY, fat: 4 },
+  ];
+  for (const macros of invalidMacros) {
+    assert.throws(
+      () => planService.normalizeReadableMealMacros(macros),
+      (error) => error && error.code === 'INVALID_MEAL_MACROS',
+      JSON.stringify(macros),
+    );
+  }
+});
+
 test('10: picked dates map to the Monday of their week', async () => {
   assert.equal(readModel.normalizeMealPlanWeekStart('2026-07-20'), '2026-07-20');
   assert.equal(readModel.normalizeMealPlanWeekStart('2026-07-23'), '2026-07-20');

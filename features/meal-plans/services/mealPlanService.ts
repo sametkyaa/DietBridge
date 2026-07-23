@@ -265,6 +265,54 @@ export const normalizeCanonicalMealMacros = (
   return { protein, carbs, fat };
 };
 
+/**
+ * Read-only compatibility normalizer for historical meal rows. Legacy rows
+ * may include the former placement metadata in their macros JSON object; the
+ * editor receives only the canonical nutrient values. Write validation must
+ * continue to use normalizeCanonicalMealMacros.
+ */
+export const normalizeReadableMealMacros = (
+  value: unknown,
+  field = 'macros',
+): CanonicalMealMacros => {
+  if (!isRecord(value)) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  const allowedKeys = new Set(['protein', 'carbs', 'fat', '_time', '_rowName', '_sortOrder']);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  const { protein, carbs, fat } = value;
+  if (
+    typeof protein !== 'number' || !Number.isFinite(protein) || protein < 0
+    || typeof carbs !== 'number' || !Number.isFinite(carbs) || carbs < 0
+    || typeof fat !== 'number' || !Number.isFinite(fat) || fat < 0
+  ) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  if (value._time !== undefined && typeof value._time !== 'string') {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+  if (value._rowName !== undefined && typeof value._rowName !== 'string') {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+  if (
+    value._sortOrder !== undefined
+    && (
+      typeof value._sortOrder !== 'number'
+      || !Number.isInteger(value._sortOrder)
+      || value._sortOrder < 0
+    )
+  ) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  return { protein, carbs, fat };
+};
+
 const assertCanonicalResponse = (
   value: unknown,
   expectedClientId: string,
@@ -452,7 +500,10 @@ export const fetchWeeklyMealPlan = async (
       }
       meal.source = readableSource;
       meal.recipe_id = null;
-      normalizeCanonicalMealMacros(meal.macros, `meal_plans[${planIndex}].meals[${mealIndex}].macros`);
+      meal.macros = normalizeReadableMealMacros(
+        meal.macros,
+        `meal_plans[${planIndex}].meals[${mealIndex}].macros`,
+      );
     });
   });
   return data;
