@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { DietitianProfile } from '../../../shared/types';
 import { AuthAccessState, AuthSignInResult } from '../types';
 import { getSafeAuthErrorMessage, resolveAuthAccess } from '../services/authService';
+import { getAuthLifecycleAction } from '../services/authLifecycle';
 
 interface AuthContextType {
   session: Session | null;
@@ -12,6 +13,8 @@ interface AuthContextType {
   dietitianProfile: DietitianProfile | null;
   accessState: AuthAccessState;
   loading: boolean;
+  isInitialLoading: boolean;
+  isRefreshingSession: boolean;
   authError: string | null;
   signIn: (email: string, password: string) => Promise<AuthSignInResult>;
   signOut: (message?: string) => Promise<void>;
@@ -27,6 +30,8 @@ const AuthContext = createContext<AuthContextType>({
   dietitianProfile: null,
   accessState: initialAccessState,
   loading: true,
+  isInitialLoading: true,
+  isRefreshingSession: false,
   authError: null,
   signIn: async () => ({ success: false, error: 'Kimlik doğrulama kullanılamıyor.' }),
   signOut: async () => {},
@@ -40,18 +45,26 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   const [dietitianProfile, setDietitianProfile] = useState<DietitianProfile | null>(null);
   const [accessState, setAccessState] = useState<AuthAccessState>(initialAccessState);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshingSession, setIsRefreshingSession] = useState(false);
   const requestVersion = useRef(0);
   const mounted = useRef(true);
+  const sessionRef = useRef<Session | null>(null);
+  const accessResolvedRef = useRef(false);
   const pendingSignOutMessage = useRef<string | undefined>(undefined);
 
   const clearAccessState = useCallback((message?: string) => {
     if (!mounted.current) return;
     setSession(null);
     setUser(null);
+    sessionRef.current = null;
+    accessResolvedRef.current = true;
     setUserRole(null);
     setDietitianProfile(null);
     setAuthError(message || null);
     setAccessState({ status: 'unauthenticated', ...(message ? { message } : {}) });
+    setIsInitialLoading(false);
+    setIsRefreshingSession(false);
   }, []);
 
   const signOut = useCallback(async (message?: string) => {
@@ -73,8 +86,26 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     clearAccessState(signOutMessage);
   }, [clearAccessState]);
 
-  const resolveSession = useCallback(async (nextSession: Session | null) => {
+  const updateSessionOnly = useCallback((nextSession: Session) => {
+    sessionRef.current = nextSession;
+    if (!mounted.current) return;
+    setSession(nextSession);
+    setUser(nextSession.user);
+  }, []);
+
+  const resolveSession = useCallback(async (nextSession: Session | null, force = false) => {
+    const nextUserId = nextSession?.user.id ?? null;
+    const currentUserId = sessionRef.current?.user.id ?? null;
+    if (!force && nextUserId && currentUserId === nextUserId && accessResolvedRef.current) {
+      updateSessionOnly(nextSession);
+      return;
+    }
+
     const requestId = ++requestVersion.current;
+    const wasAccessResolved = accessResolvedRef.current;
+    accessResolvedRef.current = false;
+    if (wasAccessResolved) setIsRefreshingSession(true);
+    else setIsInitialLoading(true);
 
     if (!nextSession?.user) {
       const message = pendingSignOutMessage.current;
@@ -83,8 +114,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       return;
     }
 
-    setSession(nextSession);
-    setUser(nextSession.user);
+    updateSessionOnly(nextSession);
     setUserRole(null);
     setDietitianProfile(null);
     setAuthError(null);
@@ -96,18 +126,21 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     setUserRole('userRole' in resolvedAccess ? resolvedAccess.userRole : null);
     setDietitianProfile('dietitianProfile' in resolvedAccess ? resolvedAccess.dietitianProfile : null);
     setAccessState(resolvedAccess);
+    accessResolvedRef.current = true;
+    setIsInitialLoading(false);
+    setIsRefreshingSession(false);
 
     if (resolvedAccess.status === 'blocked_client') {
       await signOut(resolvedAccess.message);
     }
-  }, [clearAccessState, signOut]);
+  }, [clearAccessState, signOut, updateSessionOnly]);
 
   useEffect(() => {
     mounted.current = true;
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (_event === 'PASSWORD_RECOVERY') {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'PASSWORD_RECOVERY') {
         requestVersion.current += 1;
         setSession(nextSession);
         setUser(nextSession?.user ?? null);
@@ -116,7 +149,18 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         setAccessState({ status: 'password_recovery' });
         return;
       }
-      void resolveSession(nextSession);
+      const action = getAuthLifecycleAction(
+        event,
+        nextSession?.user.id ?? null,
+        sessionRef.current?.user.id ?? null,
+        accessResolvedRef.current,
+      );
+      if (action === 'ignore_initial_session') return;
+      if (action === 'update_session_only' && nextSession) {
+        updateSessionOnly(nextSession);
+        return;
+      }
+      void resolveSession(action === 'clear_access' ? null : nextSession);
     });
 
     supabase.auth.getSession()
@@ -126,6 +170,8 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
           if (mounted.current) {
             setAuthError('Oturum kontrol edilirken bir hata oluştu.');
             setAccessState({ status: 'access_error', message: 'Oturum kontrol edilirken bir hata oluştu. Lütfen tekrar deneyin.' });
+            accessResolvedRef.current = true;
+            setIsInitialLoading(false);
           }
           return;
         }
@@ -136,6 +182,8 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         if (mounted.current) {
           setAuthError('Oturum kontrol edilirken bir hata oluştu.');
           setAccessState({ status: 'access_error', message: 'Oturum kontrol edilirken bir hata oluştu. Lütfen tekrar deneyin.' });
+          accessResolvedRef.current = true;
+          setIsInitialLoading(false);
         }
       });
 
@@ -144,7 +192,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       requestVersion.current += 1;
       subscription.unsubscribe();
     };
-  }, [resolveSession]);
+  }, [resolveSession, updateSessionOnly]);
 
   const signIn = useCallback(async (email: string, password: string): Promise<AuthSignInResult> => {
     setAuthError(null);
@@ -158,15 +206,17 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   }, []);
 
   const refreshAccess = useCallback(async () => {
+    setIsRefreshingSession(true);
     const { data: { session: currentSession }, error } = await supabase.auth.getSession();
     if (error) {
       setAccessState({ status: 'access_error', message: 'Erişim bilgileri yenilenemedi. Lütfen tekrar deneyin.' });
+      setIsRefreshingSession(false);
       return;
     }
-    await resolveSession(currentSession);
+    await resolveSession(currentSession, true);
   }, [resolveSession]);
 
-  const loading = accessState.status === 'initializing' || accessState.status === 'resolving_access';
+  const loading = isInitialLoading;
 
   return (
     <AuthContext.Provider value={{
@@ -176,6 +226,8 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       dietitianProfile,
       accessState,
       loading,
+      isInitialLoading,
+      isRefreshingSession,
       authError,
       signIn,
       signOut,

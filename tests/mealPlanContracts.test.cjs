@@ -26,6 +26,7 @@ if (!buildDir) {
 const photoService = require(path.join(buildDir, 'features/meal-plans/services/mealPhotoService.js'));
 const planService = require(path.join(buildDir, 'features/meal-plans/services/mealPlanService.js'));
 const readModel = require(path.join(buildDir, 'features/meal-plans/services/mealPlanReadModel.js'));
+const authLifecycle = require(path.join(buildDir, 'features/auth/services/authLifecycle.js'));
 const recipeService = require(path.join(buildDir, 'features/recipes/services/recipeService.js'));
 const supabaseStub = require(path.join(buildDir, 'lib/supabaseClient.js'));
 
@@ -370,4 +371,31 @@ test('recipe contracts: invalid names, meal types, calories and macros fail clos
   }
   assert.equal(recipeService.isCanonicalRecipeImagePath(`recipes/${DIETITIAN_ID}/${RECIPE_ID}/not-a-uuid.jpg`), false);
   assert.equal(recipeService.isCanonicalRecipeImagePath(`recipes/${DIETITIAN_ID}/${RECIPE_ID}/${PHOTO_FILE_ID}.gif`), false);
+});
+
+test('auth lifecycle: same-user refresh events update the session without resolving access again', () => {
+  assert.equal(
+    authLifecycle.getAuthLifecycleAction('TOKEN_REFRESHED', DIETITIAN_ID, DIETITIAN_ID, true),
+    'update_session_only',
+  );
+  assert.equal(
+    authLifecycle.getAuthLifecycleAction('SIGNED_IN', DIETITIAN_ID, DIETITIAN_ID, true),
+    'update_session_only',
+  );
+  assert.equal(
+    authLifecycle.getAuthLifecycleAction('INITIAL_SESSION', DIETITIAN_ID, null, false),
+    'ignore_initial_session',
+  );
+  assert.equal(
+    authLifecycle.getAuthLifecycleAction('SIGNED_OUT', null, DIETITIAN_ID, true),
+    'clear_access',
+  );
+  assert.equal(
+    authLifecycle.getAuthLifecycleAction('SIGNED_IN', '33333333-3333-4333-8333-333333333333', DIETITIAN_ID, true),
+    'resolve_access',
+  );
+  assert.equal(
+    authLifecycle.getAuthLifecycleAction('TOKEN_REFRESHED', DIETITIAN_ID, DIETITIAN_ID, false),
+    'resolve_access',
+  );
 });
