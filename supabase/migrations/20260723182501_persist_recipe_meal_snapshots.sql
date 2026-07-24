@@ -1,4 +1,4 @@
-﻿begin;
+begin;
 
 -- Fail-closed prerequisite check against the real production schema.
 -- Only structures that actually exist in production are verified.
@@ -28,6 +28,76 @@ alter table public.meals
 alter table public.meals
   add constraint meals_description_length_check
   check (description is null or char_length(description) <= 2000);
+
+-- ---------------------------------------------------------------------------
+-- Weekly-plan uniqueness: ON CONFLICT below requires a non-deferrable,
+-- non-partial unique arbiter for (client_id, dietitian_id, plan_date).
+-- Existing duplicate rows are never repaired implicitly.
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v_has_compatible_unique boolean;
+  v_named_constraint_is_compatible boolean;
+begin
+  if exists (
+    select 1
+    from public.meal_plans
+    group by client_id, dietitian_id, plan_date
+    having count(*) > 1
+  ) then
+    raise exception 'Duplicate daily meal plans prevent creation of the weekly-plan uniqueness contract.';
+  end if;
+
+  select exists (
+    select 1
+    from pg_index as i
+    where i.indrelid = 'public.meal_plans'::regclass
+      and i.indisunique
+      and i.indimmediate
+      and i.indpred is null
+      and i.indnkeyatts = 3
+      and (
+        select array_agg(a.attname order by key_columns.ordinality)
+        from unnest(i.indkey) with ordinality as key_columns(attnum, ordinality)
+        join pg_attribute as a
+          on a.attrelid = i.indrelid
+         and a.attnum = key_columns.attnum
+        where key_columns.ordinality <= i.indnkeyatts
+      ) = array['client_id', 'dietitian_id', 'plan_date']::text[]
+  ) into v_has_compatible_unique;
+
+  if exists (
+    select 1
+    from pg_constraint as c
+    where c.conrelid = 'public.meal_plans'::regclass
+      and c.conname = 'meal_plans_client_dietitian_plan_date_key'
+  ) then
+    select exists (
+      select 1
+      from pg_constraint as c
+      where c.conrelid = 'public.meal_plans'::regclass
+        and c.conname = 'meal_plans_client_dietitian_plan_date_key'
+        and c.contype = 'u'
+        and not c.condeferrable
+        and c.conkey = array[
+          (select a.attnum from pg_attribute as a where a.attrelid = 'public.meal_plans'::regclass and a.attname = 'client_id' and not a.attisdropped),
+          (select a.attnum from pg_attribute as a where a.attrelid = 'public.meal_plans'::regclass and a.attname = 'dietitian_id' and not a.attisdropped),
+          (select a.attnum from pg_attribute as a where a.attrelid = 'public.meal_plans'::regclass and a.attname = 'plan_date' and not a.attisdropped)
+        ]::smallint[]
+    ) into v_named_constraint_is_compatible;
+
+    if not v_named_constraint_is_compatible then
+      raise exception 'Existing meal_plans_client_dietitian_plan_date_key has an incompatible weekly-plan uniqueness contract.';
+    end if;
+  end if;
+
+  if not v_has_compatible_unique then
+    alter table public.meal_plans
+      add constraint meal_plans_client_dietitian_plan_date_key
+      unique (client_id, dietitian_id, plan_date);
+  end if;
+end
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Source contract: manual requires recipe_id=null; recipe allows null FK
@@ -402,12 +472,15 @@ begin
         if not (v_meal ? 'calories') or jsonb_typeof(v_meal -> 'calories') = 'null' then
           v_calories := null;
         elsif jsonb_typeof(v_meal -> 'calories') = 'number'
-              and (v_meal ->> 'calories') ~ '^-?[0-9]+$' then
+              and (v_meal ->> 'calories') ~ '^[0-9]+$' then
           begin
             v_calories := (v_meal ->> 'calories')::integer;
           exception when others then
             raise exception 'Meal calories are outside the supported integer range.' using errcode = '22023';
           end;
+          if v_calories > 100000 then
+            raise exception 'Meal calories must be between 0 and 100000 or null.' using errcode = '22023';
+          end if;
         else
           raise exception 'Meal calories must be an integer or null.' using errcode = '22023';
         end if;
@@ -589,5 +662,7 @@ $function$;
 revoke all on function public.save_weekly_meal_plan(uuid, date, jsonb)
 from public, anon, authenticated, service_role;
 grant execute on function public.save_weekly_meal_plan(uuid, date, jsonb) to authenticated;
+
+notify pgrst, 'reload schema';
 
 commit;

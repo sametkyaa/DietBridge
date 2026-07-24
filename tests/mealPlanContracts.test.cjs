@@ -418,6 +418,46 @@ test('recipe snapshot migration derives protected fields server-side and preserv
   assert.match(SNAPSHOT_MIGRATION, /delete from public\.meals/i);
 });
 
+test('production migration provides an ON CONFLICT-compatible weekly-plan uniqueness contract', () => {
+  const uniquenessBlock = SNAPSHOT_MIGRATION.match(/Weekly-plan uniqueness:[\s\S]*?\n\$\$;/);
+  assert.ok(uniquenessBlock, 'weekly-plan uniqueness DO block is present');
+  const sql = uniquenessBlock[0];
+
+  assert.match(sql, /group by client_id, dietitian_id, plan_date/i);
+  assert.match(sql, /having count\(\*\) > 1/i);
+  assert.match(sql, /Duplicate daily meal plans prevent creation of the weekly-plan uniqueness contract/i);
+  assert.match(sql, /i\.indisunique/i);
+  assert.match(sql, /i\.indimmediate/i);
+  assert.match(sql, /i\.indpred is null/i);
+  assert.match(sql, /i\.indnkeyatts = 3/i);
+  assert.match(sql, /array\['client_id', 'dietitian_id', 'plan_date'\]::text\[\]/i);
+  assert.match(sql, /add constraint meal_plans_client_dietitian_plan_date_key\s+unique \(client_id, dietitian_id, plan_date\)/i);
+  assert.doesNotMatch(sql, /delete from public\.meal_plans/i);
+  assert.match(SNAPSHOT_MIGRATION, /on conflict \(client_id, dietitian_id, plan_date\)/i);
+});
+
+test('production migration enforces canonical manual calorie bounds and reloads the PostgREST schema', () => {
+  const caloriesBlock = SNAPSHOT_MIGRATION.match(/-- calories[\s\S]*?-- macros:/);
+  assert.ok(caloriesBlock, 'manual calorie validation block is present');
+  const sql = caloriesBlock[0];
+
+  assert.match(sql, /jsonb_typeof\(v_meal -> 'calories'\) = 'number'/i);
+  assert.match(sql, /\^\[0-9\]\+\$/);
+  assert.doesNotMatch(sql, /\^\-\?\[0-9\]\+\$/);
+  assert.match(sql, /v_calories > 100000/i);
+  assert.match(sql, /between 0 and 100000 or null/i);
+
+  const acceptsManualCalories = (value) => value === null
+    || (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100000);
+  [null, 0, 420, 100000].forEach((value) => assert.equal(acceptsManualCalories(value), true));
+  [-1, 100001, 12.5, '420', 2147483648].forEach((value) => assert.equal(acceptsManualCalories(value), false));
+
+  const notifyIndex = SNAPSHOT_MIGRATION.indexOf("notify pgrst, 'reload schema';");
+  const commitIndex = SNAPSHOT_MIGRATION.lastIndexOf('commit;');
+  assert.ok(notifyIndex >= 0, 'PostgREST schema reload notification is present');
+  assert.ok(notifyIndex < commitIndex, 'schema reload notification occurs before commit');
+});
+
 test('auth lifecycle: same-user refresh events update the session without resolving access again', () => {
   assert.equal(
     authLifecycle.getAuthLifecycleAction('TOKEN_REFRESHED', DIETITIAN_ID, DIETITIAN_ID, true),
