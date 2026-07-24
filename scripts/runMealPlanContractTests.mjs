@@ -22,6 +22,7 @@ const SOURCES = [
   'features/meal-plans/services/mealPlanReadModel.ts',
   'features/auth/services/authLifecycle.ts',
   'features/recipes/services/recipeService.ts',
+  'features/recipes/utils/filterRecipes.ts',
   'shared/utils/uuid.ts',
 ];
 
@@ -31,6 +32,7 @@ const EXPECTED_OUTPUTS = [
   'features/meal-plans/services/mealPlanReadModel.js',
   'features/auth/services/authLifecycle.js',
   'features/recipes/services/recipeService.js',
+  'features/recipes/utils/filterRecipes.js',
   'shared/utils/uuid.js',
 ];
 

@@ -68,7 +68,14 @@ import {
   getRecipeUserMessage,
   isCanonicalRecipeImagePath,
   type Recipe,
+  type RecipeMealType,
 } from '../features/recipes/services/recipeService';
+import {
+  countRecipesByCategory,
+  filterRecipesByCategoryAndSearch,
+  RECIPE_CATEGORY_OPTIONS,
+  type RecipeCategoryFilter,
+} from '../features/recipes/utils/filterRecipes';
 import { getMealImagePreviewUrls } from '../features/meal-plans/services/mealImagePreviewService';
 
 const DAYS = MEAL_PLAN_WEEKDAY_LABELS;
@@ -310,6 +317,7 @@ const MealPlans = () => {
   const [isLoadingRecipes, setIsLoadingRecipes] = useState(true);
   const [recipeError, setRecipeError] = useState<string | null>(null);
   const [recipeSearch, setRecipeSearch] = useState('');
+  const [recipeCategoryFilter, setRecipeCategoryFilter] = useState<RecipeCategoryFilter>('all');
   const [recipeSelectionInfo, setRecipeSelectionInfo] = useState<string | null>(null);
 
   const recipeById = useMemo(() => new Map(recipes.map((recipe) => [recipe.id, recipe])), [recipes]);
@@ -483,9 +491,12 @@ const MealPlans = () => {
 
   const hasEditorMeals = Object.values(weeklyPlan)
     .some((day) => Object.values(day).some(Boolean));
-  const filteredRecipes = useMemo(() => recipes.filter((recipe) => recipe.name
-    .toLocaleLowerCase('tr-TR')
-    .includes(recipeSearch.trim().toLocaleLowerCase('tr-TR'))), [recipes, recipeSearch]);
+  const filteredRecipes = useMemo(
+    () => filterRecipesByCategoryAndSearch(recipes, recipeCategoryFilter, recipeSearch),
+    [recipes, recipeCategoryFilter, recipeSearch],
+  );
+
+  const categoryCounts = useMemo(() => countRecipesByCategory(recipes), [recipes]);
 
   const applyPreviousWeekCopy = (copy: NonNullable<typeof copyConfirmation>) => {
     setMeals(copy.meals);
@@ -1455,7 +1466,33 @@ const MealPlans = () => {
            <div className="border-t border-slate-100">
              <div className="p-4 pb-3">
                <h3 className="px-1 text-sm font-bold text-slate-800">Kayıtlı Tarifler</h3>
-               <label className="relative mt-3 block">
+               <div
+                 className="flex gap-2 overflow-x-auto overflow-y-hidden py-3"
+                 style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}
+               >
+                 {RECIPE_CATEGORY_OPTIONS.map((option) => {
+                   const isActive = recipeCategoryFilter === option.value;
+                   const count = option.value === 'all' ? recipes.length : categoryCounts[option.value as RecipeMealType] ?? 0;
+                   return (
+                     <button
+                       key={option.value}
+                       type="button"
+                       aria-pressed={isActive}
+                       aria-label={`${option.value === 'all' ? 'Tüm' : `${option.label}`} tariflerini göster (${count})`}
+                       onClick={() => setRecipeCategoryFilter(option.value)}
+                       className={`flex-shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                         isActive
+                           ? 'border-primary bg-emerald-50 text-primary'
+                           : 'border-slate-200 bg-white text-slate-600 hover:border-primary/50 hover:bg-emerald-50/30'
+                       }`}
+                     >
+                       {option.label}
+                       <span className={`ml-1 text-[10px] ${isActive ? 'text-primary/80' : 'text-slate-400'}`}>{count}</span>
+                     </button>
+                   );
+                 })}
+               </div>
+               <label className="relative mt-1 block">
                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                  <input
                    type="search"
@@ -1478,7 +1515,13 @@ const MealPlans = () => {
                ) : recipes.length === 0 ? (
                  <p className="p-4 text-center text-xs text-slate-500">Henüz kayıtlı tarif bulunmuyor.</p>
                ) : filteredRecipes.length === 0 ? (
-                 <p className="p-4 text-center text-xs text-slate-500">Aramanızla eşleşen tarif bulunamadı.</p>
+                 <p className="p-4 text-center text-xs text-slate-500">
+                   {recipeCategoryFilter !== 'all' && recipeSearch.trim()
+                     ? 'Bu kategori ve arama için tarif bulunamadı.'
+                     : recipeCategoryFilter !== 'all'
+                       ? 'Bu kategoride kayıtlı tarif bulunmuyor.'
+                       : 'Aramanızla eşleşen tarif bulunamadı.'}
+                 </p>
                ) : (
                  <div className="space-y-2">
                    {filteredRecipes.map((recipe) => (

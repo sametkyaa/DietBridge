@@ -29,6 +29,7 @@ const planService = require(path.join(buildDir, 'features/meal-plans/services/me
 const readModel = require(path.join(buildDir, 'features/meal-plans/services/mealPlanReadModel.js'));
 const authLifecycle = require(path.join(buildDir, 'features/auth/services/authLifecycle.js'));
 const recipeService = require(path.join(buildDir, 'features/recipes/services/recipeService.js'));
+const filterRecipes = require(path.join(buildDir, 'features/recipes/utils/filterRecipes.js'));
 const supabaseStub = require(path.join(buildDir, 'lib/supabaseClient.js'));
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -521,4 +522,71 @@ test('auth lifecycle: same-user refresh events update the session without resolv
     authLifecycle.getAuthLifecycleAction('TOKEN_REFRESHED', DIETITIAN_ID, DIETITIAN_ID, false),
     'resolve_access',
   );
+});
+
+test('recipe category filter: all returns every recipe', () => {
+  const recipes = [
+    { id: 'r1', name: 'Avokadolu Yumurta Tabağı', mealType: 'breakfast', calories: 350, macros: { protein: 18, carbs: 12, fat: 20 } },
+    { id: 'r2', name: 'Yoğurtlu Meyve ve Granola Kasesi', mealType: 'snack', calories: 220, macros: { protein: 8, carbs: 35, fat: 6 } },
+    { id: 'r3', name: 'Fıstık Ezmeli Elma Dilimleri', mealType: 'snack', calories: 180, macros: { protein: 5, carbs: 22, fat: 8 } },
+    { id: 'r4', name: 'Izgara Tavuklu Sebze ve Bulgur Tabağı', mealType: 'dinner', calories: 520, macros: { protein: 35, carbs: 45, fat: 14 } },
+  ];
+  const result = filterRecipes.filterRecipesByCategoryAndSearch(recipes, 'all', '');
+  assert.equal(result.length, 4);
+  assert.deepEqual(result.map((r) => r.id), ['r1', 'r2', 'r3', 'r4']);
+});
+
+test('recipe category filter: each category returns only matching mealType', () => {
+  const recipes = [
+    { id: 'r1', name: 'Avokadolu Yumurta Tabağı', mealType: 'breakfast', calories: 350, macros: { protein: 18, carbs: 12, fat: 20 } },
+    { id: 'r2', name: 'Yoğurtlu Meyve ve Granola Kasesi', mealType: 'snack', calories: 220, macros: { protein: 8, carbs: 35, fat: 6 } },
+    { id: 'r3', name: 'Fıstık Ezmeli Elma Dilimleri', mealType: 'snack', calories: 180, macros: { protein: 5, carbs: 22, fat: 8 } },
+    { id: 'r4', name: 'Izgara Tavuklu Sebze ve Bulgur Tabağı', mealType: 'dinner', calories: 520, macros: { protein: 35, carbs: 45, fat: 14 } },
+  ];
+
+  const breakfast = filterRecipes.filterRecipesByCategoryAndSearch(recipes, 'breakfast', '');
+  assert.equal(breakfast.length, 1);
+  assert.equal(breakfast[0].id, 'r1');
+
+  const snack = filterRecipes.filterRecipesByCategoryAndSearch(recipes, 'snack', '');
+  assert.equal(snack.length, 2);
+  assert.deepEqual(snack.map((r) => r.id), ['r2', 'r3']);
+
+  const dinner = filterRecipes.filterRecipesByCategoryAndSearch(recipes, 'dinner', '');
+  assert.equal(dinner.length, 1);
+  assert.equal(dinner[0].id, 'r4');
+
+  const lunch = filterRecipes.filterRecipesByCategoryAndSearch(recipes, 'lunch', '');
+  assert.equal(lunch.length, 0);
+});
+
+test('recipe category filter: combines with search without changing recipes', () => {
+  const recipes = [
+    { id: 'r1', name: 'Avokadolu Yumurta Tabağı', mealType: 'breakfast', calories: 350, macros: { protein: 18, carbs: 12, fat: 20 } },
+    { id: 'r2', name: 'Yoğurtlu Meyve ve Granola Kasesi', mealType: 'snack', calories: 220, macros: { protein: 8, carbs: 35, fat: 6 } },
+    { id: 'r3', name: 'Fıstık Ezmeli Elma Dilimleri', mealType: 'snack', calories: 180, macros: { protein: 5, carbs: 22, fat: 8 } },
+    { id: 'r4', name: 'Izgara Tavuklu Sebze ve Bulgur Tabağı', mealType: 'dinner', calories: 520, macros: { protein: 35, carbs: 45, fat: 14 } },
+  ];
+  const result = filterRecipes.filterRecipesByCategoryAndSearch(recipes, 'snack', 'elma');
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, 'r3');
+  assert.equal(result[0].mealType, 'snack');
+});
+
+test('recipe category filter: counts recipes per category', () => {
+  const recipes = [
+    { id: 'r1', name: 'Avokadolu Yumurta Tabağı', mealType: 'breakfast', calories: 350, macros: { protein: 18, carbs: 12, fat: 20 } },
+    { id: 'r2', name: 'Yoğurtlu Meyve ve Granola Kasesi', mealType: 'snack', calories: 220, macros: { protein: 8, carbs: 35, fat: 6 } },
+    { id: 'r3', name: 'Fıstık Ezmeli Elma Dilimleri', mealType: 'snack', calories: 180, macros: { protein: 5, carbs: 22, fat: 8 } },
+    { id: 'r4', name: 'Izgara Tavuklu Sebze ve Bulgur Tabağı', mealType: 'dinner', calories: 520, macros: { protein: 35, carbs: 45, fat: 14 } },
+  ];
+  const counts = filterRecipes.countRecipesByCategory(recipes);
+  assert.deepEqual(counts, { breakfast: 1, lunch: 0, dinner: 1, snack: 2 });
+});
+
+test('recipe category filter: labels are stable', () => {
+  assert.equal(filterRecipes.getRecipeCategoryLabel('breakfast'), 'Kahvaltı');
+  assert.equal(filterRecipes.getRecipeCategoryLabel('lunch'), 'Öğle');
+  assert.equal(filterRecipes.getRecipeCategoryLabel('dinner'), 'Akşam');
+  assert.equal(filterRecipes.getRecipeCategoryLabel('snack'), 'Ara Öğün');
 });
