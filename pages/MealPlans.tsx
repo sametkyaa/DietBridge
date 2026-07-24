@@ -1314,6 +1314,7 @@ const MealPlans = () => {
 
       {/* --- RIGHT SIDE: Sidebar (Client Info & Recipes) --- */}
       <aside className="w-[clamp(320px,23vw,390px)] flex-shrink-0 bg-white border-l border-slate-200 flex flex-col h-full shadow-lg z-30">
+        <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
         
         {/* 1. Client Info Panel (Conditional) */}
         {selectedClient ? (
@@ -1352,7 +1353,7 @@ const MealPlans = () => {
         )}
 
         {/* 2. Recipes Panel */}
-        <div className="flex-1 flex flex-col min-h-0 bg-white">
+        <div className="bg-white">
            <div className="p-4 border-b border-slate-100">
               <h3 className="font-bold text-slate-800 mb-3 px-1">Öğün Ekle</h3>
 
@@ -1451,7 +1452,7 @@ const MealPlans = () => {
                 <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Manuel öğün eklemek veya düzenlemek için plandan bir hücre seçin.</p>
               )}
            </div>
-           <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100">
+           <div className="border-t border-slate-100">
              <div className="p-4 pb-3">
                <h3 className="px-1 text-sm font-bold text-slate-800">Kayıtlı Tarifler</h3>
                <label className="relative mt-3 block">
@@ -1466,7 +1467,7 @@ const MealPlans = () => {
                </label>
                {recipeSelectionInfo && <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800" role="status">{recipeSelectionInfo}</p>}
              </div>
-             <div className="min-h-0 min-h-[160px] flex-1 overflow-y-auto px-4 pb-4" style={{ scrollbarGutter: 'stable' }}>
+             <div className="px-4 pb-4">
                {isLoadingRecipes ? (
                  <p className="p-4 text-center text-xs text-slate-500">Tarifler yükleniyor...</p>
                ) : recipeError ? (
@@ -1507,6 +1508,7 @@ const MealPlans = () => {
                )}
              </div>
            </div>
+        </div>
         </div>
       </aside>
 
