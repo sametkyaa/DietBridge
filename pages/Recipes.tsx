@@ -1,395 +1,181 @@
-import React, { useState } from 'react';
-import { Search, Bell, Plus, Filter, Download, MoreVertical, Edit2, Trash2, Eye, Copy, X, Upload, Clock, Users, Flame } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { RECIPES, USER_AVATAR } from '../constants';
-import { Recipe, RecipeCategory } from '../types';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Edit2, Flame, Loader2, Plus, Search, Trash2, Upload, X } from 'lucide-react';
+import {
+  createRecipe,
+  deleteRecipe,
+  fetchRecipes,
+  getRecipeUserMessage,
+  type Recipe,
+  type RecipeInput,
+  type RecipeMealType,
+  updateRecipe,
+} from '../features/recipes/services/recipeService';
 
-const getCategoryColor = (category: RecipeCategory) => {
-  switch (category) {
-    case 'Kahvaltı': return 'bg-yellow-100 text-yellow-700';
-    case 'Ara Öğün': return 'bg-blue-100 text-blue-700';
-    case 'Öğle Yemeği': return 'bg-emerald-100 text-emerald-700';
-    case 'Akşam Yemeği': return 'bg-purple-100 text-purple-700';
-    case 'Tatlı': return 'bg-pink-100 text-pink-700';
-    default: return 'bg-slate-100 text-slate-700';
-  }
+const MEAL_TYPE_OPTIONS: Array<{ value: RecipeMealType; label: string }> = [
+  { value: 'breakfast', label: 'Kahvaltı' },
+  { value: 'lunch', label: 'Öğle' },
+  { value: 'dinner', label: 'Akşam' },
+  { value: 'snack', label: 'Ara Öğün' },
+];
+
+const getMealTypeLabel = (mealType: RecipeMealType): string => (
+  MEAL_TYPE_OPTIONS.find((option) => option.value === mealType)?.label ?? 'Ara Öğün'
+);
+
+type RecipeFormState = {
+  name: string;
+  description: string;
+  mealType: RecipeMealType;
+  calories: string;
+  protein: string;
+  carbs: string;
+  fat: string;
+  imageFile: File | null;
 };
 
-const RecipeRow: React.FC<{ recipe: Recipe }> = ({ recipe }) => {
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const navigate = useNavigate();
-
-  return (
-    <tr 
-      onClick={() => navigate(`/recipes/${recipe.id}`)}
-      className="hover:bg-slate-50 cursor-pointer transition-colors bg-white border-b border-slate-50 last:border-0"
-    >
-      <td className="px-6 py-4">
-        <img src={recipe.image} alt={recipe.name} className="w-12 h-12 rounded-lg object-cover shadow-sm transition-all" />
-      </td>
-      <td className="px-6 py-4">
-        <p className="font-semibold text-slate-800">{recipe.name}</p>
-      </td>
-      <td className="px-6 py-4">
-        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${getCategoryColor(recipe.category)}`}>
-          {recipe.category}
-        </span>
-      </td>
-      <td className="px-6 py-4">
-         <div className="flex items-center gap-1 font-medium text-slate-600">
-            <Flame className="w-4 h-4 text-orange-500" />
-            {recipe.calories} kcal
-         </div>
-      </td>
-      <td className="px-6 py-4 text-slate-500 font-medium">
-        {recipe.cuisine || '-'}
-      </td>
-      <td className="px-6 py-4 text-slate-500 text-sm">
-        {recipe.createdAt}
-      </td>
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-2">
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/recipes/${recipe.id}`);
-              }}
-              className="p-2 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-lg transition-colors" 
-              title="Detayları Gör"
-            >
-              <Eye className="w-4 h-4" />
-            </button>
-            <div className="relative">
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsDropdownOpen(!isDropdownOpen);
-                  }}
-                  className={`p-2 rounded-lg transition-colors ${isDropdownOpen ? 'text-slate-600 bg-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
-                >
-                    <MoreVertical className="w-4 h-4" />
-                </button>
-                
-                {/* Dropdown Menu */}
-                {isDropdownOpen && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-10 cursor-default" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsDropdownOpen(false);
-                      }} 
-                    />
-                    <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-slate-100 py-1 z-20">
-                        <button className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2">
-                            <Edit2 className="w-3 h-3" /> Düzenle
-                        </button>
-                        <button className="w-full text-left px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2">
-                            <Copy className="w-3 h-3" /> Kopyala
-                        </button>
-                        <div className="h-px bg-slate-100 my-1"></div>
-                        <button className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
-                            <Trash2 className="w-3 h-3" /> Sil
-                        </button>
-                    </div>
-                  </>
-                )}
-            </div>
-        </div>
-      </td>
-    </tr>
-  );
+const EMPTY_FORM: RecipeFormState = {
+  name: '',
+  description: '',
+  mealType: 'breakfast',
+  calories: '',
+  protein: '',
+  carbs: '',
+  fat: '',
+  imageFile: null,
 };
 
-const RecipeCard: React.FC<{ recipe: Recipe }> = ({ recipe }) => {
-  const navigate = useNavigate();
-  return (
-    <div 
-      onClick={() => navigate(`/recipes/${recipe.id}`)}
-      className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer"
-    >
-      <div className="flex items-start gap-4 mb-3">
-        <img src={recipe.image} alt={recipe.name} className="w-16 h-16 rounded-lg object-cover shadow-sm" />
-        <div className="flex-1">
-            <div className="flex justify-between items-start">
-                <h3 className="font-bold text-slate-800 line-clamp-1">{recipe.name}</h3>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${getCategoryColor(recipe.category)}`}>
-                    {recipe.category}
-                </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">{recipe.cuisine} • {recipe.createdAt}</p>
-        </div>
-      </div>
-      
-      <div className="flex justify-between items-center border-t border-slate-100 pt-3">
-        <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1 text-xs font-bold text-slate-700">
-                <Flame className="w-3 h-3 text-orange-500" /> {recipe.calories} kcal
-            </span>
-            <span className="flex items-center gap-1 text-xs text-slate-500">
-                <Clock className="w-3 h-3" /> {recipe.prepTime}
-            </span>
-        </div>
-        <div className="flex gap-2">
-             <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/recipes/${recipe.id}`);
-                }}
-                className="p-1.5 bg-slate-50 text-slate-400 hover:text-primary rounded-lg"
-             >
-                <Eye className="w-4 h-4" />
-             </button>
-             <button className="p-1.5 bg-slate-50 text-slate-400 hover:text-red-500 rounded-lg">
-                <Trash2 className="w-4 h-4" />
-             </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+const toFormState = (recipe: Recipe): RecipeFormState => ({
+  name: recipe.name,
+  description: recipe.description ?? '',
+  mealType: recipe.mealType,
+  calories: String(recipe.calories),
+  protein: String(recipe.macros.protein),
+  carbs: String(recipe.macros.carbs),
+  fat: String(recipe.macros.fat),
+  imageFile: null,
+});
+
+const toInput = (form: RecipeFormState): RecipeInput => ({
+  name: form.name,
+  description: form.description,
+  mealType: form.mealType,
+  calories: Number(form.calories),
+  macros: {
+    protein: Number(form.protein),
+    carbs: Number(form.carbs),
+    fat: Number(form.fat),
+  },
+});
 
 const Recipes = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-  const navigate = useNavigate();
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [mealTypeFilter, setMealTypeFilter] = useState<'all' | RecipeMealType>('all');
+  const [form, setForm] = useState<RecipeFormState>(EMPTY_FORM);
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recipeToDelete, setRecipeToDelete] = useState<Recipe | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Filter recipes
-  const filteredRecipes = RECIPES.filter(recipe => 
-    recipe.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const loadRecipes = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setRecipes(await fetchRecipes());
+    } catch (loadError) {
+      setError(getRecipeUserMessage(loadError));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadRecipes(); }, [loadRecipes]);
+
+  const filteredRecipes = recipes.filter((recipe) => (
+    (mealTypeFilter === 'all' || recipe.mealType === mealTypeFilter)
+    && recipe.name.toLocaleLowerCase('tr-TR').includes(search.trim().toLocaleLowerCase('tr-TR'))
+  ));
+
+  const openCreateForm = () => {
+    setEditingRecipe(null);
+    setForm(EMPTY_FORM);
+    setIsFormOpen(true);
+  };
+
+  const openEditForm = (recipe: Recipe) => {
+    setEditingRecipe(recipe);
+    setForm(toFormState(recipe));
+    setIsFormOpen(true);
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const saved = editingRecipe
+        ? await updateRecipe(editingRecipe.id, toInput(form), form.imageFile)
+        : await createRecipe(toInput(form), form.imageFile);
+      setRecipes((current) => editingRecipe
+        ? current.map((recipe) => recipe.id === saved.id ? saved : recipe)
+        : [saved, ...current]);
+      setSuccessMessage(editingRecipe ? 'Tarif güncellendi.' : 'Tarif oluşturuldu.');
+      setIsFormOpen(false);
+    } catch (submitError) {
+      setError(getRecipeUserMessage(submitError));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!recipeToDelete) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await deleteRecipe(recipeToDelete.id);
+      setRecipes((current) => current.filter((recipe) => recipe.id !== recipeToDelete.id));
+      setSuccessMessage('Tarif silindi.');
+      setRecipeToDelete(null);
+    } catch (deleteError) {
+      setError(getRecipeUserMessage(deleteError));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto min-h-screen md:h-screen flex flex-col relative">
-       {/* Header */}
-       <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-4 flex-shrink-0">
-        <div className="w-full md:w-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-800">Tarifler</h1>
-            <p className="text-slate-500 mt-1 text-sm md:text-base">Kendi tariflerinizi oluşturun, kategorilere ayırın ve yönetin.</p>
-          </div>
-          {/* Mobile Profile Pic */}
-          <div className="md:hidden">
-             <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <img src={USER_AVATAR} alt="Profil" className="w-10 h-10 rounded-full border border-slate-200 object-cover" />
-          </button>
-          </div>
+    <div className="mx-auto flex min-h-screen max-w-7xl flex-col p-4 md:h-screen md:p-8">
+      <header className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 md:text-3xl">Tarifler</h1>
+          <p className="mt-1 text-sm text-slate-500">Kayıtlı tariflerinizi yönetin ve haftalık planlarda kullanın.</p>
         </div>
-        
-        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 w-full md:w-auto">
-          <div className="flex gap-2">
-              <button 
-                onClick={() => setIsFilterModalOpen(true)}
-                className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all text-sm"
-              >
-                <Filter className="w-4 h-4" />
-                Filtrele
-              </button>
-              <button className="flex-1 md:flex-none flex justify-center items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl font-medium shadow-sm transition-all text-sm">
-                <Download className="w-4 h-4" />
-                Dışa Aktar
-              </button>
-          </div>
-          <button 
-            onClick={() => setIsCreateModalOpen(true)}
-            className="flex justify-center items-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-medium shadow-sm transition-all active:scale-95 text-sm md:text-base"
-          >
-             <Plus className="w-5 h-5" />
-             Yeni Tarif Oluştur
-          </button>
-
-          {/* Desktop User Info */}
-          <div className="hidden md:block w-px h-8 bg-slate-200 mx-2"></div>
-          <button className="hidden md:block p-2.5 rounded-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors">
-            <Bell className="w-5 h-5" />
-          </button>
-          <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <img
-            src={USER_AVATAR}
-            alt="Profil"
-            className="hidden md:block w-10 h-10 rounded-full border border-slate-200 object-cover"
-          />
-          </button>
-        </div>
+        <button type="button" onClick={openCreateForm} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 hover:bg-primary-dark">
+          <Plus className="h-5 w-5" /> Yeni Tarif
+        </button>
       </header>
 
-      {/* Content Container */}
-      <div className="bg-transparent md:bg-white rounded-none md:rounded-2xl shadow-none md:shadow-sm border-0 md:border border-slate-200 overflow-hidden flex-1 flex flex-col">
-        {/* Toolbar */}
-        <div className="p-0 md:p-4 mb-4 md:mb-0 md:border-b border-slate-200">
-             <div className="relative w-full md:max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Tarife göre filtrele..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 md:py-2 rounded-xl md:rounded-lg border border-slate-200 bg-white md:bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition-all shadow-sm md:shadow-none"
-                />
-             </div>
+      {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert"><p>{error}</p><button type="button" onClick={() => void loadRecipes()} className="mt-3 min-h-11 rounded-lg border border-rose-300 bg-white px-4 font-semibold">Tekrar dene</button></div>}
+      {successMessage && <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800" role="status">{successMessage}</div>}
+
+      <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 md:flex-row">
+          <label className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tarif ara..." className="min-h-11 w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" /></label>
+          <select value={mealTypeFilter} onChange={(event) => setMealTypeFilter(event.target.value as 'all' | RecipeMealType)} className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="all">Tüm öğün tipleri</option>{MEAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
         </div>
-        
-        {/* Scrollable Content */}
-        <div className="overflow-visible md:overflow-auto flex-1">
-          {/* Desktop Table */}
-          <table className="w-full text-left text-sm hidden md:table">
-            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
-              <tr>
-                <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Foto</th>
-                <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Tarif Adı</th>
-                <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Kategori</th>
-                <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Kalori</th>
-                <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Mutfak</th>
-                <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Oluşturulma Tarihi</th>
-                <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">İşlemler</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {filteredRecipes.map((recipe) => (
-                <RecipeRow key={recipe.id} recipe={recipe} />
-              ))}
-              {filteredRecipes.length === 0 && (
-                <tr>
-                   <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                     Aradığınız kriterlere uygun tarif bulunamadı.
-                   </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          {/* Mobile Card View */}
-          <div className="md:hidden space-y-4 pb-4">
-             {filteredRecipes.map((recipe) => (
-               <RecipeCard key={recipe.id} recipe={recipe} />
-             ))}
-             {filteredRecipes.length === 0 && (
-                <div className="text-center py-10 text-slate-500">
-                   Tarif bulunamadı.
-                </div>
-             )}
-          </div>
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {isLoading ? <p className="p-8 text-center text-sm text-slate-500">Tarifler yükleniyor...</p> : recipes.length === 0 ? <div className="p-8 text-center"><p className="text-slate-500">Henüz kayıtlı tarif bulunmuyor.</p><button type="button" onClick={openCreateForm} className="mt-4 min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white">İlk tarifi oluştur</button></div> : filteredRecipes.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">Aramanızla eşleşen tarif bulunamadı.</p> : <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{filteredRecipes.map((recipe) => <article key={recipe.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="flex gap-3 p-4">{recipe.imagePreview ? <img src={recipe.imagePreview} alt={recipe.name} className="h-16 w-16 rounded-lg object-cover" /> : <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-slate-400">Tarif</div>}<div className="min-w-0 flex-1"><h2 className="truncate font-bold text-slate-800">{recipe.name}</h2><span className="mt-1 inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{getMealTypeLabel(recipe.mealType)}</span><p className="mt-2 flex items-center gap-1 text-xs font-semibold text-orange-600"><Flame className="h-3.5 w-3.5" /> {recipe.calories} kcal</p></div></div><div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-600">P {recipe.macros.protein}g · K {recipe.macros.carbs}g · Y {recipe.macros.fat}g</div><div className="flex justify-end gap-2 border-t border-slate-100 p-2"><button type="button" onClick={() => openEditForm(recipe)} className="min-h-11 rounded-lg px-3 text-sm text-slate-600 hover:bg-slate-50"><Edit2 className="inline h-4 w-4" /> Düzenle</button><button type="button" onClick={() => setRecipeToDelete(recipe)} className="min-h-11 rounded-lg px-3 text-sm text-rose-600 hover:bg-rose-50"><Trash2 className="inline h-4 w-4" /> Sil</button></div></article>)}</div>}
         </div>
-      </div>
+      </section>
 
-      {/* Create Modal */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in duration-200">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
-                    <h2 className="text-xl font-bold text-slate-800">Yeni Tarif Oluştur</h2>
-                    <button onClick={() => setIsCreateModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-                
-                <div className="p-6 space-y-6">
-                    {/* Photo Upload */}
-                    <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer group">
-                        <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-slate-400 group-hover:text-primary mb-3">
-                            <Upload className="w-6 h-6" />
-                        </div>
-                        <p className="text-sm font-medium text-slate-600">Tarif fotoğrafı yüklemek için tıklayın</p>
-                        <p className="text-xs text-slate-400 mt-1">PNG, JPG (Max. 5MB)</p>
-                    </div>
+      {isFormOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-slate-100 p-5"><h2 className="text-lg font-bold text-slate-800">{editingRecipe ? 'Tarifi Düzenle' : 'Yeni Tarif'}</h2><button type="button" onClick={() => setIsFormOpen(false)} className="rounded-full p-2 hover:bg-slate-100"><X className="h-5 w-5" /></button></div><div className="space-y-4 p-5"><label className="block text-sm font-semibold text-slate-700">Tarif adı<input required value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 font-normal" /></label><label className="block text-sm font-semibold text-slate-700">Açıklama<textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 p-3 font-normal" rows={3} /></label><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold text-slate-700">Öğün tipi<select value={form.mealType} onChange={(event) => setForm((current) => ({ ...current, mealType: event.target.value as RecipeMealType }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 font-normal">{MEAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-sm font-semibold text-slate-700">Kalori<input required min="0" type="number" value={form.calories} onChange={(event) => setForm((current) => ({ ...current, calories: event.target.value }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 font-normal" /></label><label className="text-sm font-semibold text-slate-700">Protein (g)<input required min="0" type="number" value={form.protein} onChange={(event) => setForm((current) => ({ ...current, protein: event.target.value }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 font-normal" /></label><label className="text-sm font-semibold text-slate-700">Karbonhidrat (g)<input required min="0" type="number" value={form.carbs} onChange={(event) => setForm((current) => ({ ...current, carbs: event.target.value }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 font-normal" /></label><label className="text-sm font-semibold text-slate-700">Yağ (g)<input required min="0" type="number" value={form.fat} onChange={(event) => setForm((current) => ({ ...current, fat: event.target.value }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3 font-normal" /></label><label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 text-sm text-slate-600"><Upload className="h-4 w-4" /> Görsel seç<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => setForm((current) => ({ ...current, imageFile: event.target.files?.[0] ?? null }))} /></label></div>{form.imageFile && <p className="text-xs text-slate-500">Seçilen görsel: {form.imageFile.name}</p>}</div><div className="flex justify-end gap-3 border-t border-slate-100 p-5"><button type="button" onClick={() => setIsFormOpen(false)} className="min-h-11 rounded-lg px-4 text-sm font-semibold text-slate-600">İptal</button><button disabled={isSubmitting} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:opacity-60">{isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}{editingRecipe ? 'Güncelle' : 'Oluştur'}</button></div></form></div>}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-1">
-                            <label className="text-sm font-semibold text-slate-700">Tarif Adı</label>
-                            <input type="text" placeholder="Örn: Avokadolu Yumurta" className="w-full px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-sm font-semibold text-slate-700">Kategori</label>
-                            <select className="w-full px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all">
-                                <option>Seçiniz</option>
-                                <option>Kahvaltı</option>
-                                <option>Ara Öğün</option>
-                                <option>Öğle Yemeği</option>
-                                <option>Akşam Yemeği</option>
-                                <option>Tatlı</option>
-                            </select>
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-sm font-semibold text-slate-700">Kalori (kcal)</label>
-                            <input type="number" placeholder="0" className="w-full px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-sm font-semibold text-slate-700">Hazırlama Süresi (dk)</label>
-                            <input type="number" placeholder="0" className="w-full px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" />
-                        </div>
-                         <div className="space-y-1">
-                            <label className="text-sm font-semibold text-slate-700">Porsiyon Sayısı</label>
-                            <input type="number" placeholder="1" className="w-full px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" />
-                        </div>
-                    </div>
-
-                    <div className="space-y-1">
-                        <label className="text-sm font-semibold text-slate-700">Malzemeler</label>
-                        <textarea rows={4} placeholder="Her satıra bir malzeme yazın..." className="w-full px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none"></textarea>
-                    </div>
-
-                    <div className="space-y-1">
-                        <label className="text-sm font-semibold text-slate-700">Hazırlanış Adımları</label>
-                        <textarea rows={6} placeholder="Adım adım hazırlanış..." className="w-full px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none"></textarea>
-                    </div>
-                </div>
-
-                <div className="p-6 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white">
-                    <button onClick={() => setIsCreateModalOpen(false)} className="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors">
-                        İptal
-                    </button>
-                    <button onClick={() => setIsCreateModalOpen(false)} className="px-6 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors shadow-sm shadow-primary/30">
-                        Kaydet
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* Filter Modal */}
-      {isFilterModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-             <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
-                <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-                    <h2 className="text-lg font-bold text-slate-800">Filtrele</h2>
-                    <button onClick={() => setIsFilterModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500">
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
-                <div className="p-6 space-y-6">
-                    <div className="space-y-3">
-                        <label className="text-sm font-bold text-slate-800">Kategoriler</label>
-                        <div className="flex flex-wrap gap-2">
-                            {['Kahvaltı', 'Ara Öğün', 'Öğle Yemeği', 'Akşam Yemeği', 'Tatlı'].map((cat) => (
-                                <label key={cat} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer text-sm text-slate-600 select-none">
-                                    <input type="checkbox" className="rounded text-primary focus:ring-primary" />
-                                    {cat}
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                    
-                    <div className="space-y-3">
-                        <label className="text-sm font-bold text-slate-800 flex justify-between">
-                            Kalori Aralığı
-                            <span className="text-primary text-xs font-normal">0 - 1000+ kcal</span>
-                        </label>
-                        <input type="range" className="w-full accent-primary h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
-                        <div className="flex justify-between text-xs text-slate-400">
-                            <span>0</span>
-                            <span>500</span>
-                            <span>1000+</span>
-                        </div>
-                    </div>
-                </div>
-                <div className="p-5 border-t border-slate-100 flex justify-end gap-3">
-                    <button onClick={() => setIsFilterModalOpen(false)} className="flex-1 px-4 py-2 rounded-lg border border-slate-200 text-slate-600 font-medium hover:bg-slate-50">Temizle</button>
-                    <button onClick={() => setIsFilterModalOpen(false)} className="flex-1 px-4 py-2 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark shadow-sm">Uygula</button>
-                </div>
-             </div>
-        </div>
-      )}
+      {recipeToDelete && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"><h2 className="text-lg font-bold text-slate-800">Tarifi sil</h2><p className="mt-2 text-sm text-slate-600"><strong>{recipeToDelete.name}</strong> silinsin mi? Bu işlem geri alınamaz.</p><div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setRecipeToDelete(null)} disabled={isDeleting} className="min-h-11 rounded-lg px-4 text-sm font-semibold text-slate-600">Vazgeç</button><button type="button" onClick={() => void handleDelete()} disabled={isDeleting} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white disabled:opacity-60">{isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}Sil</button></div></div></div>}
     </div>
   );
 };

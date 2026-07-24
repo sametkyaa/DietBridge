@@ -1,5 +1,5 @@
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation , useNavigate} from 'react-router-dom';
 import { 
   Search, 
@@ -18,6 +18,7 @@ import {
   ArrowUp,
   ArrowDown,
   Upload,
+  GripVertical,
   Loader2,
   ChevronLeft,
   ChevronRight,
@@ -48,7 +49,6 @@ import {
 import {
   cleanupFailedMealPhotoUploads,
   createMealPhotoLocalPreview,
-  getMealPhotoPreviewUrls,
   isCanonicalMealPhotoPath,
   processPendingMealPhotoCleanup,
   uploadMealPhoto,
@@ -63,6 +63,20 @@ import {
   normalizeMealPlanWeekStart,
   shiftMealPlanWeek,
 } from '../features/meal-plans/services/mealPlanReadModel';
+import {
+  fetchRecipes,
+  getRecipeUserMessage,
+  isCanonicalRecipeImagePath,
+  type Recipe,
+  type RecipeMealType,
+} from '../features/recipes/services/recipeService';
+import {
+  countRecipesByCategory,
+  filterRecipesByCategoryAndSearch,
+  RECIPE_CATEGORY_OPTIONS,
+  type RecipeCategoryFilter,
+} from '../features/recipes/utils/filterRecipes';
+import { getMealImagePreviewUrls } from '../features/meal-plans/services/mealImagePreviewService';
 
 const DAYS = MEAL_PLAN_WEEKDAY_LABELS;
 const MEAL_OPTIONS = ['Kahvaltı', 'Öğle', 'Akşam', 'Ara Öğün', 'Antrenman Öncesi', 'Antrenman Sonrası', 'Gece Ara Öğünü'];
@@ -81,6 +95,19 @@ const getCurrentMondayIso = (): string => {
   );
 };
 
+const WEEK_RANGE_DAY_MONTH_FORMAT = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' });
+const WEEK_RANGE_FULL_FORMAT = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+
+const formatMealPlanWeekRangeLabel = (weekStart: string): string => {
+  const weekDates = getMealPlanWeekDates(weekStart);
+  const start = new Date(`${weekDates[0]}T00:00:00`);
+  const end = new Date(`${weekDates[6]}T00:00:00`);
+  if (start.getFullYear() === end.getFullYear()) {
+    return `${WEEK_RANGE_DAY_MONTH_FORMAT.format(start)} – ${WEEK_RANGE_FULL_FORMAT.format(end)}`;
+  }
+  return `${WEEK_RANGE_FULL_FORMAT.format(start)} – ${WEEK_RANGE_FULL_FORMAT.format(end)}`;
+};
+
 interface PlannedMealContent {
   id: string;
   mealId?: string;
@@ -89,8 +116,9 @@ interface PlannedMealContent {
   imagePreview?: string | null;
   pendingPhoto?: File | null;
   calories: number;
+  description?: string | null;
   macros: CanonicalMealMacros;
-  source?: 'manual';
+  source?: 'manual' | 'recipe';
   recipeId?: string | null;
   isEaten?: boolean;
 }
@@ -160,11 +188,12 @@ const mapCanonicalPlansToEditor = (
         mealId: meal.id,
         name: meal.title,
         image: meal.photo_url,
-        imagePreview: isCanonicalMealPhotoPath(meal.photo_url) ? photoPreviews.get(meal.photo_url) ?? null : null,
+        imagePreview: meal.photo_url ? photoPreviews.get(meal.photo_url) ?? null : null,
         calories: meal.calories ?? 0,
+        description: meal.description,
         macros: meal.macros,
-        source: 'manual',
-        recipeId: null,
+        source: meal.source,
+        recipeId: meal.recipe_id,
         isEaten: meal.is_eaten,
       };
     });
@@ -241,6 +270,7 @@ const MealPlans = () => {
   const [planError, setPlanError] = useState<string | null>(null);
   const [isPlanEmpty, setIsPlanEmpty] = useState(false);
   const planRequestRef = useRef(0);
+  const weekPickerInputRef = useRef<HTMLInputElement | null>(null);
   const [planNotes, setPlanNotes] = useState<PlanNotesState>({});
   const [clientDetails, setClientDetails] = useState<ActiveClientDetails | null>(null);
   const [isLoadingClientDetails, setIsLoadingClientDetails] = useState(false);
@@ -273,6 +303,7 @@ const MealPlans = () => {
   
   // Interaction State
   const [activeCell, setActiveCell] = useState<{ day: string; mealId: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ day: string; mealId: string } | null>(null);
   const [customMealText, setCustomMealText] = useState('');
   const [customMealCalories, setCustomMealCalories] = useState('');
   const [customMealProtein, setCustomMealProtein] = useState('');
@@ -282,6 +313,14 @@ const MealPlans = () => {
   const [customMealPhotoPreview, setCustomMealPhotoPreview] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoCleanupWarning, setPhotoCleanupWarning] = useState<string | null>(null);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [isLoadingRecipes, setIsLoadingRecipes] = useState(true);
+  const [recipeError, setRecipeError] = useState<string | null>(null);
+  const [recipeSearch, setRecipeSearch] = useState('');
+  const [recipeCategoryFilter, setRecipeCategoryFilter] = useState<RecipeCategoryFilter>('all');
+  const [recipeSelectionInfo, setRecipeSelectionInfo] = useState<string | null>(null);
+
+  const recipeById = useMemo(() => new Map(recipes.map((recipe) => [recipe.id, recipe])), [recipes]);
 
   copyTargetRef.current = `${selectedClient?.id ?? ''}:${normalizeMealPlanWeekStart(weekStartDate)}`;
 
@@ -336,6 +375,23 @@ const MealPlans = () => {
     return () => { active = false; };
   }, [clientLoadAttempt, location.state]);
 
+  const loadRecipes = useCallback(async () => {
+    setIsLoadingRecipes(true);
+    setRecipeError(null);
+    try {
+      setRecipes(await fetchRecipes());
+    } catch (error) {
+      console.error('Failed to load recipes for meal plans:', error);
+      setRecipeError(getRecipeUserMessage(error));
+    } finally {
+      setIsLoadingRecipes(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRecipes();
+  }, [loadRecipes]);
+
   const loadWeeklyPlan = useCallback(async () => {
     const requestId = ++planRequestRef.current;
     if (!selectedClient || !dietitianId) {
@@ -362,10 +418,8 @@ const MealPlans = () => {
         snapshot.weekStart,
         getMealPlanWeekDates(snapshot.weekStart)[6],
       );
-      const photoPreviews = await getMealPhotoPreviewUrls(
-        plans.flatMap((plan) => plan.meals.flatMap((meal) => (
-          isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
-        ))),
+      const photoPreviews = await getMealImagePreviewUrls(
+        plans.flatMap((plan) => plan.meals.map((meal) => meal.photo_url)),
       );
       if (requestId !== planRequestRef.current) return;
       const editor = mapCanonicalPlansToEditor(plans, snapshot.weekStart, photoPreviews);
@@ -437,6 +491,12 @@ const MealPlans = () => {
 
   const hasEditorMeals = Object.values(weeklyPlan)
     .some((day) => Object.values(day).some(Boolean));
+  const filteredRecipes = useMemo(
+    () => filterRecipesByCategoryAndSearch(recipes, recipeCategoryFilter, recipeSearch),
+    [recipes, recipeCategoryFilter, recipeSearch],
+  );
+
+  const categoryCounts = useMemo(() => countRecipesByCategory(recipes), [recipes]);
 
   const applyPreviousWeekCopy = (copy: NonNullable<typeof copyConfirmation>) => {
     setMeals(copy.meals);
@@ -561,6 +621,7 @@ const MealPlans = () => {
        id: `manual-${Date.now()}`,
        name: customMealText,
        calories: parseInt(customMealCalories) || 0,
+       description: null,
        macros,
        image: null,
        imagePreview: customMealPhotoPreview,
@@ -585,6 +646,76 @@ const MealPlans = () => {
     setCustomMealFat('');
     setCustomMealPhoto(null);
     setCustomMealPhotoPreview(null);
+  };
+
+  const handleAddRecipeToActiveCell = (recipe: Recipe) => {
+    if (!activeCell) {
+      setRecipeSelectionInfo('Önce plandan bir öğün hücresi seçin.');
+      return;
+    }
+    addRecipeToMealCell(recipe, activeCell.day, activeCell.mealId);
+    setRecipeSelectionInfo(`“${recipe.name}” seçili öğün hücresine eklendi.`);
+  };
+
+  const addRecipeToMealCell = (recipe: Recipe, day: string, mealId: string) => {
+    setWeeklyPlan((previous) => ({
+      ...previous,
+      [day]: {
+        ...(previous[day] || {}),
+        [mealId]: {
+          id: `recipe-snapshot-${crypto.randomUUID()}`,
+          name: recipe.name,
+          image: recipe.imagePath,
+          imagePreview: recipe.imagePreview,
+          calories: recipe.calories,
+          description: recipe.description,
+          macros: {
+            protein: recipe.macros.protein,
+            carbs: recipe.macros.carbs,
+            fat: recipe.macros.fat,
+          },
+          source: 'recipe',
+          recipeId: recipe.id,
+          isEaten: false,
+        },
+      },
+    }));
+  };
+
+  const handleRecipeDragStart = (event: React.DragEvent<HTMLButtonElement>, recipeId: string) => {
+    event.dataTransfer.setData('application/x-dietbridge-recipe-id', recipeId);
+    event.dataTransfer.setData('text/plain', recipeId);
+    event.dataTransfer.effectAllowed = 'copy';
+  };
+
+ const handleCellDragOver = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
+   event.preventDefault();
+   event.dataTransfer.dropEffect = 'copy';
+    setDropTarget((previous) => (previous?.day === day && previous?.mealId === mealId ? previous : { day, mealId }));
+ };
+
+  const handleCellDragLeave = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+      setDropTarget((previous) => (previous?.day === day && previous?.mealId === mealId ? null : previous));
+    }
+  };
+
+  const handleCellDrop = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
+    event.preventDefault();
+    setDropTarget(null);
+    const recipeId = event.dataTransfer.getData('application/x-dietbridge-recipe-id') || event.dataTransfer.getData('text/plain');
+    if (!recipeId) {
+      setRecipeSelectionInfo('Sürüklenen tarif bilgisi okunamadı.');
+      return;
+    }
+    const recipe = recipeById.get(recipeId);
+    if (!recipe) {
+      setRecipeSelectionInfo('Tarif bulunamadı. Lütfen listeyi yenileyin.');
+      return;
+    }
+    addRecipeToMealCell(recipe, day, mealId);
+    const mealRow = meals.find((meal) => meal.id === mealId);
+    setRecipeSelectionInfo(`“${recipe.name}” ${day} ${mealRow?.name ?? ''} hücresine eklendi.`);
   };
 
   const handleClearCell = (e: React.MouseEvent, day: string, mealId: string) => {
@@ -680,6 +811,26 @@ const MealPlans = () => {
     setMeals(meals.map(m => m.id === id ? { ...m, [field]: value } : m));
   };
 
+  const handleOpenWeekPicker = () => {
+    const input = weekPickerInputRef.current;
+    if (!input) return;
+    try {
+      if ('showPicker' in HTMLInputElement.prototype) {
+        input.showPicker();
+        return;
+      }
+    } catch {
+      // Native picker unavailable; focusing lets the user type a date instead.
+    }
+    input.focus();
+  };
+
+  const handleWeekDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.value) {
+      setWeekStartDate(normalizeMealPlanWeekStart(event.target.value));
+    }
+  };
+
   const handleSavePlan = async () => {
     if (!selectedClient) {
       alert('Lütfen bir danışan seçiniz.');
@@ -737,8 +888,9 @@ const MealPlans = () => {
               sort_order: meals.findIndex(m => m.id === mealRow.id),
               time: normalizeMealTime(mealRow.time, `days[${i}].meals[${mealId}].time`),
               macros: normalizeCanonicalMealMacros(content.macros, `days[${i}].meals[${mealId}].macros`),
-              source: 'manual',
-              recipe_id: null,
+              description: content.description ?? null,
+              source: content.source ?? 'manual',
+              recipe_id: content.source === 'recipe' ? content.recipeId ?? null : null,
             };
 
             if (content.mealId) mealData.id = content.mealId;
@@ -751,7 +903,7 @@ const MealPlans = () => {
               });
               uploadedPhotoPaths.push(uploadedPath);
               mealData.photo_url = uploadedPath;
-            } else if (isCanonicalMealPhotoPath(content.image)) {
+            } else if (isCanonicalMealPhotoPath(content.image) || isCanonicalRecipeImagePath(content.image)) {
               mealData.photo_url = content.image;
             } else {
               mealData.photo_url = null;
@@ -775,10 +927,8 @@ const MealPlans = () => {
         ]),
       );
       const savedWeek = await saveWeeklyMealPlan(selectedClient.id, normalizedWeekStart, weeklyPayload);
-      const photoPreviews = await getMealPhotoPreviewUrls(
-        savedWeek.plans.flatMap((plan) => plan.meals.flatMap((meal) => (
-          isCanonicalMealPhotoPath(meal.photo_url) ? [meal.photo_url] : []
-        ))),
+      const photoPreviews = await getMealImagePreviewUrls(
+        savedWeek.plans.flatMap((plan) => plan.meals.map((meal) => meal.photo_url)),
       );
       const editor = mapCanonicalPlansToEditor(savedWeek.plans, normalizedWeekStart, photoPreviews, rowNamesByPlacement);
       setMeals(editor.meals);
@@ -806,13 +956,13 @@ const MealPlans = () => {
   };
 
   return (
-    <div className="flex h-screen bg-background-light overflow-hidden">
+    <div className="flex h-[100dvh] bg-background-light overflow-hidden">
       
       {/* --- LEFT SIDE: Main Planning Area --- */}
       <div className="flex-1 flex flex-col h-full min-w-0">
         
         {/* Header Section */}
-        <header className="px-8 py-6 bg-white border-b border-slate-200 flex justify-between items-center z-20 shadow-sm flex-shrink-0">
+        <header className="px-6 py-4 bg-white border-b border-slate-200 flex flex-wrap gap-y-3 justify-between items-center z-20 shadow-sm flex-shrink-0">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Haftalık Yemek Planı</h1>
             <p className="text-sm text-slate-500 mt-1">Danışan için haftalık beslenme programını oluşturun.</p>
@@ -893,16 +1043,28 @@ const MealPlans = () => {
             {/* Date Picker */}
             <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-xl">
               <button type="button" aria-label="Önceki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, -1))} className="min-h-11 min-w-11 rounded-lg text-slate-500 hover:bg-white"><ChevronLeft className="mx-auto h-4 w-4" /></button>
-              <CalendarIcon className="w-4 h-4 text-slate-400" />
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 font-bold uppercase leading-none">Başlangıç Tarihi</span>
-                <input 
-                  type="date" 
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={handleOpenWeekPicker}
+                  aria-label={`Hafta seç: ${formatMealPlanWeekRangeLabel(weekStartDate)}`}
+                  title="Tarih seç"
+                  className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-left hover:bg-white"
+                >
+                  <CalendarIcon className="w-4 h-4 text-slate-400" />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase leading-none">Hafta</span>
+                    <span className="whitespace-nowrap text-sm font-bold leading-tight text-slate-700">{formatMealPlanWeekRangeLabel(weekStartDate)}</span>
+                  </div>
+                </button>
+                <input
+                  ref={weekPickerInputRef}
+                  type="date"
                   value={weekStartDate}
-                  onChange={(e) => {
-                    if (e.target.value) setWeekStartDate(normalizeMealPlanWeekStart(e.target.value));
-                  }}
-                  className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none p-0 h-4 leading-none w-28"
+                  onChange={handleWeekDateChange}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-1 w-full opacity-0"
                 />
               </div>
               <button type="button" aria-label="Sonraki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, 1))} className="min-h-11 min-w-11 rounded-lg text-slate-500 hover:bg-white"><ChevronRight className="mx-auto h-4 w-4" /></button>
@@ -917,7 +1079,7 @@ const MealPlans = () => {
         </header>
 
         {/* Weekly Grid Area */}
-        <div className="flex-1 overflow-auto p-8 relative">
+        <div className="flex-1 overflow-hidden p-4 relative flex flex-col min-h-0">
            {!selectedClient ? (
              <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
                 <div className="bg-slate-100 p-6 rounded-full mb-4">
@@ -966,7 +1128,7 @@ const MealPlans = () => {
                )}
                {!planError && <>
                {/* Grid Controls */}
-               <div className="flex justify-between items-center mb-6">
+               <div className="flex justify-between items-center mb-6 flex-shrink-0">
                   <div className="flex gap-2">
                     <button onClick={() => { setWeeklyPlan({}); setPlanNotes({}); }} className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-sm font-medium shadow-sm">
                       <Trash2 className="w-4 h-4" /> Temizle
@@ -996,7 +1158,7 @@ const MealPlans = () => {
                </div>
 
                {/* The Grid */}
-               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-w-[900px] relative">
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-auto min-w-[900px] relative flex-1 min-h-0">
                   {/* Loading Overlay */}
                   {isLoadingPlan && (
                     <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -1079,12 +1241,15 @@ const MealPlans = () => {
                          const isActive = activeCell?.day === day && activeCell?.mealId === meal.id;
 
                          return (
-                           <div 
+                           <div
                              key={`${day}-${meal.id}`}
                              onClick={() => handleCellClick(day, meal.id)}
+                             onDragOver={(event) => handleCellDragOver(event, day, meal.id)}
+                             onDragLeave={(event) => handleCellDragLeave(event, day, meal.id)}
+                             onDrop={(event) => handleCellDrop(event, day, meal.id)}
                              className={`
                                relative min-h-[140px] p-2 transition-all cursor-pointer group
-                               ${isActive ? 'bg-emerald-50 ring-2 ring-inset ring-primary z-10' : 'hover:bg-slate-50 bg-white'}
+                               ${isActive ? 'bg-emerald-50 ring-2 ring-inset ring-primary z-10' : dropTarget?.day === day && dropTarget?.mealId === meal.id ? 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400 z-10' : 'hover:bg-slate-50 bg-white'}
                              `}
                            >
                              {!cellContent ? (
@@ -1113,16 +1278,16 @@ const MealPlans = () => {
                                     <X className="w-3 h-3" />
                                   </button>
                                   <div className="h-20 w-full rounded-lg overflow-hidden relative bg-slate-100 flex items-center justify-center">
-                                     {(cellContent.imagePreview ?? (isCanonicalMealPhotoPath(cellContent.image) ? null : cellContent.image)) ? (
+                                     {(cellContent.imagePreview ?? ((isCanonicalMealPhotoPath(cellContent.image) || isCanonicalRecipeImagePath(cellContent.image)) ? null : cellContent.image)) ? (
                                          <img
-                                           src={cellContent.imagePreview ?? (isCanonicalMealPhotoPath(cellContent.image) ? '' : cellContent.image ?? '')}
+                                           src={cellContent.imagePreview ?? ((isCanonicalMealPhotoPath(cellContent.image) || isCanonicalRecipeImagePath(cellContent.image)) ? '' : cellContent.image ?? '')}
                                            alt={cellContent.name}
                                            className="w-full h-full object-cover"
                                          />
                                      ) : (
                                          <span className="text-slate-400 text-xs font-medium px-2 text-center">{cellContent.name}</span>
                                      )}
-                                     {(cellContent.imagePreview ?? (isCanonicalMealPhotoPath(cellContent.image) ? null : cellContent.image)) && (
+                                     {(cellContent.imagePreview ?? ((isCanonicalMealPhotoPath(cellContent.image) || isCanonicalRecipeImagePath(cellContent.image)) ? null : cellContent.image)) && (
                                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2">
                                             <p className="text-white text-[10px] font-bold line-clamp-1">{cellContent.name}</p>
                                          </div>
@@ -1159,7 +1324,8 @@ const MealPlans = () => {
       </div>
 
       {/* --- RIGHT SIDE: Sidebar (Client Info & Recipes) --- */}
-      <aside className="w-96 bg-white border-l border-slate-200 flex flex-col h-full shadow-lg z-30">
+      <aside className="w-[clamp(320px,23vw,390px)] flex-shrink-0 bg-white border-l border-slate-200 flex flex-col h-full shadow-lg z-30">
+        <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
         
         {/* 1. Client Info Panel (Conditional) */}
         {selectedClient ? (
@@ -1198,7 +1364,7 @@ const MealPlans = () => {
         )}
 
         {/* 2. Recipes Panel */}
-        <div className="flex-1 flex flex-col min-h-0 bg-white">
+        <div className="bg-white">
            <div className="p-4 border-b border-slate-100">
               <h3 className="font-bold text-slate-800 mb-3 px-1">Öğün Ekle</h3>
 
@@ -1297,6 +1463,95 @@ const MealPlans = () => {
                 <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Manuel öğün eklemek veya düzenlemek için plandan bir hücre seçin.</p>
               )}
            </div>
+           <div className="border-t border-slate-100">
+             <div className="p-4 pb-3">
+               <h3 className="px-1 text-sm font-bold text-slate-800">Kayıtlı Tarifler</h3>
+               <div
+                 className="flex gap-2 overflow-x-auto overflow-y-hidden py-3"
+                 style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}
+               >
+                 {RECIPE_CATEGORY_OPTIONS.map((option) => {
+                   const isActive = recipeCategoryFilter === option.value;
+                   const count = option.value === 'all' ? recipes.length : categoryCounts[option.value as RecipeMealType] ?? 0;
+                   return (
+                     <button
+                       key={option.value}
+                       type="button"
+                       aria-pressed={isActive}
+                       aria-label={`${option.value === 'all' ? 'Tüm' : `${option.label}`} tariflerini göster (${count})`}
+                       onClick={() => setRecipeCategoryFilter(option.value)}
+                       className={`flex-shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                         isActive
+                           ? 'border-primary bg-emerald-50 text-primary'
+                           : 'border-slate-200 bg-white text-slate-600 hover:border-primary/50 hover:bg-emerald-50/30'
+                       }`}
+                     >
+                       {option.label}
+                       <span className={`ml-1 text-[10px] ${isActive ? 'text-primary/80' : 'text-slate-400'}`}>{count}</span>
+                     </button>
+                   );
+                 })}
+               </div>
+               <label className="relative mt-1 block">
+                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                 <input
+                   type="search"
+                   value={recipeSearch}
+                   onChange={(event) => setRecipeSearch(event.target.value)}
+                   placeholder="Tarif ara..."
+                   className="min-h-11 w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                 />
+               </label>
+               {recipeSelectionInfo && <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800" role="status">{recipeSelectionInfo}</p>}
+             </div>
+             <div className="px-4 pb-4">
+               {isLoadingRecipes ? (
+                 <p className="p-4 text-center text-xs text-slate-500">Tarifler yükleniyor...</p>
+               ) : recipeError ? (
+                 <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">
+                   <p>{recipeError}</p>
+                   <button type="button" onClick={() => void loadRecipes()} className="mt-2 min-h-11 rounded-lg border border-rose-300 bg-white px-3 font-semibold">Tekrar dene</button>
+                 </div>
+               ) : recipes.length === 0 ? (
+                 <p className="p-4 text-center text-xs text-slate-500">Henüz kayıtlı tarif bulunmuyor.</p>
+               ) : filteredRecipes.length === 0 ? (
+                 <p className="p-4 text-center text-xs text-slate-500">
+                   {recipeCategoryFilter !== 'all' && recipeSearch.trim()
+                     ? 'Bu kategori ve arama için tarif bulunamadı.'
+                     : recipeCategoryFilter !== 'all'
+                       ? 'Bu kategoride kayıtlı tarif bulunmuyor.'
+                       : 'Aramanızla eşleşen tarif bulunamadı.'}
+                 </p>
+               ) : (
+                 <div className="space-y-2">
+                   {filteredRecipes.map((recipe) => (
+                     <button
+                       key={recipe.id}
+                       type="button"
+                       draggable
+                       onClick={() => handleAddRecipeToActiveCell(recipe)}
+                       onDragStart={(event) => handleRecipeDragStart(event, recipe.id)}
+                       aria-label={`Tarifi sürükleyin veya seçili öğüne eklemek için tıklayın: ${recipe.name}`}
+                       aria-disabled={!activeCell}
+                       title={activeCell ? 'Tarifi sürükleyin veya seçili hücreye eklemek için tıklayın' : 'Önce plandan bir öğün hücresi seçin, sonra tarifi sürükleyin veya tıklayın'}
+                       className="group flex w-full gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:border-primary hover:bg-emerald-50/30"
+                     >
+                       <div className="flex flex-shrink-0 items-center justify-center text-slate-300 group-hover:text-primary transition-colors" aria-hidden="true">
+                         <GripVertical className="h-5 w-5" />
+                       </div>
+                       {recipe.imagePreview ? <img src={recipe.imagePreview} alt="" className="h-14 w-14 flex-shrink-0 rounded-lg object-cover" /> : <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-semibold text-slate-400">Tarif</div>}
+                       <div className="min-w-0 flex-1">
+                         <p className="truncate text-sm font-bold text-slate-800">{recipe.name}</p>
+                         <p className="mt-1 text-[11px] font-medium text-emerald-700">{recipe.mealType === 'breakfast' ? 'Kahvaltı' : recipe.mealType === 'lunch' ? 'Öğle' : recipe.mealType === 'dinner' ? 'Akşam' : 'Ara Öğün'} · {recipe.calories} kcal</p>
+                         <p className="mt-1 text-[10px] text-slate-500">P {recipe.macros.protein}g · K {recipe.macros.carbs}g · Y {recipe.macros.fat}g</p>
+                       </div>
+                     </button>
+                   ))}
+                 </div>
+               )}
+             </div>
+           </div>
+        </div>
         </div>
       </aside>
 

@@ -4,9 +4,9 @@ import Sidebar from './Sidebar';
 
 const DashboardLayout = () => {
   return (
-    <div className="flex min-h-screen w-full max-w-full overflow-x-hidden bg-background-light md:pl-64">
+    <div className="flex h-screen w-full max-w-full overflow-hidden bg-background-light md:pl-64">
       <Sidebar />
-      <main className="min-w-0 w-full max-w-full overflow-x-hidden pb-24 md:pb-0">
+      <main className="h-screen min-w-0 w-full max-w-full overflow-hidden md:pb-0">
         <Outlet />
       </main>
     </div>

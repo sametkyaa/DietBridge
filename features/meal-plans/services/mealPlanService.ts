@@ -1,7 +1,8 @@
 
 import { supabase } from '../../../lib/supabaseClient';
 import { isValidUuid } from '../../../shared/utils/uuid';
-import { isCanonicalMealPhotoPath } from './mealPhotoService';
+import { isCanonicalMealPhotoPath, isReadableMealPhotoReference } from './mealPhotoService';
+import { isCanonicalRecipeImagePath } from '../../recipes/services/recipeService';
 
 export type MealPlanValidationErrorCode =
   | 'INVALID_CLIENT_ID'
@@ -97,12 +98,13 @@ export interface WeeklyMealInput {
   type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   title: string;
   calories?: number | null;
+  description?: string | null;
   macros: CanonicalMealMacros;
   photo_url?: string | null;
   sort_order: number;
   time: string;
-  source: 'manual';
-  recipe_id?: null;
+  source: 'manual' | 'recipe';
+  recipe_id?: string | null;
 }
 
 export interface WeeklyMealPlanDayInput {
@@ -111,10 +113,11 @@ export interface WeeklyMealPlanDayInput {
   meals: WeeklyMealInput[];
 }
 
-export interface CanonicalMeal extends Required<Omit<WeeklyMealInput, 'recipe_id' | 'calories' | 'photo_url'>> {
+export interface CanonicalMeal extends Required<Omit<WeeklyMealInput, 'recipe_id' | 'calories' | 'photo_url' | 'description'>> {
   id: string;
   plan_id: string;
   calories: number | null;
+  description: string | null;
   photo_url: string | null;
   recipe_id: string | null;
   is_eaten: boolean;
@@ -201,13 +204,21 @@ const assertWeeklyPayload = (weekStart: string, days: WeeklyMealPlanDayInput[]):
         throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', `${field}.sort_order`);
       }
       seenSortOrders.add(meal.sort_order);
-      if (meal.source !== 'manual') {
+      if (meal.source !== 'manual' && meal.source !== 'recipe') {
         throw new MealPlanValidationError('RECIPE_SOURCE_NOT_SUPPORTED', `${field}.source`);
       }
-      if (meal.recipe_id != null) {
+      if (meal.source === 'manual' && meal.recipe_id != null) {
         throw new MealPlanValidationError('INVALID_RECIPE_ID', `${field}.recipe_id`);
       }
-      if (meal.photo_url != null && !isCanonicalMealPhotoPath(meal.photo_url)) {
+      if (meal.source === 'recipe' && !isValidUuid(meal.recipe_id)) {
+        if (meal.recipe_id !== null || !isValidUuid(meal.id)) {
+          throw new MealPlanValidationError('INVALID_RECIPE_ID', `${field}.recipe_id`);
+        }
+      }
+      if (meal.description != null && (typeof meal.description !== 'string' || meal.description.length > 2000)) {
+        throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', `${field}.description`);
+      }
+      if (meal.photo_url != null && !isCanonicalMealPhotoPath(meal.photo_url) && !isCanonicalRecipeImagePath(meal.photo_url)) {
         throw new MealPlanValidationError('INVALID_MEAL_PHOTO_PATH', `${field}.photo_url`);
       }
       normalizeCanonicalMealMacros(meal.macros, `${field}.macros`);
@@ -218,6 +229,23 @@ const assertWeeklyPayload = (weekStart: string, days: WeeklyMealPlanDayInput[]):
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
+
+/**
+ * Recipe snapshots keep their source even after a recipe is deleted; the
+ * foreign key clears recipe_id but deliberately leaves snapshot data intact.
+ */
+const normalizeReadableMealSource = (
+  source: unknown,
+  recipeId: unknown,
+): { source: 'manual' | 'recipe'; recipeId: string | null } | null => {
+  if (source === 'manual' && recipeId === null) {
+    return { source: 'manual', recipeId: null };
+  }
+  if (source === 'recipe' && (recipeId === null || isValidUuid(recipeId))) {
+    return { source: 'recipe', recipeId: isValidUuid(recipeId) ? recipeId : null };
+  }
+  return null;
+};
 
 export const normalizeCanonicalMealMacros = (
   value: unknown,
@@ -242,6 +270,54 @@ export const normalizeCanonicalMealMacros = (
     typeof protein !== 'number' || !Number.isFinite(protein) || protein < 0
     || typeof carbs !== 'number' || !Number.isFinite(carbs) || carbs < 0
     || typeof fat !== 'number' || !Number.isFinite(fat) || fat < 0
+  ) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  return { protein, carbs, fat };
+};
+
+/**
+ * Read-only compatibility normalizer for historical meal rows. Legacy rows
+ * may include the former placement metadata in their macros JSON object; the
+ * editor receives only the canonical nutrient values. Write validation must
+ * continue to use normalizeCanonicalMealMacros.
+ */
+export const normalizeReadableMealMacros = (
+  value: unknown,
+  field = 'macros',
+): CanonicalMealMacros => {
+  if (!isRecord(value)) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  const allowedKeys = new Set(['protein', 'carbs', 'fat', '_time', '_rowName', '_sortOrder']);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  const { protein, carbs, fat } = value;
+  if (
+    typeof protein !== 'number' || !Number.isFinite(protein) || protein < 0
+    || typeof carbs !== 'number' || !Number.isFinite(carbs) || carbs < 0
+    || typeof fat !== 'number' || !Number.isFinite(fat) || fat < 0
+  ) {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+
+  if (value._time !== undefined && typeof value._time !== 'string') {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+  if (value._rowName !== undefined && typeof value._rowName !== 'string') {
+    throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
+  }
+  if (
+    value._sortOrder !== undefined
+    && (
+      typeof value._sortOrder !== 'number'
+      || !Number.isInteger(value._sortOrder)
+      || value._sortOrder < 0
+    )
   ) {
     throw new MealPlanValidationError('INVALID_MEAL_MACROS', field);
   }
@@ -284,6 +360,9 @@ const assertCanonicalResponse = (
       } catch {
         throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}].time`);
       }
+      const readableSource = isRecord(rawMeal)
+        ? normalizeReadableMealSource(rawMeal.source, rawMeal.recipe_id ?? null)
+        : null;
       if (!isRecord(rawMeal)
           || !isValidUuid(rawMeal.id)
           || rawMeal.plan_id !== rawPlan.id
@@ -293,13 +372,17 @@ const assertCanonicalResponse = (
           || !Number.isInteger(rawMeal.sort_order)
           || (rawMeal.sort_order as number) < 0
           || !TIME_PATTERN.test(time)
-          || rawMeal.source !== 'manual'
+          || readableSource === null
           || (rawMeal.calories !== null && typeof rawMeal.calories !== 'number')
-          || (rawMeal.photo_url !== null && !isCanonicalMealPhotoPath(rawMeal.photo_url))) {
+          || (rawMeal.description !== null && typeof rawMeal.description !== 'string')
+          || (typeof rawMeal.description === 'string' && rawMeal.description.length > 2000)
+          || (rawMeal.photo_url !== null
+            && !isReadableMealPhotoReference(rawMeal.photo_url)
+            && !isCanonicalRecipeImagePath(rawMeal.photo_url))) {
         throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}]`);
       }
 
-      if (rawMeal.recipe_id !== null || seenMealIds.has(rawMeal.id)) {
+      if (seenMealIds.has(rawMeal.id)) {
         throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `plans[${dayIndex}].meals[${mealIndex}]`);
       }
 
@@ -319,6 +402,8 @@ const assertCanonicalResponse = (
       return {
         ...rawMeal,
         time,
+        source: readableSource.source,
+        recipe_id: readableSource.recipeId,
         macros,
       } as CanonicalMeal;
     });
@@ -393,6 +478,7 @@ export const fetchWeeklyMealPlan = async (
         calories,
         macros,
         photo_url,
+        description,
         is_eaten,
         sort_order,
         time,
@@ -416,13 +502,30 @@ export const fetchWeeklyMealPlan = async (
     }
     plan.meals.forEach((meal, mealIndex) => {
       meal.time = normalizeMealTime(meal.time, `meal_plans[${planIndex}].meals[${mealIndex}].time`);
-      if (meal.photo_url != null && !isCanonicalMealPhotoPath(meal.photo_url)) {
+      if (meal.photo_url != null
+        && !isReadableMealPhotoReference(meal.photo_url)
+        && !isCanonicalRecipeImagePath(meal.photo_url)) {
         throw new MealPlanValidationError(
           'INVALID_MEAL_PHOTO_PATH',
           `meal_plans[${planIndex}].meals[${mealIndex}].photo_url`,
         );
       }
-      normalizeCanonicalMealMacros(meal.macros, `meal_plans[${planIndex}].meals[${mealIndex}].macros`);
+      const readableSource = normalizeReadableMealSource(meal.source, meal.recipe_id ?? null);
+      if (readableSource === null) {
+        throw new MealPlanValidationError(
+          'INVALID_RPC_RESPONSE',
+          `meal_plans[${planIndex}].meals[${mealIndex}].source`,
+        );
+      }
+      if (meal.description !== null && (typeof meal.description !== 'string' || meal.description.length > 2000)) {
+        throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `meal_plans[${planIndex}].meals[${mealIndex}].description`);
+      }
+      meal.source = readableSource.source;
+      meal.recipe_id = readableSource.recipeId;
+      meal.macros = normalizeReadableMealMacros(
+        meal.macros,
+        `meal_plans[${planIndex}].meals[${mealIndex}].macros`,
+      );
     });
   });
   return data;

@@ -12,6 +12,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "test": "node scripts/runMealPlanContractTests.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
