@@ -1,5 +1,5 @@
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation , useNavigate} from 'react-router-dom';
 import { 
   Search, 
@@ -18,6 +18,7 @@ import {
   ArrowUp,
   ArrowDown,
   Upload,
+  GripVertical,
   Loader2,
   ChevronLeft,
   ChevronRight,
@@ -295,6 +296,7 @@ const MealPlans = () => {
   
   // Interaction State
   const [activeCell, setActiveCell] = useState<{ day: string; mealId: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ day: string; mealId: string } | null>(null);
   const [customMealText, setCustomMealText] = useState('');
   const [customMealCalories, setCustomMealCalories] = useState('');
   const [customMealProtein, setCustomMealProtein] = useState('');
@@ -309,6 +311,8 @@ const MealPlans = () => {
   const [recipeError, setRecipeError] = useState<string | null>(null);
   const [recipeSearch, setRecipeSearch] = useState('');
   const [recipeSelectionInfo, setRecipeSelectionInfo] = useState<string | null>(null);
+
+  const recipeById = useMemo(() => new Map(recipes.map((recipe) => [recipe.id, recipe])), [recipes]);
 
   copyTargetRef.current = `${selectedClient?.id ?? ''}:${normalizeMealPlanWeekStart(weekStartDate)}`;
 
@@ -479,9 +483,9 @@ const MealPlans = () => {
 
   const hasEditorMeals = Object.values(weeklyPlan)
     .some((day) => Object.values(day).some(Boolean));
-  const filteredRecipes = recipes.filter((recipe) => recipe.name
+  const filteredRecipes = useMemo(() => recipes.filter((recipe) => recipe.name
     .toLocaleLowerCase('tr-TR')
-    .includes(recipeSearch.trim().toLocaleLowerCase('tr-TR')));
+    .includes(recipeSearch.trim().toLocaleLowerCase('tr-TR'))), [recipes, recipeSearch]);
 
   const applyPreviousWeekCopy = (copy: NonNullable<typeof copyConfirmation>) => {
     setMeals(copy.meals);
@@ -638,13 +642,17 @@ const MealPlans = () => {
       setRecipeSelectionInfo('Önce plandan bir öğün hücresi seçin.');
       return;
     }
+    addRecipeToMealCell(recipe, activeCell.day, activeCell.mealId);
+    setRecipeSelectionInfo(`“${recipe.name}” seçili öğün hücresine eklendi.`);
+  };
 
+  const addRecipeToMealCell = (recipe: Recipe, day: string, mealId: string) => {
     setWeeklyPlan((previous) => ({
       ...previous,
-      [activeCell.day]: {
-        ...(previous[activeCell.day] || {}),
-        [activeCell.mealId]: {
-          id: `recipe-snapshot-${Date.now()}`,
+      [day]: {
+        ...(previous[day] || {}),
+        [mealId]: {
+          id: `recipe-snapshot-${crypto.randomUUID()}`,
           name: recipe.name,
           image: recipe.imagePath,
           imagePreview: recipe.imagePreview,
@@ -661,7 +669,42 @@ const MealPlans = () => {
         },
       },
     }));
-    setRecipeSelectionInfo(`“${recipe.name}” seçili öğün hücresine eklendi.`);
+  };
+
+  const handleRecipeDragStart = (event: React.DragEvent<HTMLButtonElement>, recipeId: string) => {
+    event.dataTransfer.setData('application/x-dietbridge-recipe-id', recipeId);
+    event.dataTransfer.setData('text/plain', recipeId);
+    event.dataTransfer.effectAllowed = 'copy';
+  };
+
+ const handleCellDragOver = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
+   event.preventDefault();
+   event.dataTransfer.dropEffect = 'copy';
+    setDropTarget((previous) => (previous?.day === day && previous?.mealId === mealId ? previous : { day, mealId }));
+ };
+
+  const handleCellDragLeave = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+      setDropTarget((previous) => (previous?.day === day && previous?.mealId === mealId ? null : previous));
+    }
+  };
+
+  const handleCellDrop = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
+    event.preventDefault();
+    setDropTarget(null);
+    const recipeId = event.dataTransfer.getData('application/x-dietbridge-recipe-id') || event.dataTransfer.getData('text/plain');
+    if (!recipeId) {
+      setRecipeSelectionInfo('Sürüklenen tarif bilgisi okunamadı.');
+      return;
+    }
+    const recipe = recipeById.get(recipeId);
+    if (!recipe) {
+      setRecipeSelectionInfo('Tarif bulunamadı. Lütfen listeyi yenileyin.');
+      return;
+    }
+    addRecipeToMealCell(recipe, day, mealId);
+    const mealRow = meals.find((meal) => meal.id === mealId);
+    setRecipeSelectionInfo(`“${recipe.name}” ${day} ${mealRow?.name ?? ''} hücresine eklendi.`);
   };
 
   const handleClearCell = (e: React.MouseEvent, day: string, mealId: string) => {
@@ -902,13 +945,13 @@ const MealPlans = () => {
   };
 
   return (
-    <div className="flex h-screen bg-background-light overflow-hidden">
+    <div className="flex h-[100dvh] bg-background-light overflow-hidden">
       
       {/* --- LEFT SIDE: Main Planning Area --- */}
       <div className="flex-1 flex flex-col h-full min-w-0">
         
         {/* Header Section */}
-        <header className="px-8 py-6 bg-white border-b border-slate-200 flex flex-wrap gap-y-3 justify-between items-center z-20 shadow-sm flex-shrink-0">
+        <header className="px-6 py-4 bg-white border-b border-slate-200 flex flex-wrap gap-y-3 justify-between items-center z-20 shadow-sm flex-shrink-0">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Haftalık Yemek Planı</h1>
             <p className="text-sm text-slate-500 mt-1">Danışan için haftalık beslenme programını oluşturun.</p>
@@ -1025,7 +1068,7 @@ const MealPlans = () => {
         </header>
 
         {/* Weekly Grid Area */}
-        <div className="flex-1 overflow-auto p-8 relative">
+        <div className="flex-1 overflow-hidden p-4 relative flex flex-col min-h-0">
            {!selectedClient ? (
              <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
                 <div className="bg-slate-100 p-6 rounded-full mb-4">
@@ -1074,7 +1117,7 @@ const MealPlans = () => {
                )}
                {!planError && <>
                {/* Grid Controls */}
-               <div className="flex justify-between items-center mb-6">
+               <div className="flex justify-between items-center mb-6 flex-shrink-0">
                   <div className="flex gap-2">
                     <button onClick={() => { setWeeklyPlan({}); setPlanNotes({}); }} className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-sm font-medium shadow-sm">
                       <Trash2 className="w-4 h-4" /> Temizle
@@ -1104,7 +1147,7 @@ const MealPlans = () => {
                </div>
 
                {/* The Grid */}
-               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-w-[900px] relative">
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-auto min-w-[900px] relative flex-1 min-h-0">
                   {/* Loading Overlay */}
                   {isLoadingPlan && (
                     <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -1187,12 +1230,15 @@ const MealPlans = () => {
                          const isActive = activeCell?.day === day && activeCell?.mealId === meal.id;
 
                          return (
-                           <div 
+                           <div
                              key={`${day}-${meal.id}`}
                              onClick={() => handleCellClick(day, meal.id)}
+                             onDragOver={(event) => handleCellDragOver(event, day, meal.id)}
+                             onDragLeave={(event) => handleCellDragLeave(event, day, meal.id)}
+                             onDrop={(event) => handleCellDrop(event, day, meal.id)}
                              className={`
                                relative min-h-[140px] p-2 transition-all cursor-pointer group
-                               ${isActive ? 'bg-emerald-50 ring-2 ring-inset ring-primary z-10' : 'hover:bg-slate-50 bg-white'}
+                               ${isActive ? 'bg-emerald-50 ring-2 ring-inset ring-primary z-10' : dropTarget?.day === day && dropTarget?.mealId === meal.id ? 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400 z-10' : 'hover:bg-slate-50 bg-white'}
                              `}
                            >
                              {!cellContent ? (
@@ -1267,7 +1313,7 @@ const MealPlans = () => {
       </div>
 
       {/* --- RIGHT SIDE: Sidebar (Client Info & Recipes) --- */}
-      <aside className="w-96 bg-white border-l border-slate-200 flex flex-col h-full shadow-lg z-30">
+      <aside className="w-[clamp(320px,23vw,390px)] flex-shrink-0 bg-white border-l border-slate-200 flex flex-col h-full shadow-lg z-30">
         
         {/* 1. Client Info Panel (Conditional) */}
         {selectedClient ? (
@@ -1420,7 +1466,7 @@ const MealPlans = () => {
                </label>
                {recipeSelectionInfo && <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800" role="status">{recipeSelectionInfo}</p>}
              </div>
-             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+             <div className="min-h-0 min-h-[160px] flex-1 overflow-y-auto px-4 pb-4" style={{ scrollbarGutter: 'stable' }}>
                {isLoadingRecipes ? (
                  <p className="p-4 text-center text-xs text-slate-500">Tarifler yükleniyor...</p>
                ) : recipeError ? (
@@ -1438,11 +1484,17 @@ const MealPlans = () => {
                      <button
                        key={recipe.id}
                        type="button"
+                       draggable
                        onClick={() => handleAddRecipeToActiveCell(recipe)}
+                       onDragStart={(event) => handleRecipeDragStart(event, recipe.id)}
+                       aria-label={`Tarifi sürükleyin veya seçili öğüne eklemek için tıklayın: ${recipe.name}`}
                        aria-disabled={!activeCell}
-                       title={activeCell ? 'Tarifi seçili hücreye ekle' : 'Önce plandan bir öğün hücresi seçin'}
-                       className="flex w-full gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:border-primary hover:bg-emerald-50/30"
+                       title={activeCell ? 'Tarifi sürükleyin veya seçili hücreye eklemek için tıklayın' : 'Önce plandan bir öğün hücresi seçin, sonra tarifi sürükleyin veya tıklayın'}
+                       className="group flex w-full gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:border-primary hover:bg-emerald-50/30"
                      >
+                       <div className="flex flex-shrink-0 items-center justify-center text-slate-300 group-hover:text-primary transition-colors" aria-hidden="true">
+                         <GripVertical className="h-5 w-5" />
+                       </div>
                        {recipe.imagePreview ? <img src={recipe.imagePreview} alt="" className="h-14 w-14 flex-shrink-0 rounded-lg object-cover" /> : <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-semibold text-slate-400">Tarif</div>}
                        <div className="min-w-0 flex-1">
                          <p className="truncate text-sm font-bold text-slate-800">{recipe.name}</p>
