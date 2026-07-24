@@ -400,12 +400,22 @@ test('recipe contracts: invalid names, meal types, calories and macros fail clos
 });
 
 test('recipe snapshot migration derives protected fields server-side and preserves snapshots after deletion', () => {
-  assert.match(SNAPSHOT_MIGRATION, /where id = v_recipe_id and dietitian_id = v_actor_id/i);
-  assert.match(SNAPSHOT_MIGRATION, /'description', v_recipe\.description/i);
+  assert.match(SNAPSHOT_MIGRATION, /where id = v_recipe_id/i);
+  assert.match(SNAPSHOT_MIGRATION, /and dietitian_id = v_actor_id/i);
+  assert.match(SNAPSHOT_MIGRATION, /v_recipe\.description/i);
   assert.match(SNAPSHOT_MIGRATION, /foreign key \(recipe_id\) references public\.recipes\(id\) on delete set null/i);
   assert.match(SNAPSHOT_MIGRATION, /meal\.recipe_id is null/i);
-  assert.match(SNAPSHOT_MIGRATION, /private\.save_weekly_meal_plan_impl\(p_client_id, p_week_start, v_impl_days\)/i);
-  assert.match(SNAPSHOT_MIGRATION, /v_path !~ '\^meal-plans\/'/i);
+  assert.doesNotMatch(SNAPSHOT_MIGRATION, /private\.save_weekly_meal_plan_impl/i);
+  assert.doesNotMatch(SNAPSHOT_MIGRATION, /public\.is_canonical_meal_macros/i);
+  assert.doesNotMatch(SNAPSHOT_MIGRATION, /private\.enqueue_meal_photo_cleanup/i);
+  assert.doesNotMatch(SNAPSHOT_MIGRATION, /private\.queue_replaced_meal_photo/i);
+  assert.match(SNAPSHOT_MIGRATION, /v_meal_id is null/i);
+  assert.match(SNAPSHOT_MIGRATION, /to authenticated/i);
+  assert.match(SNAPSHOT_MIGRATION, /for key share of p, dp/i);
+  assert.match(SNAPSHOT_MIGRATION, /pg_advisory_xact_lock/i);
+  assert.match(SNAPSHOT_MIGRATION, /on conflict \(client_id, dietitian_id, plan_date\)/i);
+  assert.match(SNAPSHOT_MIGRATION, /is_eaten/i);
+  assert.match(SNAPSHOT_MIGRATION, /delete from public\.meals/i);
 });
 
 test('auth lifecycle: same-user refresh events update the session without resolving access again', () => {
