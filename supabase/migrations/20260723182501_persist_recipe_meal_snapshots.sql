@@ -57,7 +57,7 @@ begin
       and i.indpred is null
       and i.indnkeyatts = 3
       and (
-        select array_agg(a.attname order by key_columns.ordinality)
+        select array_agg(a.attname::text order by key_columns.ordinality)
         from unnest(i.indkey) with ordinality as key_columns(attnum, ordinality)
         join pg_attribute as a
           on a.attrelid = i.indrelid

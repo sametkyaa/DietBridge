@@ -430,6 +430,8 @@ test('production migration provides an ON CONFLICT-compatible weekly-plan unique
   assert.match(sql, /i\.indimmediate/i);
   assert.match(sql, /i\.indpred is null/i);
   assert.match(sql, /i\.indnkeyatts = 3/i);
+  assert.match(sql, /array_agg\(a\.attname::text order by key_columns\.ordinality\)/i);
+  assert.doesNotMatch(sql, /array_agg\(a\.attname order by key_columns\.ordinality\)/i);
   assert.match(sql, /array\['client_id', 'dietitian_id', 'plan_date'\]::text\[\]/i);
   assert.match(sql, /add constraint meal_plans_client_dietitian_plan_date_key\s+unique \(client_id, dietitian_id, plan_date\)/i);
   assert.doesNotMatch(sql, /delete from public\.meal_plans/i);
