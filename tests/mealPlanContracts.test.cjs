@@ -46,6 +46,11 @@ const CANONICAL_PHOTO_PATH = `meal-plans/${CLIENT_ID}/${DIETITIAN_ID}/${PHOTO_FI
 const LEGACY_PHOTO_URL = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400';
 const RECIPE_IMAGE_PATH = `recipes/${DIETITIAN_ID}/${RECIPE_ID}/${PHOTO_FILE_ID}.webp`;
 const SNAPSHOT_MIGRATION = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20260723182501_persist_recipe_meal_snapshots.sql'), 'utf8');
+const RECIPE_MIGRATION = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20260723164416_create_dietitian_recipes.sql'), 'utf8');
+const PLANNED_RECIPE_IMAGE_ACCESS_MIGRATION = fs.readFileSync(
+  path.join(__dirname, '..', 'supabase', 'migrations', '20260724100000_allow_clients_read_planned_recipe_images.sql'),
+  'utf8',
+);
 
 const buildSaveDays = (mealOverrides = {}) => WEEK_DATES.map((date, index) => ({
   plan_date: date,
@@ -458,6 +463,37 @@ test('production migration enforces canonical manual calorie bounds and reloads 
   const commitIndex = SNAPSHOT_MIGRATION.lastIndexOf('commit;');
   assert.ok(notifyIndex >= 0, 'PostgREST schema reload notification is present');
   assert.ok(notifyIndex < commitIndex, 'schema reload notification occurs before commit');
+});
+
+test('planned recipe-image client policy is a narrow authenticated SELECT contract', () => {
+  const sql = PLANNED_RECIPE_IMAGE_ACCESS_MIGRATION;
+
+  assert.match(sql, /drop policy if exists recipe_images_select_planned_client on storage\.objects/i);
+  assert.match(sql, /create policy recipe_images_select_planned_client\s+on storage\.objects\s+for select\s+to authenticated/i);
+  assert.match(sql, /storage\.objects\.bucket_id = 'recipe-images'/i);
+  assert.match(sql, /storage\.objects\.name ~ '\^recipes\//i);
+  assert.match(sql, /from public\.meals as meal\s+join public\.meal_plans as plan\s+on plan\.id = meal\.plan_id/i);
+  assert.match(sql, /meal\.photo_url = storage\.objects\.name/i);
+  assert.match(sql, /meal\.source = 'recipe'/i);
+  assert.match(sql, /plan\.client_id = \(select auth\.uid\(\)\)/i);
+  assert.match(sql, /split_part\(storage\.objects\.name, '\/', 2\) = plan\.dietitian_id::text/i);
+  assert.doesNotMatch(sql, /meal\.recipe_id/i);
+  assert.match(sql, /notify pgrst, 'reload schema';/i);
+  assert.ok(sql.indexOf("notify pgrst, 'reload schema';") < sql.lastIndexOf('commit;'));
+});
+
+test('planned recipe-image policy preserves private, dietitian-only write access', () => {
+  const sql = PLANNED_RECIPE_IMAGE_ACCESS_MIGRATION;
+
+  assert.doesNotMatch(sql, /storage\.buckets/i);
+  assert.doesNotMatch(sql, /for insert/i);
+  assert.doesNotMatch(sql, /for update/i);
+  assert.doesNotMatch(sql, /for delete/i);
+  assert.doesNotMatch(sql, /to anon/i);
+  assert.match(RECIPE_MIGRATION, /create policy recipe_images_select_own/i);
+  assert.match(RECIPE_MIGRATION, /create policy recipe_images_insert_own/i);
+  assert.match(RECIPE_MIGRATION, /create policy recipe_images_delete_own/i);
+  assert.doesNotMatch(SNAPSHOT_MIGRATION, /recipe_images_select_planned_client/i);
 });
 
 test('auth lifecycle: same-user refresh events update the session without resolving access again', () => {
