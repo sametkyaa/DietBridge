@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { USER_AVATAR } from '../constants';
 import { Client } from '../shared/types';
+import Toast from '../shared/components/Toast';
 import {
   fetchActiveDietitianClientList,
   fetchClientDetails,
@@ -126,6 +127,12 @@ interface PlannedMealContent {
 // Plan State: { Day: { MealID: Content } }
 type PlanState = Record<string, Record<string, PlannedMealContent | string | null>>;
 type PlanNotesState = Record<string, string | null>;
+
+interface SaveNotification {
+  id: number;
+  message: string;
+  variant: 'success' | 'error';
+}
 
 const DEFAULT_MEAL_ROWS: MealRow[] = [
   { id: 'm1', name: 'Kahvaltı', time: '08:00' },
@@ -266,6 +273,8 @@ const MealPlans = () => {
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
   const [weekStartDate, setWeekStartDate] = useState<string>(getCurrentMondayIso);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveNotification, setSaveNotification] = useState<SaveNotification | null>(null);
+  const saveNotificationIdRef = useRef(0);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const [isPlanEmpty, setIsPlanEmpty] = useState(false);
@@ -321,6 +330,13 @@ const MealPlans = () => {
   const [recipeSelectionInfo, setRecipeSelectionInfo] = useState<string | null>(null);
 
   const recipeById = useMemo(() => new Map(recipes.map((recipe) => [recipe.id, recipe])), [recipes]);
+
+  const showSaveNotification = useCallback((message: string, variant: SaveNotification['variant']) => {
+    saveNotificationIdRef.current += 1;
+    setSaveNotification({ id: saveNotificationIdRef.current, message, variant });
+  }, []);
+
+  const dismissSaveNotification = useCallback(() => setSaveNotification(null), []);
 
   copyTargetRef.current = `${selectedClient?.id ?? ''}:${normalizeMealPlanWeekStart(weekStartDate)}`;
 
@@ -833,14 +849,14 @@ const MealPlans = () => {
 
   const handleSavePlan = async () => {
     if (!selectedClient) {
-      alert('Lütfen bir danışan seçiniz.');
+      showSaveNotification('Lütfen bir danışan seçiniz.', 'error');
       return;
     }
 
     if (!isValidUuid(selectedClient.id)) {
       console.warn('[MealPlans] Geçersiz UUID alanı: meal_plans.client_id');
       selectClient(null);
-      alert('Seçili danışan bilgisi geçersiz. Danışanı yeniden seçip tekrar deneyin.');
+      showSaveNotification('Seçili danışan bilgisi geçersiz. Danışanı yeniden seçip tekrar deneyin.', 'error');
       return;
     }
 
@@ -851,7 +867,7 @@ const MealPlans = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !isValidUuid(user.id)) {
         console.warn('[MealPlans] Geçersiz UUID alanı: meal_plans.dietitian_id');
-        alert('Oturum bilgisi doğrulanamadı. Lütfen yeniden giriş yapın.');
+        showSaveNotification('Oturum bilgisi doğrulanamadı. Lütfen yeniden giriş yapın.', 'error');
         return;
       }
 
@@ -939,7 +955,7 @@ const MealPlans = () => {
       const cleanup = await processPendingMealPhotoCleanup();
       setPhotoCleanupWarning(cleanup.warning);
 
-      alert('Haftalık plan başarıyla kaydedildi!');
+      showSaveNotification('Haftalık plan başarıyla kaydedildi.', 'success');
     } catch (error: unknown) {
       if (uploadedPhotoPaths.length > 0) {
         const cleanup = await cleanupFailedMealPhotoUploads(uploadedPhotoPaths);
@@ -948,7 +964,7 @@ const MealPlans = () => {
       if (import.meta.env.DEV) {
         console.error('[MealPlans] weekly plan save failed:', getMealPlanErrorLogContext(error));
       }
-      alert(getMealPlanUserMessage(error));
+      showSaveNotification(getMealPlanUserMessage(error) || 'Haftalık plan kaydedilemedi. Lütfen tekrar deneyin.', 'error');
     } finally {
       setIsUploadingPhoto(false);
       setIsSaving(false);
@@ -957,6 +973,14 @@ const MealPlans = () => {
 
   return (
     <div className="flex h-[100dvh] bg-background-light overflow-hidden">
+      {saveNotification && (
+        <Toast
+          key={saveNotification.id}
+          message={saveNotification.message}
+          variant={saveNotification.variant}
+          onClose={dismissSaveNotification}
+        />
+      )}
       
       {/* --- LEFT SIDE: Main Planning Area --- */}
       <div className="flex-1 flex flex-col h-full min-w-0">
