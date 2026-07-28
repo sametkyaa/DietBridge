@@ -14,7 +14,8 @@ begin
     raise exception 'Appointments sahiplik verisi eksik; otomatik düzeltme yapılmayacak.';
   end if;
 end
-$$
+$$;
+
 create function public.protect_dietitian_profile_system_fields()
 returns trigger
 language plpgsql
@@ -36,35 +37,39 @@ begin
   end if;
   return new;
 end;
-$function$
+$function$;
 create trigger trg_protect_dietitian_profile_system_fields
 before insert or update on public.dietitian_profiles
-for each row execute function public.protect_dietitian_profile_system_fields()
-revoke execute on function public.protect_dietitian_profile_system_fields() from public, anon, authenticated
+for each row execute function public.protect_dietitian_profile_system_fields();
+revoke execute on function public.protect_dietitian_profile_system_fields() from public, anon, authenticated;
+
 create policy "Dietitians can select own profile" on public.dietitian_profiles for select to authenticated
-using (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'))
+using (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'));
 create policy "Clients can select active dietitian profile" on public.dietitian_profiles for select to authenticated
-using (exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = dietitian_profiles.user_id and dc.client_id = auth.uid() and dc.status = 'active'))
+using (exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = dietitian_profiles.user_id and dc.client_id = auth.uid() and dc.status = 'active'));
 create policy "Dietitians can create own pending profile" on public.dietitian_profiles for insert to authenticated
-with check (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'))
+with check (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'));
 create policy "Dietitians can update own non-system profile fields" on public.dietitian_profiles for update to authenticated
 using (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'))
-with check (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'))
+with check (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'));
+
 create policy "Dietitians can select active client appointments" on public.appointments for select to authenticated
-using (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))
+using (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));
 create policy "Clients can select own active appointments" on public.appointments for select to authenticated
-using (client_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'client') and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))
+using (client_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'client') and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));
 create policy "Dietitians can create active client appointments" on public.appointments for insert to authenticated
-with check (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))
+with check (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));
 create policy "Dietitians can update active client appointments" on public.appointments for update to authenticated
 using (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))
-with check (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))
+with check (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));
 create policy "Dietitians can delete active client appointments" on public.appointments for delete to authenticated
-using (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))
+using (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));
+
 create policy "Participants can select active relationship messages" on public.chat_messages for select to authenticated
-using ((sender_id = auth.uid() or receiver_id = auth.uid()) and exists (select 1 from public.dietitian_clients dc where dc.status = 'active' and ((dc.dietitian_id = chat_messages.sender_id and dc.client_id = chat_messages.receiver_id) or (dc.dietitian_id = chat_messages.receiver_id and dc.client_id = chat_messages.sender_id))))
+using ((sender_id = auth.uid() or receiver_id = auth.uid()) and exists (select 1 from public.dietitian_clients dc where dc.status = 'active' and ((dc.dietitian_id = chat_messages.sender_id and dc.client_id = chat_messages.receiver_id) or (dc.dietitian_id = chat_messages.receiver_id and dc.client_id = chat_messages.sender_id))));
 create policy "Participants can send active relationship messages" on public.chat_messages for insert to authenticated
-with check (sender_id = auth.uid() and exists (select 1 from public.dietitian_clients dc where dc.status = 'active' and ((dc.dietitian_id = chat_messages.sender_id and dc.client_id = chat_messages.receiver_id) or (dc.dietitian_id = chat_messages.receiver_id and dc.client_id = chat_messages.sender_id))))
-alter table public.dietitian_profiles enable row level security
-alter table public.appointments enable row level security
-alter table public.chat_messages enable row level security
+with check (sender_id = auth.uid() and exists (select 1 from public.dietitian_clients dc where dc.status = 'active' and ((dc.dietitian_id = chat_messages.sender_id and dc.client_id = chat_messages.receiver_id) or (dc.dietitian_id = chat_messages.receiver_id and dc.client_id = chat_messages.sender_id))));
+
+alter table public.dietitian_profiles enable row level security;
+alter table public.appointments enable row level security;
+alter table public.chat_messages enable row level security;
