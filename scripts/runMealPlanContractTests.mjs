@@ -8,13 +8,59 @@
  * node:test suite against the compiled output. No new dependencies.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const buildDir = mkdtempSync(join(tmpdir(), 'dietbridge-meal-plan-contracts-'));
+
+const CANONICAL_FIXTURE_RENAMES = new Map([
+  [
+    '20260724100000_allow_clients_read_planned_recipe_images.sql',
+    '20260724071352_allow_clients_read_planned_recipe_images.sql',
+  ],
+]);
+
+const resolveCanonicalSqlFixture = (exactFileName) => {
+  const lookupName = CANONICAL_FIXTURE_RENAMES.get(exactFileName) ?? exactFileName;
+  const roots = [
+    join(repoRoot, 'supabase', 'migrations'),
+    join(repoRoot, 'supabase', 'migration_archive'),
+  ];
+  const matches = [];
+  const pendingDirectories = [...roots];
+
+  while (pendingDirectories.length > 0) {
+    const directory = pendingDirectories.pop();
+    if (!existsSync(directory)) continue;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pendingDirectories.push(entryPath);
+      } else if (entry.isFile() && entry.name === lookupName) {
+        matches.push(entryPath);
+      }
+    }
+  }
+
+  if (matches.length === 0) {
+    throw new Error(`Canonical SQL fixture not found: ${exactFileName}`);
+  }
+  if (matches.length !== 1) {
+    throw new Error(`Canonical SQL fixture is ambiguous: ${exactFileName}`);
+  }
+  return relative(repoRoot, matches[0]);
+};
+
+const FIXTURE_BASENAMES = [
+  '20260723182501_persist_recipe_meal_snapshots.sql',
+  '20260724100000_allow_clients_read_planned_recipe_images.sql',
+];
+const fixtureOverrides = Object.fromEntries(
+  FIXTURE_BASENAMES.map((fileName) => [fileName, join(repoRoot, resolveCanonicalSqlFixture(fileName))]),
+);
 
 const SOURCES = [
   'features/meal-plans/services/mealPhotoService.ts',
@@ -24,6 +70,9 @@ const SOURCES = [
   'features/recipes/services/recipeService.ts',
   'features/recipes/utils/filterRecipes.ts',
   'shared/utils/uuid.ts',
+  'features/chat/types/chat.ts',
+  'features/chat/utils/receipts.ts',
+  'features/chat/services/chatService.ts',
 ];
 
 const EXPECTED_OUTPUTS = [
@@ -34,6 +83,9 @@ const EXPECTED_OUTPUTS = [
   'features/recipes/services/recipeService.js',
   'features/recipes/utils/filterRecipes.js',
   'shared/utils/uuid.js',
+  'features/chat/types/chat.js',
+  'features/chat/utils/receipts.js',
+  'features/chat/services/chatService.js',
 ];
 
 const SUPABASE_CLIENT_STUB = `'use strict';
@@ -99,12 +151,36 @@ const stubDir = join(buildDir, 'lib');
 mkdirSync(stubDir, { recursive: true });
 writeFileSync(join(stubDir, 'supabaseClient.js'), SUPABASE_CLIENT_STUB, 'utf8');
 
+const avatarUtilsDir = join(buildDir, 'shared', 'utils');
+mkdirSync(avatarUtilsDir, { recursive: true });
+writeFileSync(join(avatarUtilsDir, 'avatarUrl.js'), "'use strict'; exports.resolveProfilePhotoUrl = async (value) => value ?? null;\n", 'utf8');
+
+const fixtureShimPath = join(buildDir, 'canonicalSqlFixtureShim.cjs');
+writeFileSync(fixtureShimPath, `'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const overrides = ${JSON.stringify(fixtureOverrides)};
+const originalReadFileSync = fs.readFileSync;
+fs.readFileSync = (file, ...args) => {
+  const basename = typeof file === 'string' ? path.basename(file) : '';
+  const replacement = overrides[basename];
+  return replacement
+    ? originalReadFileSync.call(fs, replacement, ...args)
+    : originalReadFileSync.call(fs, file, ...args);
+};
+`, 'utf8');
+
 const testRun = spawnSync(process.execPath, [
   '--test',
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatContracts.test.cjs'),
 ], {
   cwd: repoRoot,
-  env: { ...process.env, MEAL_PLAN_CONTRACT_BUILD_DIR: buildDir },
+  env: {
+    ...process.env,
+    MEAL_PLAN_CONTRACT_BUILD_DIR: buildDir,
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${fixtureShimPath}`].filter(Boolean).join(' '),
+  },
   stdio: 'inherit',
 });
 
