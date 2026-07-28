@@ -36,8 +36,8 @@ begin
     'g'
   );
 
-  if pg_catalog.strpos(normalized_qual, 'objects.bucket_id=''avatars''::text') = 0
-     or pg_catalog.strpos(normalized_qual, 'avatar\.(jpe?g|png|webp)') = 0
+  if pg_catalog.strpos(normalized_qual, 'bucket_id=''avatars''::text') = 0
+     or pg_catalog.strpos(normalized_qual, 'name~*''^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/avatar\.jpe?g|png|webp$''::text') = 0
      or pg_catalog.strpos(normalized_qual, 'relationship.client_id=') = 0
      or pg_catalog.strpos(pg_catalog.lower(target_policy.qual), 'auth.uid()') = 0
      or pg_catalog.strpos(normalized_qual, 'relationship.status=''active''::client_status') = 0
