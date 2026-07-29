@@ -1,3 +1,7 @@
+import type { ChatImageAttachment, ChatMessageKind } from './chatImage';
+
+export type { ChatImageAttachment, ChatMessageKind } from './chatImage';
+
 export type ChatMessageDeliveryState = 'pending' | 'sent' | 'failed';
 
 export interface ChatConversationListItem {
@@ -8,6 +12,7 @@ export interface ChatConversationListItem {
   clientAvatarUrl: string | null;
   lastMessageId: string | null;
   lastMessageBody: string | null;
+  lastMessageKind: ChatMessageKind | null;
   lastMessageSenderId: string | null;
   lastMessageAt: string | null;
   lastDeliveredMessageId: string | null;
@@ -28,6 +33,8 @@ export interface ChatMessage {
   deletedBy: string | null;
   isOwn: boolean;
   deliveryState: ChatMessageDeliveryState;
+  messageKind: ChatMessageKind;
+  attachment: ChatImageAttachment | null;
 }
 
 export interface ChatMessageCursor {

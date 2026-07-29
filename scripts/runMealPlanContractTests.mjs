@@ -71,7 +71,9 @@ const SOURCES = [
   'features/recipes/utils/filterRecipes.ts',
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
+  'features/chat/types/chatImage.ts',
   'features/chat/utils/receipts.ts',
+  'features/chat/utils/conversationPreview.ts',
   'features/chat/services/chatService.ts',
 ];
 
@@ -84,7 +86,9 @@ const EXPECTED_OUTPUTS = [
   'features/recipes/utils/filterRecipes.js',
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
+  'features/chat/types/chatImage.js',
   'features/chat/utils/receipts.js',
+  'features/chat/utils/conversationPreview.js',
   'features/chat/services/chatService.js',
 ];
 
@@ -175,6 +179,7 @@ const testRun = spawnSync(process.execPath, [
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatImageReadContracts.test.cjs'),
   join(repoRoot, 'tests', 'disposableReplayMaterializer.test.cjs'),
 ], {
   cwd: repoRoot,

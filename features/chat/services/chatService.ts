@@ -2,6 +2,17 @@ import { supabase } from '../../../lib/supabaseClient';
 import { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
 import { isValidUuid } from '../../../shared/utils/uuid';
 import {
+  CHAT_IMAGE_BUCKET_ID,
+  CHAT_IMAGE_MAX_BYTES,
+  CHAT_IMAGE_MAX_EDGE_PIXELS,
+  CHAT_IMAGE_MAX_TOTAL_PIXELS,
+  CHAT_IMAGE_MIME_TYPE,
+  CHAT_IMAGE_OBJECT_PATH_PATTERN,
+  ChatImageAttachment,
+  ChatMessageKind,
+  isChatMessageKind,
+} from '../types/chatImage';
+import {
   ChatConversationListItem,
   ChatReadState,
   ChatMessage,
@@ -19,6 +30,27 @@ import {
 const DEFAULT_MESSAGE_PAGE_SIZE = 30;
 const MAX_MESSAGE_PAGE_SIZE = 100;
 const MAX_MESSAGE_BODY_LENGTH = 4000;
+
+/**
+ * Canonical message projection used by every history/list read.
+ *
+ * `attachment` is an embedded to-one join: `chat_attachments.message_id` is
+ * unique in the dormant image schema. Realtime `postgres_changes` payloads
+ * cannot carry the join, so image rows arriving over Realtime are reconciled
+ * with a refetch instead of being rendered from the raw payload.
+ */
+const CHAT_MESSAGE_SELECT = [
+  'id',
+  'conversation_id',
+  'sender_id',
+  'client_message_id',
+  'body',
+  'message_kind',
+  'created_at',
+  'deleted_at',
+  'deleted_by',
+  'attachment:chat_attachments(id, message_id, bucket_id, object_path, mime_type, byte_size, width, height, deleted_at)',
+].join(', ');
 const FALLBACK_CLIENT_NAME = 'İsimsiz danışan';
 
 type UnknownRecord = Record<string, unknown>;
@@ -207,6 +239,73 @@ const normalizeConversationRows = (
   return [...deduplicated.values()];
 };
 
+const isPositiveInteger = (value: unknown, maximum: number): value is number => (
+  typeof value === 'number'
+  && Number.isInteger(value)
+  && value >= 1
+  && value <= maximum
+);
+
+/**
+ * Validates embedded `chat_attachments` metadata against the canonical
+ * JPEG-only contract. Anything outside the contract is rejected fail-closed so
+ * a malformed row can never be rendered as a trusted image.
+ */
+const normalizeChatImageAttachment = (
+  value: unknown,
+  expectedMessageId: string,
+): ChatImageAttachment | null => {
+  const row = firstRecord(value);
+  if (!row) return null;
+
+  const id = getNullableString(row, 'id');
+  const messageId = getNullableString(row, 'message_id');
+  const bucketId = getNullableString(row, 'bucket_id');
+  const objectPath = getNullableString(row, 'object_path');
+  const mimeType = getNullableString(row, 'mime_type');
+  const byteSize = row.byte_size;
+  const width = row.width;
+  const height = row.height;
+  const deletedAt = normalizeIsoTimestamp(row.deleted_at);
+
+  if (
+    !isValidUuid(id)
+    || !isValidUuid(messageId)
+    || messageId !== expectedMessageId
+    || bucketId !== CHAT_IMAGE_BUCKET_ID
+    || !objectPath
+    || !CHAT_IMAGE_OBJECT_PATH_PATTERN.test(objectPath)
+    || mimeType !== CHAT_IMAGE_MIME_TYPE
+    || !isPositiveInteger(byteSize, CHAT_IMAGE_MAX_BYTES)
+    || !isPositiveInteger(width, CHAT_IMAGE_MAX_EDGE_PIXELS)
+    || !isPositiveInteger(height, CHAT_IMAGE_MAX_EDGE_PIXELS)
+    || width * height > CHAT_IMAGE_MAX_TOTAL_PIXELS
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    messageId,
+    bucketId,
+    objectPath,
+    mimeType,
+    byteSize,
+    width,
+    height,
+    deletedAt,
+  };
+};
+
+/**
+ * Resolves `message_kind`. A missing value stays backward compatible with rows
+ * written before the image schema; any unknown value is rejected.
+ */
+const resolveMessageKind = (value: unknown): ChatMessageKind | null => {
+  if (value === undefined || value === null) return 'text';
+  return isChatMessageKind(value) ? value : null;
+};
+
 const normalizeChatMessageRow = (
   value: unknown,
   currentUserId: string,
@@ -218,10 +317,11 @@ const normalizeChatMessageRow = (
   const conversationId = getNullableString(row, 'conversation_id');
   const senderId = getNullableString(row, 'sender_id');
   const clientMessageId = getNullableString(row, 'client_message_id');
-  const body = getNullableString(row, 'body');
+  const rawBody = getNullableString(row, 'body');
   const createdAt = normalizeIsoTimestamp(row.created_at);
   const deletedAt = normalizeIsoTimestamp(row.deleted_at);
   const deletedBy = getNullableString(row, 'deleted_by');
+  const messageKind = resolveMessageKind(row.message_kind);
 
   if (
     !isValidUuid(id)
@@ -229,15 +329,55 @@ const normalizeChatMessageRow = (
     || !isValidUuid(senderId)
     || !isValidUuid(clientMessageId)
     || !createdAt
-    || (deletedAt === null && (
-      !body
-      || !body.trim()
-      || Array.from(body).length > MAX_MESSAGE_BODY_LENGTH
-      || deletedBy !== null
-    ))
-    || (deletedAt !== null && (body !== null || !isValidUuid(deletedBy)))
+    || messageKind === null
+    || (deletedAt !== null && (rawBody !== null || !isValidUuid(deletedBy)))
   ) {
     return null;
+  }
+
+  // Tombstones keep their existing contract for both kinds: no body, no
+  // readable attachment, and a recorded deleter.
+  if (deletedAt !== null) {
+    return {
+      id,
+      conversationId,
+      senderId,
+      clientMessageId,
+      body: null,
+      createdAt,
+      deletedAt,
+      deletedBy,
+      isOwn: senderId === currentUserId,
+      deliveryState: 'sent',
+      messageKind,
+      attachment: null,
+    };
+  }
+
+  if (deletedBy !== null) return null;
+
+  const trimmedBody = rawBody === null ? null : rawBody.trim();
+  if (trimmedBody !== null && Array.from(trimmedBody).length > MAX_MESSAGE_BODY_LENGTH) {
+    return null;
+  }
+
+  const rawAttachment = row.attachment;
+  const attachment = rawAttachment === undefined || rawAttachment === null
+    ? null
+    : normalizeChatImageAttachment(rawAttachment, id);
+
+  let body: string | null;
+  if (messageKind === 'image') {
+    // Live image rows require complete, live attachment metadata. The caption
+    // is optional and an empty caption normalizes to null.
+    if (!attachment || attachment.deletedAt !== null) return null;
+    body = trimmedBody ? trimmedBody : null;
+  } else {
+    // Live text rows keep the mandatory body contract and must not carry a
+    // live attachment.
+    if (!trimmedBody) return null;
+    if (attachment && attachment.deletedAt === null) return null;
+    body = trimmedBody;
   }
 
   return {
@@ -251,6 +391,8 @@ const normalizeChatMessageRow = (
     deletedBy,
     isOwn: senderId === currentUserId,
     deliveryState: 'sent',
+    messageKind,
+    attachment: messageKind === 'image' ? attachment : null,
   };
 };
 
@@ -359,7 +501,7 @@ const fetchLastMessages = async (
 
   const { data, error } = await supabase
     .from('chat_messages')
-    .select('id, conversation_id, sender_id, client_message_id, body, created_at, deleted_at, deleted_by')
+    .select(CHAT_MESSAGE_SELECT)
     .in('id', messageIds)
     .not('conversation_id', 'is', null);
 
@@ -471,6 +613,7 @@ export const fetchChatConversations = async (
         clientAvatarUrl,
         lastMessageId: lastMessage?.id ?? null,
         lastMessageBody: lastMessage?.body ?? null,
+        lastMessageKind: lastMessage?.messageKind ?? null,
         lastMessageSenderId: lastMessage?.senderId ?? null,
         lastMessageAt: lastMessage?.createdAt ?? null,
         lastDeliveredMessageId: ownReadState?.lastDeliveredMessageId ?? null,
@@ -520,7 +663,7 @@ export const fetchChatMessages = async (
   try {
     const baseQuery = supabase
       .from('chat_messages')
-      .select('id, conversation_id, sender_id, client_message_id, body, created_at, deleted_at, deleted_by')
+      .select(CHAT_MESSAGE_SELECT)
       .eq('conversation_id', normalizedConversationId)
       .not('conversation_id', 'is', null);
     const filteredQuery = before
