@@ -4,6 +4,7 @@ import { OptimisticChatMessage } from '../hooks/useChatComposer';
 import { ChatConversationListItem, ChatMessage } from '../types/chat';
 import { getChatReceiptState } from '../utils/receipts';
 import { ChatClientAvatar } from './ChatConversationList';
+import ChatImageBubble from './ChatImageBubble';
 
 interface ChatMessagePanelProps {
   conversation: ChatConversationListItem | null;
@@ -68,7 +69,13 @@ const ChatMessageBubble: React.FC<{
   return (
     <article data-chat-message-id={message.id} data-chat-incoming={message.isOwn ? undefined : 'true'} className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`} aria-label={`${senderLabel} mesajı`}>
       <div className={`max-w-[85%] rounded-2xl p-4 sm:max-w-[70%] ${message.isOwn ? 'rounded-tr-none bg-primary text-white' : 'rounded-tl-none border border-slate-100 bg-white text-slate-700 shadow-sm'}`}>
-        {message.deletedAt ? <p className="text-sm italic leading-relaxed opacity-80">Bu mesaj silindi</p> : <p className="break-words whitespace-pre-wrap text-sm leading-relaxed">{message.body}</p>}
+        {message.deletedAt ? (
+          <p className="text-sm italic leading-relaxed opacity-80">Bu mesaj silindi</p>
+        ) : message.messageKind === 'image' ? (
+          <ChatImageBubble message={message} />
+        ) : (
+          <p className="break-words whitespace-pre-wrap text-sm leading-relaxed">{message.body}</p>
+        )}
         <div className={`mt-2 flex items-center justify-end gap-1.5 text-[10px] ${message.isOwn ? 'text-emerald-100' : 'text-slate-400'}`}>
           {time && <time dateTime={message.createdAt}>{time}</time>}
           {message.isOwn && <ChatReceiptIcon message={message} peerLastDeliveredCursor={peerLastDeliveredCursor} peerLastReadCursor={peerLastReadCursor} />}

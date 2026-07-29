@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { UserRound } from 'lucide-react';
 import { ChatConversationListItem } from '../types/chat';
+import { getChatConversationPreview } from '../utils/conversationPreview';
 
 interface ChatConversationListProps {
   conversations: ChatConversationListItem[];
@@ -120,7 +121,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
               )}
             </div>
             <p className="truncate text-sm text-slate-500">
-              {conversation.lastMessageBody || 'Henüz mesajlaşma başlamadı'}
+              {getChatConversationPreview(conversation)}
             </p>
             {conversation.hasUnread && <span className="sr-only">Okunmamış mesaj</span>}
           </div>

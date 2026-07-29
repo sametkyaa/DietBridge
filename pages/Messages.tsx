@@ -7,12 +7,15 @@ import ChatMessagePanel from '../features/chat/components/ChatMessagePanel';
 import { useChatComposer } from '../features/chat/hooks/useChatComposer';
 import { useChatConversations } from '../features/chat/hooks/useChatConversations';
 import { useChatMessages } from '../features/chat/hooks/useChatMessages';
+import { useChatImageUpload } from '../features/chat/hooks/useChatImageUpload';
 import { useChatReadState } from '../features/chat/hooks/useChatReadState';
 import { useChatRealtime } from '../features/chat/hooks/useChatRealtime';
-import { deleteChatMessage } from '../features/chat/services/chatService';
+import { deleteChatMessage, fetchChatMessageById } from '../features/chat/services/chatService';
+import type { ChatImageFinalizeResult } from '../features/chat/services/chatImageService';
 import { ChatConversationListItem, ChatMessage, ChatReadState } from '../features/chat/types/chat';
 import { useAuth } from '../features/auth/context/AuthContext';
 import DietitianAvatar from '../shared/components/DietitianAvatar';
+import { env } from '../lib/env';
 
 const Messages = () => {
   const navigate = useNavigate();
@@ -58,6 +61,28 @@ const Messages = () => {
   const latestIncomingMessage = useMemo(() => (
     [...messages].reverse().find((message) => !message.isOwn) ?? null
   ), [messages]);
+
+  /**
+   * Finalization only proves that the image message was committed. Re-read the
+   * exact row with its attachment join before it enters the existing id +
+   * clientMessageId dedupe path. A failed read adds no partial message; the
+   * Realtime/reconnect refetch safety nets remain active.
+   */
+  const handleImageFinalized = useCallback((result: ChatImageFinalizeResult): void => {
+    if (!user?.id) return;
+    void fetchChatMessageById(result.messageId, result.conversationId, user.id)
+      .then((message) => {
+        if (message) mergeCommittedMessage(message);
+      })
+      .catch(() => undefined);
+    void refetch();
+  }, [mergeCommittedMessage, refetch, user?.id]);
+
+  const imageUpload = useChatImageUpload({
+    conversationId: activeConversation?.conversationId ?? null,
+    featureEnabled: env.enableChatImages,
+    onFinalized: handleImageFinalized,
+  });
 
   useEffect(() => {
     setLatestVisibleIncomingMessage(null);
@@ -274,6 +299,8 @@ const Messages = () => {
                 isSending={isSending}
                 error={composerError}
                 disabled={composerDisabled}
+                conversationId={activeConversation?.conversationId ?? null}
+                imageUpload={imageUpload}
               />
             )}
           />
