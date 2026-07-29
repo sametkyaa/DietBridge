@@ -129,6 +129,14 @@ test('live text message must not carry a live attachment', async () => {
   await assertRejected(messageRow({ attachment: attachmentRow() }));
 });
 
+test('live text message with malformed attachment metadata is rejected', async () => {
+  await assertRejected(messageRow({
+    attachment: attachmentRow({ mime_type: 'image/png' }),
+  }));
+  await assertRejected(messageRow({ attachment: { bucket_id: 'avatars' } }));
+  await assertRejected(messageRow({ attachment: 'malformed-attachment' }));
+});
+
 test('caption-less image message normalizes with null body', async () => {
   const [message] = await fetchOne(imageRow());
   assert.equal(message.messageKind, 'image');
@@ -162,6 +170,8 @@ test('attachment metadata outside the canonical JPEG contract is rejected', asyn
     { mime_type: 'image/webp' },
     { bucket_id: 'avatars' },
     { object_path: `pending/${ids.intent}/${ids.object}.png` },
+    { object_path: objectPath.replace('.jpg', '.JPG') },
+    { object_path: objectPath.replace(ids.intent, 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA') },
     { object_path: `${ids.intent}/${ids.object}.jpg` },
     { object_path: `pending/${ids.intent}/../${ids.object}.jpg` },
     { byte_size: 0 },

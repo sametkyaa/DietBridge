@@ -405,6 +405,8 @@ test('18. free-form paths, foreign buckets and oversize blobs never reach Storag
   const rejected = [
     [{ objectPath: '../../etc/passwd' }, canonicalImage(), 'invalid_response'],
     [{ objectPath: 'public/anything.jpg' }, canonicalImage(), 'invalid_response'],
+    [{ objectPath: objectPath.replace('.jpg', '.JPG') }, canonicalImage(), 'invalid_response'],
+    [{ objectPath: objectPath.replace(ids.intent, 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA') }, canonicalImage(), 'invalid_response'],
     [{ bucketId: 'avatars' }, canonicalImage(), 'invalid_response'],
     [{ expiresAt: new Date(Date.now() - 1000).toISOString() }, canonicalImage(), 'intent_expired'],
     [{}, { ...canonicalImage(), blob: fakeBlob(200000, 'image/png') }, 'unsupported_type'],

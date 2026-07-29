@@ -367,6 +367,9 @@ const normalizeChatMessageRow = (
   }
 
   const rawAttachment = row.attachment;
+  const hasAttachmentPayload = Array.isArray(rawAttachment)
+    ? rawAttachment.length > 0
+    : rawAttachment !== undefined && rawAttachment !== null;
   const attachment = rawAttachment === undefined || rawAttachment === null
     ? null
     : normalizeChatImageAttachment(rawAttachment, id);
@@ -381,6 +384,7 @@ const normalizeChatMessageRow = (
     // Live text rows keep the mandatory body contract and must not carry a
     // live attachment.
     if (!trimmedBody) return null;
+    if (hasAttachmentPayload && !attachment) return null;
     if (attachment && attachment.deletedAt === null) return null;
     body = trimmedBody;
   }

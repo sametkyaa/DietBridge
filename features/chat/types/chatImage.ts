@@ -23,7 +23,6 @@ const UUID_PATTERN_SOURCE =
 /** Server-generated object path: `pending/<intent-uuid>/<object-uuid>.jpg`. */
 export const CHAT_IMAGE_OBJECT_PATH_PATTERN = new RegExp(
   `^pending\\/${UUID_PATTERN_SOURCE}\\/${UUID_PATTERN_SOURCE}\\.jpg$`,
-  'i',
 );
 
 export const isChatMessageKind = (value: unknown): value is ChatMessageKind => (
