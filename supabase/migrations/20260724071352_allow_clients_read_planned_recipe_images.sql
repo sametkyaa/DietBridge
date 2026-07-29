@@ -10,10 +10,6 @@ begin
 end
 $$;
 
--- A client can read only a canonical recipe image retained by a recipe-sourced
--- meal snapshot in that client's own plan. The meal and plan SELECT policies
--- are already fail-closed for authenticated clients, so no SECURITY DEFINER
--- helper is required here.
 drop policy if exists recipe_images_select_planned_client on storage.objects;
 create policy recipe_images_select_planned_client
 on storage.objects

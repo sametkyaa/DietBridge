@@ -49,9 +49,6 @@ begin
 end
 $$;
 
--- İlişkisiz diyetisyenlerin client temel profilini aramasına izin veren geniş
--- lookup policy kaldırılır. Self erişim policy'leri korunur; karşı taraf erişimi
--- yalnız pending/active ilişki üzerinden verilir.
 drop policy if exists "Dietitians can view client profiles for linking" on public.profiles;
 drop policy if exists "Relationship parties can view counterpart profiles" on public.profiles;
 
@@ -72,8 +69,6 @@ using (
   )
 );
 
--- Browser tarafından client UUID bilinerek yapılan doğrudan INSERT yolu kapatılır.
--- Bağlantı isteği aşağıdaki SECURITY DEFINER RPC üzerinden oluşturulur.
 drop policy if exists "dietitians_create_pending_client_request" on public.dietitian_clients;
 
 create or replace function public.request_client_connection_by_email(p_email text)
@@ -104,8 +99,6 @@ begin
   order by p.id
   limit 1;
 
-  -- Bulunmayan, client olmayan veya başka aktif/pending ilişkiye sahip hedefler
-  -- aynı dar sonuçla döner; e-posta hesabı enumeration'ı yapılmaz.
   if v_client_id is null then
     return 'unavailable';
   end if;
@@ -239,7 +232,6 @@ create trigger trg_enforce_dietitian_client_transition
 before insert or update on public.dietitian_clients
 for each row execute function public.enforce_dietitian_client_transition();
 
--- Transaction commit edilmeden önce hedef sözleşmeyi fail-fast doğrula.
 do $$
 begin
   if to_regprocedure('public.request_client_connection_by_email(text)') is null then

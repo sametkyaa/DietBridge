@@ -34,23 +34,6 @@ export interface Appointment {
   status: 'upcoming' | 'completed' | 'cancelled';
 }
 
-export interface Message {
-  id: string;
-  sender: 'me' | 'other';
-  text: string;
-  time: string;
-}
-
-export interface Conversation {
-  id: string;
-  clientName: string;
-  clientAvatar: string;
-  lastMessage: string;
-  lastMessageTime: string;
-  isOnline: boolean;
-  messages: Message[];
-}
-
 export type RecipeCategory = 'Kahvaltı' | 'Ara Öğün' | 'Öğle Yemeği' | 'Akşam Yemeği' | 'Tatlı';
 
 export interface Recipe {
