@@ -494,7 +494,7 @@ test('22. the upload lifecycle never aborts a finalized intent', () => {
     path.join(repoRoot, 'features', 'chat', 'hooks', 'useChatImageUpload.ts'),
     'utf8',
   );
-  assert.match(hookSource, /if \(!intentId \|\| operation\?\.finalized\) return;/);
+  assert.match(hookSource, /takeChatImageIntentForAbort/);
   assert.match(hookSource, /operation\.finalized = true;/);
   assert.doesNotMatch(hookSource, /[^y]\babortChatImageUpload\(/, 'only the quiet variant may be used');
 });

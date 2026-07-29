@@ -142,8 +142,9 @@ test('13. feature_unavailable never offers retry and uses the safe user message'
 test('14. removing a local selection has no abort RPC requirement', () => {
   const hook = source('features/chat/hooks/useChatImageUpload.ts');
   assert.match(hook, /const cancel/);
-  assert.match(hook, /const intentId = intentIdRef\.current;/);
-  assert.match(hook, /if \(!intentId \|\| operation\?\.finalized\) return;/);
+  assert.match(hook, /takeChatImageIntentForAbort/);
+  assert.match(hook, /operation\.intent/);
+  assert.doesNotMatch(hook, /intentIdRef|intentRef|canonicalRef/);
   assert.match(hook, /type: 'select'/);
 });
 
@@ -156,8 +157,8 @@ test('15. a cancellation after intent creation preserves best-effort abort', () 
 test('16. a finalized intent is never aborted', () => {
   const hook = source('features/chat/hooks/useChatImageUpload.ts');
   assert.match(hook, /operation\.finalized = true;/);
-  assert.match(hook, /if \(!intentId \|\| operation\?\.finalized\) return;/);
-  assert.match(hook, /intentIdRef\.current = null;/);
+  assert.match(hook, /finalizeChatImageResources\(operation\)/);
+  assert.match(hook, /takeChatImageIntentForAbort/);
 });
 
 test('17. success contract clears preview, source, canonical blob and intent', () => {

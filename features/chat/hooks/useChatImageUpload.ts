@@ -22,6 +22,12 @@ import {
   type CanonicalizeChatImageDeps,
 } from '../utils/canonicalizeChatImage';
 import {
+  clearChatImageCanonical,
+  finalizeChatImageResources,
+  takeChatImageIntentForAbort,
+  takeChatImagePreviewUrl,
+} from '../utils/chatImageUploadResources';
+import {
   chatImageUploadReducer,
   evaluateChatImageUploadStart,
   initialChatImageUploadState,
@@ -65,6 +71,9 @@ interface OperationContext {
   file: File;
   controller: AbortController;
   previewUrl: string | null;
+  canonical: CanonicalChatImage | null;
+  intent: ChatImageUploadIntent | null;
+  intentReleased: boolean;
   caption: string | null;
   finalized: boolean;
 }
@@ -101,9 +110,6 @@ export const useChatImageUpload = (
   const mountedRef = useRef(false);
   const operationIdRef = useRef(0);
   const activeOperationRef = useRef<OperationContext | null>(null);
-  const intentIdRef = useRef<string | null>(null);
-  const intentRef = useRef<ChatImageUploadIntent | null>(null);
-  const canonicalRef = useRef<CanonicalChatImage | null>(null);
   const stateRef = useRef(state);
   const onFinalizedRef = useRef(onFinalized);
   const previousConversationIdRef = useRef<string | null>(conversationId);
@@ -114,22 +120,15 @@ export const useChatImageUpload = (
   const disposeOperation = useCallback((operation: OperationContext | null): void => {
     if (!operation) return;
     operation.controller.abort();
-    revokePreview(operation.previewUrl);
-    operation.previewUrl = null;
+    revokePreview(takeChatImagePreviewUrl(operation));
+    clearChatImageCanonical(operation);
   }, []);
 
-  /** A best-effort abort is only valid for a non-finalized, server-issued intent. */
+  /** A best-effort abort is limited to this operation's own server-issued intent. */
   const releaseIntent = useCallback((operation: OperationContext | null): void => {
-    const intentId = intentIdRef.current;
-    if (!intentId || operation?.finalized) return;
-    intentIdRef.current = null;
-    intentRef.current = null;
-    void abortChatImageUploadQuietly(intentId);
-  }, []);
-
-  const clearLocalReferences = useCallback((): void => {
-    canonicalRef.current = null;
-    intentRef.current = null;
+    if (!operation) return;
+    const intentId = takeChatImageIntentForAbort(operation);
+    if (intentId) void abortChatImageUploadQuietly(intentId);
   }, []);
 
   useEffect(() => {
@@ -140,9 +139,8 @@ export const useChatImageUpload = (
       activeOperationRef.current = null;
       releaseIntent(operation);
       disposeOperation(operation);
-      clearLocalReferences();
     };
-  }, [clearLocalReferences, disposeOperation, releaseIntent]);
+  }, [disposeOperation, releaseIntent]);
 
   // A selection belongs to the conversation that created it. Switching the
   // active conversation clears it (and aborts only if network work had begun).
@@ -153,9 +151,8 @@ export const useChatImageUpload = (
     activeOperationRef.current = null;
     releaseIntent(operation);
     disposeOperation(operation);
-    clearLocalReferences();
     dispatch({ type: 'reset' });
-  }, [clearLocalReferences, conversationId, disposeOperation, releaseIntent]);
+  }, [conversationId, disposeOperation, releaseIntent]);
 
   const isCurrent = useCallback((operationId: number): boolean => (
     mountedRef.current
@@ -179,12 +176,12 @@ export const useChatImageUpload = (
           deps,
         });
         if (!isCurrent(operationId)) return;
-        canonicalRef.current = canonical;
+        operation.canonical = canonical;
         dispatch({ type: 'canonicalized', operationId, canonical });
         stage = 'creating-intent';
       }
 
-      const canonical = canonicalRef.current;
+      const canonical = operation.canonical;
       if (!canonical) throw createChatImageError('invalid_request');
 
       if (stage === 'creating-intent') {
@@ -196,14 +193,13 @@ export const useChatImageUpload = (
           void abortChatImageUploadQuietly(intent.id);
           return;
         }
-        intentIdRef.current = intent.id;
-        intentRef.current = intent;
+        operation.intent = intent;
         dispatch({ type: 'intent-created', operationId, intent });
         stage = 'uploading';
       }
 
       if (stage === 'uploading') {
-        const intent = intentRef.current;
+        const intent = operation.intent;
         if (!intent) throw createChatImageError('invalid_request');
         await uploadCanonicalChatImage(intent, canonical);
         if (!isCurrent(operationId)) return;
@@ -212,19 +208,16 @@ export const useChatImageUpload = (
       }
 
       if (stage === 'finalizing') {
-        const intentId = intentIdRef.current;
+        const intentId = operation.intent?.id;
         if (!intentId) throw createChatImageError('invalid_request');
         const result = await finalizeChatImageMessage(intentId, operation.caption);
         operation.finalized = true;
-        intentIdRef.current = null;
-        intentRef.current = null;
+        finalizeChatImageResources(operation);
         if (!isCurrent(operationId)) return;
 
         // A finalized upload never aborts. The page owns the follow-up read;
         // it must not fabricate an incomplete image message if that read fails.
-        revokePreview(operation.previewUrl);
-        operation.previewUrl = null;
-        canonicalRef.current = null;
+        revokePreview(takeChatImagePreviewUrl(operation));
         dispatch({ type: 'finalized', operationId });
         void Promise.resolve(onFinalizedRef.current?.(result)).catch(() => undefined);
       }
@@ -254,7 +247,6 @@ export const useChatImageUpload = (
     activeOperationRef.current = null;
     releaseIntent(previous);
     disposeOperation(previous);
-    clearLocalReferences();
 
     const operationId = ++operationIdRef.current;
     if (!decision.allowed || !decision.conversationId) {
@@ -283,6 +275,9 @@ export const useChatImageUpload = (
       file,
       controller: new AbortController(),
       previewUrl,
+      canonical: null,
+      intent: null,
+      intentReleased: false,
       caption: null,
       finalized: false,
     };
@@ -296,7 +291,7 @@ export const useChatImageUpload = (
       source: { name: file.name, mimeType: file.type, byteSize: file.size },
       previewUrl,
     });
-  }, [clearLocalReferences, conversationId, disposeOperation, featureEnabled, releaseIntent]);
+  }, [conversationId, disposeOperation, featureEnabled, releaseIntent]);
 
   const startUpload = useCallback(async (caption: string | null | undefined): Promise<void> => {
     const operation = activeOperationRef.current;
@@ -334,18 +329,16 @@ export const useChatImageUpload = (
     activeOperationRef.current = null;
     releaseIntent(operation);
     disposeOperation(operation);
-    clearLocalReferences();
     dispatch({ type: 'cancelled', operationId: operation.operationId });
-  }, [clearLocalReferences, disposeOperation, releaseIntent]);
+  }, [disposeOperation, releaseIntent]);
 
   const reset = useCallback((): void => {
     const operation = activeOperationRef.current;
     activeOperationRef.current = null;
     releaseIntent(operation);
     disposeOperation(operation);
-    clearLocalReferences();
     dispatch({ type: 'reset' });
-  }, [clearLocalReferences, disposeOperation, releaseIntent]);
+  }, [disposeOperation, releaseIntent]);
 
   return useMemo(() => ({
     state,
