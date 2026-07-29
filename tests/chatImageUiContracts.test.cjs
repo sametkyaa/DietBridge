@@ -34,7 +34,9 @@ const selected = (overrides = {}) => ({
   ...overrides,
 });
 
-const source = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
+const source = (relativePath) => fs
+  .readFileSync(path.join(repoRoot, relativePath), 'utf8')
+  .replace(/\r\n/g, '\n');
 
 test('1. flag false hides the image picker', () => {
   const picker = ui.getChatImagePickerUiState(false, '11111111-1111-4111-8111-111111111111', false);
