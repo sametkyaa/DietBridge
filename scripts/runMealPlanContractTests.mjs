@@ -174,6 +174,8 @@ const testRun = spawnSync(process.execPath, [
   '--test',
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
+  join(repoRoot, 'tests', 'disposableReplayMaterializer.test.cjs'),
 ], {
   cwd: repoRoot,
   env: {
