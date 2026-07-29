@@ -2728,36 +2728,36 @@
     {
       "path": "supabase/migrations/20260729090000_chat_image_schema.sql",
       "phase": "image",
-      "sourceSha256": "9a510dd788073fa50348f49e367ae54f023c8b6e2c35ae4f30618a1a2a0e099e",
-      "materializedSha256": "9a510dd788073fa50348f49e367ae54f023c8b6e2c35ae4f30618a1a2a0e099e",
+      "sourceSha256": "67381ac857c862114f895547de6f0295924315003a8fc31c8e9bcde9b6f37332",
+      "materializedSha256": "67381ac857c862114f895547de6f0295924315003a8fc31c8e9bcde9b6f37332",
       "edits": []
     },
     {
       "path": "supabase/migrations/20260729090100_chat_image_rls_privileges.sql",
       "phase": "image",
-      "sourceSha256": "bde2697d3359fb046fedc013573384e187eec22ebafe5d36efbf635b79a76031",
-      "materializedSha256": "bde2697d3359fb046fedc013573384e187eec22ebafe5d36efbf635b79a76031",
+      "sourceSha256": "3509a0de0124bc44ec5b1bc12da6f5a3e2a5e2454260f2e99195b9849d61ce21",
+      "materializedSha256": "3509a0de0124bc44ec5b1bc12da6f5a3e2a5e2454260f2e99195b9849d61ce21",
       "edits": []
     },
     {
       "path": "supabase/migrations/20260729090200_chat_image_rpc.sql",
       "phase": "image",
-      "sourceSha256": "fafddf697da4e1f6eb415bf51b758f22c0c359403326045d5099806fc8010541",
-      "materializedSha256": "fafddf697da4e1f6eb415bf51b758f22c0c359403326045d5099806fc8010541",
+      "sourceSha256": "36e95393dad6e0361fbb3fcfc75db9b4c653d1ca3b5ca03135f358dc3ea026f0",
+      "materializedSha256": "36e95393dad6e0361fbb3fcfc75db9b4c653d1ca3b5ca03135f358dc3ea026f0",
       "edits": []
     },
     {
       "path": "supabase/migrations/20260729090300_chat_image_storage.sql",
       "phase": "image",
-      "sourceSha256": "f8aebf8d03e5feb487427a5b96e294ce2813b6db8374548543dfee4d070c91b3",
-      "materializedSha256": "f8aebf8d03e5feb487427a5b96e294ce2813b6db8374548543dfee4d070c91b3",
+      "sourceSha256": "f73803a173e676f2121053c71fcfbb4d387cadc639029e727d243504b307a141",
+      "materializedSha256": "f73803a173e676f2121053c71fcfbb4d387cadc639029e727d243504b307a141",
       "edits": []
     },
     {
       "path": "supabase/migrations/20260729090400_chat_image_cleanup.sql",
       "phase": "image",
-      "sourceSha256": "e003675a0daa821ef3f89a64978e84d8b196bec4aec44dee83944199c574ce1c",
-      "materializedSha256": "e003675a0daa821ef3f89a64978e84d8b196bec4aec44dee83944199c574ce1c",
+      "sourceSha256": "49d17a4e185eabdc8b59bf9beacbcc64531f0e6ce3a21a33cfe4b3b57e8a8ec3",
+      "materializedSha256": "49d17a4e185eabdc8b59bf9beacbcc64531f0e6ce3a21a33cfe4b3b57e8a8ec3",
       "edits": []
     }
   ]
