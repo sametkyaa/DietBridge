@@ -142,6 +142,10 @@ create table public.chat_upload_intents (
 create index chat_upload_intents_owner_status_expiry_idx
   on public.chat_upload_intents (created_by, status, expires_at, id);
 
+create index chat_upload_intents_pending_expiry_idx
+  on public.chat_upload_intents (expires_at, id)
+  where status = 'pending';
+
 create index chat_upload_intents_conversation_status_idx
   on public.chat_upload_intents (conversation_id, status, expires_at, id);
 
@@ -265,6 +269,9 @@ as $function$
 declare
   v_message_kind text;
   v_message_deleted_at timestamptz;
+  v_message_conversation_id uuid;
+  v_message_sender_id uuid;
+  v_message_client_message_id uuid;
   v_intent public.chat_upload_intents%rowtype;
 begin
   if tg_op = 'UPDATE' then
@@ -296,8 +303,10 @@ begin
     return new;
   end if;
 
-  select m.message_kind, m.deleted_at
-    into v_message_kind, v_message_deleted_at
+  select m.message_kind, m.deleted_at, m.conversation_id, m.sender_id,
+         m.client_message_id
+    into v_message_kind, v_message_deleted_at, v_message_conversation_id,
+         v_message_sender_id, v_message_client_message_id
     from public.chat_messages as m
     where m.id = new.message_id
     for key share;
@@ -314,6 +323,9 @@ begin
 
   if not found
      or v_intent.status <> 'finalized'
+     or v_message_conversation_id is distinct from v_intent.conversation_id
+     or v_message_sender_id is distinct from v_intent.created_by
+     or v_message_client_message_id is distinct from v_intent.client_message_id
      or v_intent.bucket_id is distinct from new.bucket_id
      or v_intent.object_path is distinct from new.object_path
      or v_intent.validated_mime is distinct from new.mime_type

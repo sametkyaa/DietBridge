@@ -12,7 +12,7 @@ const OWNER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OBJECT_ID_A = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const OBJECT_ID_B = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const PATH_A = `pending/${OWNER_ID}/${OBJECT_ID_A}.jpg`;
-const PATH_B = `pending/${OWNER_ID}/${OBJECT_ID_B}.png`;
+const PATH_B = `pending/${OWNER_ID}/${OBJECT_ID_B}.jpg`;
 
 interface RecordedCall {
   url: string;
@@ -315,6 +315,37 @@ Deno.test("malformed or non-canonical claims fail closed before Storage", async 
   assertEquals(harness.logs, [
     { level: "warn", code: "queue_claim_failed" },
   ]);
+});
+
+Deno.test("PNG and WebP claims fail closed before Storage", async (test) => {
+  for (const extension of ["png", "webp"]) {
+    await test.step(extension, async () => {
+      const harness = createHarness(() => {
+        throw new Error("Storage must not be called for a non-JPEG claim");
+      });
+      const response = await handleCleanupRequest(
+        schedulerRequest(),
+        {
+          ...harness.dependencies,
+          fetch: (input, init) => {
+            const url = input instanceof Request ? input.url : input.toString();
+            if (url.includes("claim_chat_image_cleanup_batch")) {
+              harness.calls.push({ url, init });
+              return Promise.resolve(json([{
+                cleanup_id: CLEANUP_ID_A,
+                bucket_id: "chat-images",
+                object_path: `pending/${OWNER_ID}/${OBJECT_ID_A}.${extension}`,
+              }]));
+            }
+            return Promise.reject(new Error("Storage must not be called for a non-JPEG claim"));
+          },
+        },
+      );
+      assertEquals(response.status, 503);
+      assertEquals(harness.calls.length, 1);
+      assertEquals(harness.logs, [{ level: "warn", code: "queue_claim_failed" }]);
+    });
+  }
 });
 
 Deno.test("logs and responses never contain secrets, object paths, ids, or raw errors", async () => {

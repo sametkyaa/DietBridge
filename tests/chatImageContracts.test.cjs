@@ -64,6 +64,7 @@ test('schema is additive and keeps text as the default message contract', () => 
   assertMatches(sql, /create table public\.chat_upload_intents/i);
   assertMatches(sql, /unique \(created_by, client_message_id\)/i);
   assertMatches(sql, /unique \(bucket_id, object_path\)/i);
+  assertMatches(sql, /create index chat_upload_intents_pending_expiry_idx[\s\S]+on public\.chat_upload_intents \(expires_at, id\)[\s\S]+where status = 'pending'/i);
   assertMatches(sql, /create table public\.chat_attachments/i);
   assertMatches(sql, /message_id uuid not null unique/i);
   assertMatches(sql, /intent_id uuid not null unique/i);
@@ -80,6 +81,9 @@ test('schema is additive and keeps text as the default message contract', () => 
   assertMatches(sql, /num_nonnulls\([\s\S]+validated_at[\s\S]+\) = 5/i);
   assertMatches(sql, /new\.message_kind = 'text' and new\.body is null/i);
   assertMatches(sql, /new\.message_kind not in \('text', 'image'\)/i);
+  assertMatches(sql, /v_message_conversation_id is distinct from v_intent\.conversation_id/i);
+  assertMatches(sql, /v_message_sender_id is distinct from v_intent\.created_by/i);
+  assertMatches(sql, /v_message_client_message_id is distinct from v_intent\.client_message_id/i);
   assert.doesNotMatch(combined, /alter\s+publication\s+supabase_realtime/i);
 });
 
@@ -138,6 +142,7 @@ test('chat-images bucket is private and has only insert/select policies', () => 
   assertMatches(sql, /i\.object_path = storage\.objects\.name/i);
   assertMatches(sql, /i\.expected_mime = 'image\/jpeg'/i);
   assertMatches(sql, /i\.expires_at > now\(\)/i);
+  assertMatches(sql, /owner_id = \(select auth\.uid\(\)\)::text/i);
   assertMatches(sql, /create policy chat_images_select_live_attachment/i);
   assertMatches(sql, /a\.deleted_at is null/i);
   assertMatches(sql, /m\.deleted_at is null/i);
@@ -163,5 +168,24 @@ test('cleanup is server-only, delayed and contains no scheduler or client pollin
   assertMatches(sql, /p_limit is null or p_limit not between 1 and 100/i);
   assertMatches(sql, /grant execute on function public\.claim_chat_image_cleanup_batch\(integer\) to service_role/i);
   assertMatches(sql, /grant execute on function public\.complete_chat_image_cleanup\(uuid\) to service_role/i);
+  assertMatches(sql, /chat_image_cleanup_queue_path_check[\s\S]+object_path ~ '[^']+jpg\$'/i);
   assert.doesNotMatch(sql, /\b(?:cron\.schedule|pg_cron|setInterval|removeAllChannels)\b/i);
+});
+
+test('storage owner_id compatibility and cleanup claims are JPEG-only', () => {
+  const storageSql = migrations[migrationNames[3]];
+  const rpcSql = migrations[migrationNames[2]];
+  const cleanupSql = migrations[migrationNames[4]];
+  assertMatches(storageSql, /owner_id = \(select auth\.uid\(\)\)::text/i);
+  assertMatches(rpcSql, /o\.owner_id[\s\S]+v_object_owner is distinct from v_intent\.created_by::text/i);
+  assertMatches(rpcSql, /o\.owner_id[\s\S]+v_object_owner is distinct from v_actor_id::text/i);
+  assertMatches(cleanupSql, /chat_image_cleanup_queue_path_check[\s\S]+\.jpg/i);
+  assert.doesNotMatch(cleanupSql, /chat_image_cleanup_queue_path_check[\s\S]+\.(?:png|webp)/i);
+});
+
+test('attachment trigger contract rejects cross-conversation, wrong-sender, and wrong-client-message inserts', () => {
+  const schemaSql = migrations[migrationNames[0]];
+  assertMatches(schemaSql, /v_message_conversation_id is distinct from v_intent\.conversation_id/i);
+  assertMatches(schemaSql, /v_message_sender_id is distinct from v_intent\.created_by/i);
+  assertMatches(schemaSql, /v_message_client_message_id is distinct from v_intent\.client_message_id/i);
 });

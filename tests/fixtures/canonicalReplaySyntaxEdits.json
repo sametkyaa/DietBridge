@@ -2728,8 +2728,8 @@
     {
       "path": "supabase/migrations/20260729090000_chat_image_schema.sql",
       "phase": "image",
-      "sourceSha256": "1f83cda144949f21af03c320f19d7933222f5c388c6f2a5cd9d10c0b2d58b0ff",
-      "materializedSha256": "1f83cda144949f21af03c320f19d7933222f5c388c6f2a5cd9d10c0b2d58b0ff",
+      "sourceSha256": "9a510dd788073fa50348f49e367ae54f023c8b6e2c35ae4f30618a1a2a0e099e",
+      "materializedSha256": "9a510dd788073fa50348f49e367ae54f023c8b6e2c35ae4f30618a1a2a0e099e",
       "edits": []
     },
     {
@@ -2742,22 +2742,22 @@
     {
       "path": "supabase/migrations/20260729090200_chat_image_rpc.sql",
       "phase": "image",
-      "sourceSha256": "87065844d099134959cd73db7abb6943e7962fdee5e759473d818b1cc09045e7",
-      "materializedSha256": "87065844d099134959cd73db7abb6943e7962fdee5e759473d818b1cc09045e7",
+      "sourceSha256": "fafddf697da4e1f6eb415bf51b758f22c0c359403326045d5099806fc8010541",
+      "materializedSha256": "fafddf697da4e1f6eb415bf51b758f22c0c359403326045d5099806fc8010541",
       "edits": []
     },
     {
       "path": "supabase/migrations/20260729090300_chat_image_storage.sql",
       "phase": "image",
-      "sourceSha256": "ece8fb36f6ef3cbc0c8ef2df2ee8827928225ec79e06c522cfb614cc0888cb10",
-      "materializedSha256": "ece8fb36f6ef3cbc0c8ef2df2ee8827928225ec79e06c522cfb614cc0888cb10",
+      "sourceSha256": "f8aebf8d03e5feb487427a5b96e294ce2813b6db8374548543dfee4d070c91b3",
+      "materializedSha256": "f8aebf8d03e5feb487427a5b96e294ce2813b6db8374548543dfee4d070c91b3",
       "edits": []
     },
     {
       "path": "supabase/migrations/20260729090400_chat_image_cleanup.sql",
       "phase": "image",
-      "sourceSha256": "ff89b9269e96d7977ff4c73d4780364cecd0ee31636c3351a49b3f46415cfb1b",
-      "materializedSha256": "ff89b9269e96d7977ff4c73d4780364cecd0ee31636c3351a49b3f46415cfb1b",
+      "sourceSha256": "e003675a0daa821ef3f89a64978e84d8b196bec4aec44dee83944199c574ce1c",
+      "materializedSha256": "e003675a0daa821ef3f89a64978e84d8b196bec4aec44dee83944199c574ce1c",
       "edits": []
     }
   ]

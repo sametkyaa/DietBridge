@@ -10,6 +10,8 @@ declare
   v_bucket_mimes text[];
   v_create_intent_definition text;
   v_record_validation_definition text;
+  v_attachment_definition text;
+  v_storage_insert_policy text;
 begin
   if to_regclass('public.chat_upload_intents') is null
      or to_regclass('public.chat_attachments') is null
@@ -48,8 +50,14 @@ begin
   )
   or not exists (
     select 1 from pg_constraint
-    where conrelid = 'public.chat_upload_intents'::regclass
+      where conrelid = 'public.chat_upload_intents'::regclass
       and conname = 'chat_upload_intents_validation_shape_check'
+      and convalidated
+  )
+  or not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.chat_image_cleanup_queue'::regclass
+      and conname = 'chat_image_cleanup_queue_path_check'
       and convalidated
   ) then
     raise exception 'FAIL: CHAT_IMAGE_CONSTRAINT_CONTRACT';
@@ -60,6 +68,12 @@ begin
     where schemaname = 'public'
       and tablename = 'chat_upload_intents'
       and indexname = 'chat_upload_intents_owner_status_expiry_idx'
+  )
+  or not exists (
+    select 1 from pg_indexes
+    where schemaname = 'public'
+      and tablename = 'chat_upload_intents'
+      and indexname = 'chat_upload_intents_pending_expiry_idx'
   )
   or not exists (
     select 1 from pg_indexes
@@ -163,8 +177,10 @@ begin
   end if;
 
   select pg_get_functiondef('public.create_chat_image_upload_intent(uuid,uuid,text)'::regprocedure),
-         pg_get_functiondef('public.record_chat_image_validation(uuid,text,bigint,integer,integer)'::regprocedure)
-    into v_create_intent_definition, v_record_validation_definition;
+         pg_get_functiondef('public.record_chat_image_validation(uuid,text,bigint,integer,integer)'::regprocedure),
+         pg_get_functiondef('public.enforce_chat_attachment_contract()'::regprocedure)
+    into v_create_intent_definition, v_record_validation_definition,
+         v_attachment_definition;
   if v_create_intent_definition not ilike '%p_expected_mime is distinct from ''image/jpeg''%'
      or v_create_intent_definition not ilike '%v_extension constant text := ''jpg''%'
      or v_create_intent_definition ilike '%image/png%'
@@ -174,7 +190,10 @@ begin
      or v_record_validation_definition not ilike '%p_validated_height not between 1 and 2048%'
      or v_record_validation_definition not ilike '%p_validated_width::bigint * p_validated_height::bigint > 4194304%'
      or v_record_validation_definition ilike '%image/png%'
-     or v_record_validation_definition ilike '%image/webp%' then
+     or v_record_validation_definition ilike '%image/webp%'
+     or v_attachment_definition not ilike '%v_message_conversation_id is distinct from v_intent.conversation_id%'
+     or v_attachment_definition not ilike '%v_message_sender_id is distinct from v_intent.created_by%'
+     or v_attachment_definition not ilike '%v_message_client_message_id is distinct from v_intent.client_message_id%' then
     raise exception 'FAIL: CHAT_IMAGE_JPEG_ONLY_RPC_CONTRACT';
   end if;
 
@@ -206,6 +225,27 @@ begin
      or v_bucket_limit is distinct from 4194304
      or v_bucket_mimes is distinct from array['image/jpeg']::text[] then
     raise exception 'FAIL: CHAT_IMAGE_BUCKET_CONTRACT';
+  end if;
+
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'storage'
+      and table_name = 'objects'
+      and column_name = 'owner_id'
+      and data_type = 'text'
+  ) then
+    raise exception 'FAIL: STORAGE_OWNER_ID_COLUMN';
+  end if;
+
+  select coalesce(with_check, '')
+    into v_storage_insert_policy
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'chat_images_insert_pending_intent';
+  if v_storage_insert_policy not ilike '%owner_id%'
+     or v_storage_insert_policy not ilike '%auth.uid%::text%' then
+    raise exception 'FAIL: STORAGE_OWNER_ID_POLICY';
   end if;
 
   if coalesce(pg_get_constraintdef(

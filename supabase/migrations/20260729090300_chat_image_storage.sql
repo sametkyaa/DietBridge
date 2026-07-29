@@ -36,7 +36,7 @@ for insert
 to authenticated
 with check (
   bucket_id = 'chat-images'
-  and owner = (select auth.uid())
+  and owner_id = (select auth.uid())::text
   and exists (
     select 1
     from public.chat_upload_intents as i

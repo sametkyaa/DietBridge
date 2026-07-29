@@ -139,7 +139,7 @@ set search_path = pg_catalog, public
 as $function$
 declare
   v_intent public.chat_upload_intents%rowtype;
-  v_object_owner uuid;
+  v_object_owner text;
   v_object_mime text;
   v_object_size bigint;
 begin
@@ -170,7 +170,7 @@ begin
   end if;
 
   select
-    o.owner,
+    o.owner_id,
     o.metadata ->> 'mimetype',
     case
       when o.metadata ->> 'size' ~ '^[0-9]+$'
@@ -183,7 +183,7 @@ begin
       and o.name = v_intent.object_path;
 
   if not found
-     or v_object_owner is distinct from v_intent.created_by
+     or v_object_owner is distinct from v_intent.created_by::text
      or v_object_mime is distinct from p_validated_mime
      or v_object_size is distinct from p_validated_byte_size then
     raise exception 'Chat image object validation failed.' using errcode = '22023';
@@ -217,7 +217,7 @@ declare
   v_caption text := nullif(btrim(p_caption), '');
   v_message public.chat_messages%rowtype;
   v_existing public.chat_messages%rowtype;
-  v_object_owner uuid;
+  v_object_owner text;
   v_object_mime text;
   v_object_size bigint;
 begin
@@ -270,7 +270,7 @@ begin
   end if;
 
   select
-    o.owner,
+    o.owner_id,
     o.metadata ->> 'mimetype',
     case
       when o.metadata ->> 'size' ~ '^[0-9]+$'
@@ -283,7 +283,7 @@ begin
       and o.name = v_intent.object_path;
 
   if not found
-     or v_object_owner is distinct from v_actor_id
+     or v_object_owner is distinct from v_actor_id::text
      or v_object_mime is distinct from v_intent.validated_mime
      or v_object_size is distinct from v_intent.validated_byte_size then
     raise exception 'Chat image object does not match validation.' using errcode = '22023';

@@ -26,6 +26,10 @@ create table public.chat_image_cleanup_queue (
     check (intent_id is not null or attachment_id is not null),
   constraint chat_image_cleanup_queue_bucket_check
     check (bucket_id = 'chat-images'),
+  constraint chat_image_cleanup_queue_path_check
+    check (
+      object_path ~ '^pending/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$'
+    ),
   constraint chat_image_cleanup_queue_reason_check
     check (reason in ('aborted_intent', 'expired_intent', 'message_tombstone')),
   constraint chat_image_cleanup_queue_attempt_count_check
