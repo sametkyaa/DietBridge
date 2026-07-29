@@ -153,7 +153,22 @@ export const chatImageUploadReducer = (
     case 'cancelled':
       // A finished upload is never rolled back into `cancelled`.
       if (state.status === 'succeeded' || state.status === 'idle') return state;
-      return { ...state, status: 'cancelled', progress: null, retryStage: null };
+      // Cancellation is a terminal UI state. Network/resource ownership is
+      // handled by the operation lifecycle helper; the reducer only removes
+      // every state value that could point at a revoked or stale resource.
+      return {
+        ...state,
+        status: 'cancelled',
+        conversationId: null,
+        clientMessageId: null,
+        source: null,
+        previewUrl: null,
+        canonical: null,
+        intent: null,
+        progress: null,
+        error: null,
+        retryStage: null,
+      };
 
     case 'retry':
       if (state.status !== 'failed') return state;

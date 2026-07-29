@@ -593,6 +593,72 @@ test('24. stale and out-of-order async results are ignored', () => {
   );
 });
 
+test('25. cancellation clears all UI resources and rejects late results', () => {
+  const selectedState = reducer.chatImageUploadReducer(
+    reducer.initialChatImageUploadState,
+    selectAction(1),
+  );
+  let uploadingState = reducer.chatImageUploadReducer(selectedState, { type: 'start', operationId: 1 });
+  uploadingState = reducer.chatImageUploadReducer(uploadingState, {
+    type: 'canonicalized',
+    operationId: 1,
+    canonical: canonicalImage(),
+  });
+  uploadingState = reducer.chatImageUploadReducer(uploadingState, {
+    type: 'intent-created',
+    operationId: 1,
+    intent: uploadIntent,
+  });
+  const failedState = reducer.chatImageUploadReducer(uploadingState, {
+    type: 'failed',
+    operationId: 1,
+    error: { code: 'storage_upload_failed', userMessage: 'x', retryable: true },
+    retryStage: 'uploading',
+  });
+
+  const assertCancelled = (state, label) => {
+    const cancelled = reducer.chatImageUploadReducer(state, { type: 'cancelled', operationId: 1 });
+    assert.equal(cancelled.status, 'cancelled', `${label} status`);
+    assert.equal(cancelled.operationId, 1, `${label} operation id is preserved`);
+    for (const field of [
+      'conversationId',
+      'clientMessageId',
+      'source',
+      'previewUrl',
+      'canonical',
+      'intent',
+      'progress',
+      'error',
+      'retryStage',
+    ]) {
+      assert.equal(cancelled[field], null, `${label}: ${field} must be cleared on cancellation`);
+    }
+    return cancelled;
+  };
+
+  assertCancelled(selectedState, 'selected');
+  assertCancelled(uploadingState, 'uploading');
+  const cancelled = assertCancelled(failedState, 'retryable failed');
+
+  for (const action of [
+    { type: 'canonicalized', operationId: 1, canonical: canonicalImage() },
+    { type: 'intent-created', operationId: 1, intent: uploadIntent },
+    { type: 'uploaded', operationId: 1 },
+    { type: 'finalized', operationId: 1 },
+  ]) {
+    assert.equal(
+      reducer.chatImageUploadReducer(cancelled, action),
+      cancelled,
+      `${action.type} must not revive a cancelled operation`,
+    );
+  }
+
+  const next = reducer.chatImageUploadReducer(cancelled, selectAction(2));
+  assert.equal(next.status, 'selected');
+  assert.equal(next.operationId, 2);
+  assert.equal(next.previewUrl, 'blob:preview');
+});
+
 test('25. a new selection supersedes the previous operation id', () => {
   let state = reducer.chatImageUploadReducer(reducer.initialChatImageUploadState, selectAction(1));
   state = reducer.chatImageUploadReducer(state, { type: 'start', operationId: 1 });

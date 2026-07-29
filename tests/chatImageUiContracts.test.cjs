@@ -84,6 +84,24 @@ test('7. empty text without an image cannot send', () => {
   assert.equal(ui.canSendChatComposer('Merhaba', false, false, idle()), true);
 });
 
+test('8. cancelled state has no selection but allows a new text message', () => {
+  const cancelled = selected({
+    status: 'cancelled',
+    conversationId: null,
+    clientMessageId: null,
+    source: null,
+    previewUrl: null,
+    canonical: null,
+    intent: null,
+    error: null,
+    retryStage: null,
+  });
+  assert.equal(ui.hasChatImageSelection(cancelled), false);
+  assert.equal(cancelled.previewUrl, null);
+  assert.equal(ui.canSendChatComposer('', false, false, cancelled), false);
+  assert.equal(ui.canSendChatComposer('Yeni mesaj', false, false, cancelled), true);
+});
+
 test('8. captions are trimmed and blank captions become null', () => {
   assert.equal(ui.normalizeChatImageUiCaption('  Ölçüm sonucu  '), 'Ölçüm sonucu');
   assert.equal(ui.normalizeChatImageUiCaption('  \n '), null);
