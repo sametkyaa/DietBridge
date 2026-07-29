@@ -4,21 +4,22 @@ import {
   abortChatImageUploadQuietly,
   createChatImageUploadIntent,
   finalizeChatImageMessage,
+  normalizeChatImageCaption,
   uploadCanonicalChatImage,
 } from '../services/chatImageService';
-import { fetchChatMessageById } from '../services/chatService';
+import type { ChatImageFinalizeResult } from '../services/chatImageService';
 import {
   CanonicalChatImage,
+  ChatImageUploadIntent,
   ChatImageUploadStage,
   ChatImageUploadState,
-  ChatImageUploadIntent,
   createChatImageError,
   toChatImageUploadFailure,
 } from '../types/chatImageUpload';
 import {
   canonicalizeChatImage,
   createBrowserCanonicalizerDeps,
-  CanonicalizeChatImageDeps,
+  type CanonicalizeChatImageDeps,
 } from '../utils/canonicalizeChatImage';
 import {
   chatImageUploadReducer,
@@ -28,31 +29,30 @@ import {
 } from '../utils/chatImageUploadReducer';
 
 /**
- * Single-slot upload lifecycle for canonical JPEG chat images.
+ * Single-slot lifecycle for canonical JPEG chat images.
  *
- * The hook is intentionally not wired into any component yet: the composer
- * picker and the image renderer land in a later slice. It exists so the
- * lifecycle, abort and cleanup contract can be reviewed and tested on its own.
+ * Selection is deliberately local-only: `selectImage` creates an object URL
+ * and moves to `selected`, but does not call RPC or Storage. `startUpload` is
+ * the only entry point that can start canonicalization and network work.
  */
 
 interface UseChatImageUploadOptions {
   conversationId?: string | null;
-  currentUserId?: string;
   /** Injected in tests; defaults to the real browser pipeline. */
   createCanonicalizerDeps?: () => CanonicalizeChatImageDeps;
   featureEnabled?: boolean;
-  onMessage?: (messageId: string) => void;
+  /** The page coordinator reconciles the full attachment-joined message. */
+  onFinalized?: (result: ChatImageFinalizeResult) => Promise<void> | void;
 }
 
-interface SelectChatImageInput {
-  file: File;
-  caption?: string | null;
-}
-
-interface ChatImageUploadController {
+export interface ChatImageUploadController {
   state: ChatImageUploadState;
-  selectImage: (input: SelectChatImageInput) => Promise<void>;
+  /** Local-only selection. It creates no intent and starts no upload. */
+  selectImage: (file: File) => void;
+  /** Starts canonicalization, intent creation, upload and finalization. */
+  startUpload: (caption: string | null | undefined) => Promise<void>;
   retry: () => Promise<void>;
+  /** Removes a local selection or cancels an in-flight network operation. */
   cancel: () => void;
   reset: () => void;
   isEnabled: boolean;
@@ -62,15 +62,15 @@ interface OperationContext {
   operationId: number;
   conversationId: string;
   clientMessageId: string;
-  caption: string | null;
   file: File;
   controller: AbortController;
   previewUrl: string | null;
+  caption: string | null;
   finalized: boolean;
 }
 
 const revokePreview = (url: string | null): void => {
-  if (!url) return;
+  if (!url || typeof URL === 'undefined') return;
   try {
     URL.revokeObjectURL(url);
   } catch {
@@ -92,41 +92,44 @@ export const useChatImageUpload = (
 ): ChatImageUploadController => {
   const {
     conversationId = null,
-    currentUserId,
     createCanonicalizerDeps,
     featureEnabled = env.enableChatImages,
-    onMessage,
+    onFinalized,
   } = options;
 
   const [state, dispatch] = useReducer(chatImageUploadReducer, initialChatImageUploadState);
   const mountedRef = useRef(false);
   const operationIdRef = useRef(0);
   const activeOperationRef = useRef<OperationContext | null>(null);
-  const onMessageRef = useRef(onMessage);
   const intentIdRef = useRef<string | null>(null);
-  const canonicalRef = useRef<CanonicalChatImage | null>(null);
   const intentRef = useRef<ChatImageUploadIntent | null>(null);
+  const canonicalRef = useRef<CanonicalChatImage | null>(null);
   const stateRef = useRef(state);
+  const onFinalizedRef = useRef(onFinalized);
+  const previousConversationIdRef = useRef<string | null>(conversationId);
 
-  onMessageRef.current = onMessage;
   stateRef.current = state;
+  onFinalizedRef.current = onFinalized;
 
   const disposeOperation = useCallback((operation: OperationContext | null): void => {
     if (!operation) return;
     operation.controller.abort();
     revokePreview(operation.previewUrl);
+    operation.previewUrl = null;
   }, []);
 
-  /**
-   * Best-effort abort for an intent that was created but never finalized. A
-   * finalized intent is never aborted; when the abort itself fails the
-   * expiry-driven cleanup queue remains the safety net.
-   */
+  /** A best-effort abort is only valid for a non-finalized, server-issued intent. */
   const releaseIntent = useCallback((operation: OperationContext | null): void => {
     const intentId = intentIdRef.current;
     if (!intentId || operation?.finalized) return;
     intentIdRef.current = null;
+    intentRef.current = null;
     void abortChatImageUploadQuietly(intentId);
+  }, []);
+
+  const clearLocalReferences = useCallback((): void => {
+    canonicalRef.current = null;
+    intentRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -137,9 +140,22 @@ export const useChatImageUpload = (
       activeOperationRef.current = null;
       releaseIntent(operation);
       disposeOperation(operation);
-      canonicalRef.current = null;
+      clearLocalReferences();
     };
-  }, [disposeOperation, releaseIntent]);
+  }, [clearLocalReferences, disposeOperation, releaseIntent]);
+
+  // A selection belongs to the conversation that created it. Switching the
+  // active conversation clears it (and aborts only if network work had begun).
+  useEffect(() => {
+    if (previousConversationIdRef.current === conversationId) return;
+    previousConversationIdRef.current = conversationId;
+    const operation = activeOperationRef.current;
+    activeOperationRef.current = null;
+    releaseIntent(operation);
+    disposeOperation(operation);
+    clearLocalReferences();
+    dispatch({ type: 'reset' });
+  }, [clearLocalReferences, conversationId, disposeOperation, releaseIntent]);
 
   const isCurrent = useCallback((operationId: number): boolean => (
     mountedRef.current
@@ -186,9 +202,6 @@ export const useChatImageUpload = (
         stage = 'uploading';
       }
 
-      const intentId = intentIdRef.current;
-      if (!intentId) throw createChatImageError('invalid_request');
-
       if (stage === 'uploading') {
         const intent = intentRef.current;
         if (!intent) throw createChatImageError('invalid_request');
@@ -199,22 +212,21 @@ export const useChatImageUpload = (
       }
 
       if (stage === 'finalizing') {
+        const intentId = intentIdRef.current;
+        if (!intentId) throw createChatImageError('invalid_request');
         const result = await finalizeChatImageMessage(intentId, operation.caption);
         operation.finalized = true;
         intentIdRef.current = null;
         intentRef.current = null;
         if (!isCurrent(operationId)) return;
 
-        const message = await fetchChatMessageById(
-          result.messageId,
-          result.conversationId,
-          currentUserId ?? result.senderId,
-        );
-        if (!isCurrent(operationId)) return;
-        if (!message) throw createChatImageError('invalid_response');
-
-        dispatch({ type: 'finalized', operationId, message });
-        onMessageRef.current?.(message.id);
+        // A finalized upload never aborts. The page owns the follow-up read;
+        // it must not fabricate an incomplete image message if that read fails.
+        revokePreview(operation.previewUrl);
+        operation.previewUrl = null;
+        canonicalRef.current = null;
+        dispatch({ type: 'finalized', operationId });
+        void Promise.resolve(onFinalizedRef.current?.(result)).catch(() => undefined);
       }
     } catch (error) {
       const failure = toChatImageUploadFailure(error);
@@ -222,30 +234,27 @@ export const useChatImageUpload = (
         releaseIntent(operation);
         return;
       }
-      releaseIntent(operation);
-      dispatch({
-        type: 'failed',
-        operationId,
-        error: failure,
-        retryStage: resolveRetryStage(stateRef.current, stage, failure.retryable),
-      });
-    }
-  }, [createCanonicalizerDeps, currentUserId, isCurrent, releaseIntent]);
 
-  const selectImage = useCallback(async (input: SelectChatImageInput): Promise<void> => {
+      const retryStage = resolveRetryStage(stateRef.current, stage, failure.retryable);
+      // Keep the existing pending intent for a retryable upload/finalize
+      // failure. All terminal failures release it to the expiry cleanup net.
+      if (!retryStage) releaseIntent(operation);
+      dispatch({ type: 'failed', operationId, error: failure, retryStage });
+    }
+  }, [createCanonicalizerDeps, isCurrent, releaseIntent]);
+
+  const selectImage = useCallback((file: File): void => {
     const decision = evaluateChatImageUploadStart({
       featureEnabled,
       conversationId,
-      sourceMimeType: input.file?.type,
+      sourceMimeType: file?.type,
     });
 
-    // A new selection always supersedes the previous operation.
     const previous = activeOperationRef.current;
     activeOperationRef.current = null;
     releaseIntent(previous);
     disposeOperation(previous);
-    canonicalRef.current = null;
-    intentRef.current = null;
+    clearLocalReferences();
 
     const operationId = ++operationIdRef.current;
     if (!decision.allowed || !decision.conversationId) {
@@ -256,18 +265,25 @@ export const useChatImageUpload = (
       });
       return;
     }
+    if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
+      dispatch({
+        type: 'rejected',
+        operationId,
+        error: toChatImageUploadFailure(createChatImageError('invalid_request')),
+      });
+      return;
+    }
 
     const clientMessageId = crypto.randomUUID();
-    const previewUrl = createPreviewUrl(input.file);
-    const resolvedConversationId = decision.conversationId;
+    const previewUrl = createPreviewUrl(file);
     const operation: OperationContext = {
       operationId,
-      conversationId: resolvedConversationId,
+      conversationId: decision.conversationId,
       clientMessageId,
-      caption: typeof input.caption === 'string' ? input.caption : null,
-      file: input.file,
+      file,
       controller: new AbortController(),
       previewUrl,
+      caption: null,
       finalized: false,
     };
     activeOperationRef.current = operation;
@@ -275,18 +291,32 @@ export const useChatImageUpload = (
     dispatch({
       type: 'select',
       operationId,
-      conversationId: resolvedConversationId,
+      conversationId: decision.conversationId,
       clientMessageId,
-      source: {
-        name: input.file.name,
-        mimeType: input.file.type,
-        byteSize: input.file.size,
-      },
+      source: { name: file.name, mimeType: file.type, byteSize: file.size },
       previewUrl,
     });
+  }, [clearLocalReferences, conversationId, disposeOperation, featureEnabled, releaseIntent]);
 
+  const startUpload = useCallback(async (caption: string | null | undefined): Promise<void> => {
+    const operation = activeOperationRef.current;
+    if (!operation || stateRef.current.status !== 'selected') return;
+
+    try {
+      operation.caption = normalizeChatImageCaption(caption);
+    } catch (error) {
+      dispatch({
+        type: 'failed',
+        operationId: operation.operationId,
+        error: toChatImageUploadFailure(error),
+        retryStage: null,
+      });
+      return;
+    }
+
+    dispatch({ type: 'start', operationId: operation.operationId });
     await runStages(operation, 'canonicalizing');
-  }, [conversationId, disposeOperation, featureEnabled, releaseIntent, runStages]);
+  }, [runStages]);
 
   const retry = useCallback(async (): Promise<void> => {
     const operation = activeOperationRef.current;
@@ -294,8 +324,6 @@ export const useChatImageUpload = (
     if (!operation || !stage || stateRef.current.status !== 'failed') return;
     if (operation.controller.signal.aborted) return;
 
-    // Retry keeps the same clientMessageId and intent, preserving the server
-    // idempotency contract.
     dispatch({ type: 'retry', operationId: operation.operationId, stage });
     await runStages(operation, stage);
   }, [runStages]);
@@ -306,27 +334,26 @@ export const useChatImageUpload = (
     activeOperationRef.current = null;
     releaseIntent(operation);
     disposeOperation(operation);
-    canonicalRef.current = null;
-    intentRef.current = null;
+    clearLocalReferences();
     dispatch({ type: 'cancelled', operationId: operation.operationId });
-  }, [disposeOperation, releaseIntent]);
+  }, [clearLocalReferences, disposeOperation, releaseIntent]);
 
   const reset = useCallback((): void => {
     const operation = activeOperationRef.current;
     activeOperationRef.current = null;
     releaseIntent(operation);
     disposeOperation(operation);
-    canonicalRef.current = null;
-    intentRef.current = null;
+    clearLocalReferences();
     dispatch({ type: 'reset' });
-  }, [disposeOperation, releaseIntent]);
+  }, [clearLocalReferences, disposeOperation, releaseIntent]);
 
   return useMemo(() => ({
     state,
     selectImage,
+    startUpload,
     retry,
     cancel,
     reset,
     isEnabled: featureEnabled,
-  }), [cancel, featureEnabled, reset, retry, selectImage, state]);
+  }), [cancel, featureEnabled, reset, retry, selectImage, startUpload, state]);
 };

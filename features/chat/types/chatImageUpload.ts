@@ -1,4 +1,3 @@
-import type { ChatMessage } from './chat';
 import type { ChatImageDimensions } from '../utils/canonicalJpegPlan';
 
 /**
@@ -99,6 +98,8 @@ export type ChatImageUploadStage =
 
 export type ChatImageUploadStatus =
   | 'idle'
+  /** A local file and object URL exist, but no network request has started. */
+  | 'selected'
   | ChatImageUploadStage
   | 'succeeded'
   | 'failed'
@@ -125,7 +126,6 @@ export interface ChatImageUploadState {
   readonly progress: number | null;
   readonly error: ChatImageUploadFailure | null;
   readonly retryStage: ChatImageUploadStage | null;
-  readonly message: ChatMessage | null;
 }
 
 export const toChatImageUploadFailure = (error: unknown): ChatImageUploadFailure => {

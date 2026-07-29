@@ -78,6 +78,7 @@ const SOURCES = [
   'features/chat/utils/canonicalJpegPlan.ts',
   'features/chat/utils/canonicalizeChatImage.ts',
   'features/chat/utils/chatImageUploadReducer.ts',
+  'features/chat/utils/chatImageUiState.ts',
   'features/chat/services/chatService.ts',
   'features/chat/services/chatImageService.ts',
 ];
@@ -98,6 +99,7 @@ const EXPECTED_OUTPUTS = [
   'features/chat/utils/canonicalJpegPlan.js',
   'features/chat/utils/canonicalizeChatImage.js',
   'features/chat/utils/chatImageUploadReducer.js',
+  'features/chat/utils/chatImageUiState.js',
   'features/chat/services/chatService.js',
   'features/chat/services/chatImageService.js',
 ];
@@ -202,6 +204,7 @@ const testRun = spawnSync(process.execPath, [
   join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageReadContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageUploadContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatImageUiContracts.test.cjs'),
   join(repoRoot, 'tests', 'disposableReplayMaterializer.test.cjs'),
 ], {
   cwd: repoRoot,

@@ -1,4 +1,3 @@
-import type { ChatMessage } from '../types/chat';
 import { isValidUuid } from '../../../shared/utils/uuid';
 import { isSupportedChatImageSourceMimeType } from './canonicalJpegPlan';
 import {
@@ -30,7 +29,6 @@ export const initialChatImageUploadState: ChatImageUploadState = {
   progress: null,
   error: null,
   retryStage: null,
-  message: null,
 };
 
 export type ChatImageUploadAction =
@@ -42,11 +40,12 @@ export type ChatImageUploadAction =
     source: ChatImageSourceSummary;
     previewUrl: string | null;
   }
+  | { type: 'start'; operationId: number }
   | { type: 'canonicalized'; operationId: number; canonical: CanonicalChatImage }
   | { type: 'intent-created'; operationId: number; intent: ChatImageUploadIntent }
   | { type: 'uploaded'; operationId: number }
   | { type: 'progress'; operationId: number; progress: number }
-  | { type: 'finalized'; operationId: number; message: ChatMessage }
+  | { type: 'finalized'; operationId: number }
   | {
     type: 'failed';
     operationId: number;
@@ -77,7 +76,7 @@ export const chatImageUploadReducer = (
   if (action.type === 'select') {
     if (action.operationId <= state.operationId) return state;
     return {
-      status: 'canonicalizing',
+      status: 'selected',
       operationId: action.operationId,
       conversationId: action.conversationId,
       clientMessageId: action.clientMessageId,
@@ -88,7 +87,6 @@ export const chatImageUploadReducer = (
       progress: null,
       error: null,
       retryStage: null,
-      message: null,
     };
   }
 
@@ -107,6 +105,10 @@ export const chatImageUploadReducer = (
   if (isStale(state, action.operationId)) return state;
 
   switch (action.type) {
+    case 'start':
+      if (state.status !== 'selected') return state;
+      return { ...state, status: 'canonicalizing', error: null, retryStage: null };
+
     case 'canonicalized':
       if (state.status !== 'canonicalizing') return state;
       return { ...state, status: 'creating-intent', canonical: action.canonical, error: null };
@@ -132,7 +134,10 @@ export const chatImageUploadReducer = (
         progress: null,
         error: null,
         retryStage: null,
-        message: action.message,
+        source: null,
+        previewUrl: null,
+        canonical: null,
+        intent: null,
       };
 
     case 'failed':

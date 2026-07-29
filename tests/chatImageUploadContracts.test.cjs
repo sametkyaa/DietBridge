@@ -519,9 +519,12 @@ test('23. the happy path walks idle to succeeded through every stage', () => {
   assert.equal(state.status, 'idle');
 
   state = reducer.chatImageUploadReducer(state, selectAction(1));
-  assert.equal(state.status, 'canonicalizing');
+  assert.equal(state.status, 'selected', 'local selection must not start network work');
   assert.equal(state.clientMessageId, ids.clientMessage);
   assert.equal(state.previewUrl, 'blob:preview');
+
+  state = reducer.chatImageUploadReducer(state, { type: 'start', operationId: 1 });
+  assert.equal(state.status, 'canonicalizing');
 
   state = reducer.chatImageUploadReducer(state, {
     type: 'canonicalized',
@@ -545,10 +548,10 @@ test('23. the happy path walks idle to succeeded through every stage', () => {
   assert.equal(state.status, 'finalizing');
   assert.equal(state.progress, null);
 
-  const message = { id: ids.message, conversationId: ids.conversation, messageKind: 'image' };
-  state = reducer.chatImageUploadReducer(state, { type: 'finalized', operationId: 1, message });
+  state = reducer.chatImageUploadReducer(state, { type: 'finalized', operationId: 1 });
   assert.equal(state.status, 'succeeded');
-  assert.equal(state.message.id, ids.message);
+  assert.equal(state.previewUrl, null, 'the object URL is cleared after success');
+  assert.equal(state.source, null);
 });
 
 test('24. stale and out-of-order async results are ignored', () => {
@@ -567,6 +570,7 @@ test('24. stale and out-of-order async results are ignored', () => {
   assert.equal(outOfOrder, state);
 
   let done = reducer.chatImageUploadReducer(reducer.initialChatImageUploadState, selectAction(3));
+  done = reducer.chatImageUploadReducer(done, { type: 'start', operationId: 3 });
   done = reducer.chatImageUploadReducer(done, {
     type: 'canonicalized',
     operationId: 3,
@@ -581,7 +585,6 @@ test('24. stale and out-of-order async results are ignored', () => {
   done = reducer.chatImageUploadReducer(done, {
     type: 'finalized',
     operationId: 3,
-    message: { id: ids.message },
   });
   assert.equal(
     reducer.chatImageUploadReducer(done, { type: 'cancelled', operationId: 3 }),
@@ -592,6 +595,7 @@ test('24. stale and out-of-order async results are ignored', () => {
 
 test('25. a new selection supersedes the previous operation id', () => {
   let state = reducer.chatImageUploadReducer(reducer.initialChatImageUploadState, selectAction(1));
+  state = reducer.chatImageUploadReducer(state, { type: 'start', operationId: 1 });
   state = reducer.chatImageUploadReducer(state, {
     type: 'canonicalized',
     operationId: 1,
@@ -605,7 +609,7 @@ test('25. a new selection supersedes the previous operation id', () => {
 
   const replaced = reducer.chatImageUploadReducer(state, selectAction(2));
   assert.equal(replaced.operationId, 2);
-  assert.equal(replaced.status, 'canonicalizing');
+  assert.equal(replaced.status, 'selected');
   assert.equal(replaced.intent, null, 'the previous intent must not leak into the new operation');
   assert.equal(replaced.canonical, null);
   assert.equal(replaced.error, null);
@@ -662,6 +666,7 @@ test('27. a missing conversationId is rejected before the flow starts', () => {
 
 test('28. a retry resumes the same stage and keeps the idempotency key', () => {
   let state = reducer.chatImageUploadReducer(reducer.initialChatImageUploadState, selectAction(1));
+  state = reducer.chatImageUploadReducer(state, { type: 'start', operationId: 1 });
   state = reducer.chatImageUploadReducer(state, {
     type: 'canonicalized',
     operationId: 1,
