@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import {
+  fetchChatMessageById,
   subscribeToChatConversations,
   subscribeToChatMessages,
   subscribeToChatReadStates,
@@ -8,6 +9,8 @@ import { ChatMessage } from '../types/chat';
 import { isValidUuid } from '../../../shared/utils/uuid';
 
 const CONVERSATION_REFETCH_DEBOUNCE_MS = 150;
+/** Guards against unbounded fan-out if a burst of rows needs reconciliation. */
+const MAX_PENDING_MESSAGE_RECONCILIATIONS = 20;
 
 interface UseChatRealtimeOptions {
   currentUserId?: string;
@@ -157,22 +160,50 @@ export const useChatRealtime = ({
     const subscribedConversationId = activeConversationId;
     const subscribedUserId = currentUserId;
     let isCurrentSubscription = true;
+    // Owned by this subscription generation: a resubscribe starts with an
+    // empty queue and the previous one can never leak into it.
+    const pendingReconciliations = new Set<string>();
+    const isCurrentContext = (): boolean => {
+      const context = activeContextRef.current;
+      return isCurrentSubscription
+        && mountedRef.current
+        && context.currentUserId === subscribedUserId
+        && context.activeConversationId === subscribedConversationId
+        && context.activeRelationId !== null;
+    };
+    const deliverMessage = (message: ChatMessage): void => {
+      if (!isCurrentContext() || message.conversationId !== subscribedConversationId) return;
+      onMessageRef.current(message);
+    };
+    /**
+     * Realtime payloads cannot carry the embedded attachment join, so image
+     * rows are resolved with a targeted read instead of waiting for the
+     * reconnect refetch. A failed read never synthesizes a partial message:
+     * the existing reconnect/refetch safety net still applies.
+     */
+    const reconcileMessage = (messageId: string): void => {
+      if (!isCurrentContext()) return;
+      if (pendingReconciliations.has(messageId)) return;
+      if (pendingReconciliations.size >= MAX_PENDING_MESSAGE_RECONCILIATIONS) {
+        requestMessageRefetchRef.current();
+        return;
+      }
+
+      pendingReconciliations.add(messageId);
+      void fetchChatMessageById(messageId, subscribedConversationId, subscribedUserId)
+        .then((message) => {
+          if (message) deliverMessage(message);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          pendingReconciliations.delete(messageId);
+        });
+    };
     const subscription = subscribeToChatMessages({
       conversationId: subscribedConversationId,
       currentUserId: subscribedUserId,
-      onMessage: (message) => {
-        const context = activeContextRef.current;
-        if (
-          !isCurrentSubscription
-          || context.currentUserId !== subscribedUserId
-          || context.activeConversationId !== subscribedConversationId
-          || context.activeRelationId === null
-          || message.conversationId !== subscribedConversationId
-        ) {
-          return;
-        }
-        onMessageRef.current(message);
-      },
+      onMessage: deliverMessage,
+      onReconcile: reconcileMessage,
       onStatus: (status) => {
         if (isCurrentSubscription && status === 'connected') {
           requestMessageRefetchRef.current();
@@ -182,6 +213,7 @@ export const useChatRealtime = ({
 
     return () => {
       isCurrentSubscription = false;
+      pendingReconciliations.clear();
       void subscription.unsubscribe();
     };
   }, [activeConversationId, currentUserId]);

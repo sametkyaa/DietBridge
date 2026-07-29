@@ -65,6 +65,11 @@ interface SubscribeToChatMessagesOptions {
   conversationId: string;
   currentUserId: string;
   onMessage: (message: ChatMessage) => void;
+  /**
+   * Called when a Realtime row cannot be trusted from the payload alone and
+   * must be re-read with the attachment join.
+   */
+  onReconcile?: (messageId: string) => void;
   onStatus?: (status: ChatRealtimeStatus) => void;
 }
 
@@ -527,6 +532,48 @@ const fetchChatReadStates = async (
   return normalizeReadStateRows(data);
 };
 
+/**
+ * Re-reads a single message with its attachment join.
+ *
+ * Realtime `postgres_changes` payloads carry only the `chat_messages` row, so
+ * an image INSERT arrives without the embedded `chat_attachments` metadata and
+ * cannot be normalized fail-closed. This targeted read resolves the canonical
+ * row without waiting for a reconnect-driven full refetch.
+ *
+ * `null` means "not readable yet": the caller must not synthesize a partial
+ * message from the Realtime payload.
+ */
+export const fetchChatMessageById = async (
+  messageId: string,
+  conversationId: string,
+  currentUserId: string,
+): Promise<ChatMessage | null> => {
+  const normalizedMessageId = assertUuid(messageId, 'messageId');
+  const normalizedConversationId = assertUuid(conversationId, 'conversationId');
+  const normalizedCurrentUserId = assertUuid(currentUserId, 'currentUserId');
+
+  try {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select(CHAT_MESSAGE_SELECT)
+      .eq('id', normalizedMessageId)
+      .eq('conversation_id', normalizedConversationId)
+      .limit(1);
+
+    if (error) throw toChatServiceError(error);
+
+    const row = asRecords(data)[0];
+    if (!row) return null;
+
+    const message = normalizeChatMessageRow(row, normalizedCurrentUserId);
+    if (!message || message.id !== normalizedMessageId) return null;
+    if (message.conversationId !== normalizedConversationId) return null;
+    return message;
+  } catch (error) {
+    throw toChatServiceError(error);
+  }
+};
+
 const toCursor = (id: string | null, createdAt: string | null): ChatMessageCursor | null => (
   id && createdAt ? { id, createdAt } : null
 );
@@ -813,10 +860,31 @@ export const markConversationRead = async (
 export const subscribeToChatMessages = (
   options: SubscribeToChatMessagesOptions,
 ): ChatSubscription => {
-  const { conversationId, currentUserId, onMessage, onStatus } = options;
+  const { conversationId, currentUserId, onMessage, onReconcile, onStatus } = options;
   if (!isValidUuid(conversationId) || !isValidUuid(currentUserId)) {
     return createNoopSubscription();
   }
+
+  /**
+   * Realtime payloads never contain the embedded attachment join, so an image
+   * row (or any row the normalizer rejects) is handed to the reconciler
+   * instead of being rendered from the raw payload. Text rows keep the
+   * existing fast path.
+   */
+  const handleRealtimeRow = (row: unknown): void => {
+    const record = asRecord(row);
+    const rowConversationId = record ? getNullableString(record, 'conversation_id') : null;
+    if (rowConversationId !== conversationId) return;
+
+    const message = normalizeChatMessageRow(row, currentUserId);
+    if (message && message.conversationId === conversationId) {
+      onMessage(message);
+      return;
+    }
+
+    const rowId = record ? getNullableString(record, 'id') : null;
+    if (onReconcile && isValidUuid(rowId)) onReconcile(rowId);
+  };
 
   const channel = supabase
     .channel(`chat-messages:${conversationId}`)
@@ -828,11 +896,7 @@ export const subscribeToChatMessages = (
         table: 'chat_messages',
         filter: `conversation_id=eq.${conversationId}`,
       },
-      (payload) => {
-        const message = normalizeChatMessageRow(payload.new, currentUserId);
-        if (!message || message.conversationId !== conversationId) return;
-        onMessage(message);
-      },
+      (payload) => handleRealtimeRow(payload.new),
     )
     .on(
       'postgres_changes',
@@ -842,11 +906,7 @@ export const subscribeToChatMessages = (
         table: 'chat_messages',
         filter: `conversation_id=eq.${conversationId}`,
       },
-      (payload) => {
-        const message = normalizeChatMessageRow(payload.new, currentUserId);
-        if (!message || message.conversationId !== conversationId) return;
-        onMessage(message);
-      },
+      (payload) => handleRealtimeRow(payload.new),
     );
 
   channel.subscribe((status) => notifyRealtimeStatus(status, onStatus));

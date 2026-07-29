@@ -72,9 +72,14 @@ const SOURCES = [
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
   'features/chat/types/chatImage.ts',
+  'features/chat/types/chatImageUpload.ts',
   'features/chat/utils/receipts.ts',
   'features/chat/utils/conversationPreview.ts',
+  'features/chat/utils/canonicalJpegPlan.ts',
+  'features/chat/utils/canonicalizeChatImage.ts',
+  'features/chat/utils/chatImageUploadReducer.ts',
   'features/chat/services/chatService.ts',
+  'features/chat/services/chatImageService.ts',
 ];
 
 const EXPECTED_OUTPUTS = [
@@ -87,9 +92,14 @@ const EXPECTED_OUTPUTS = [
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
   'features/chat/types/chatImage.js',
+  'features/chat/types/chatImageUpload.js',
   'features/chat/utils/receipts.js',
   'features/chat/utils/conversationPreview.js',
+  'features/chat/utils/canonicalJpegPlan.js',
+  'features/chat/utils/canonicalizeChatImage.js',
+  'features/chat/utils/chatImageUploadReducer.js',
   'features/chat/services/chatService.js',
+  'features/chat/services/chatImageService.js',
 ];
 
 const SUPABASE_CLIENT_STUB = `'use strict';
@@ -98,9 +108,17 @@ let rpcHandler = async () => ({ data: null, error: null });
 let fromHandler = () => {
   throw new Error('supabase.from() was called without a stubbed handler.');
 };
+let storageHandler = () => {
+  throw new Error('supabase.storage.from() was called without a stubbed handler.');
+};
+let channelHandler = () => {
+  throw new Error('supabase.channel() was called without a stubbed handler.');
+};
 let userId = null;
 exports.__setRpcHandler = (handler) => { rpcHandler = handler; };
 exports.__setFromHandler = (handler) => { fromHandler = handler; };
+exports.__setStorageHandler = (handler) => { storageHandler = handler; };
+exports.__setChannelHandler = (handler) => { channelHandler = handler; };
 exports.__setUserId = (id) => { userId = id; };
 exports.supabase = {
   auth: {
@@ -108,6 +126,9 @@ exports.supabase = {
   },
   rpc: (name, args) => rpcHandler(name, args),
   from: (table) => fromHandler(table),
+  storage: { from: (bucket) => storageHandler(bucket) },
+  channel: (name) => channelHandler(name),
+  removeChannel: async () => undefined,
 };
 `;
 
@@ -180,6 +201,7 @@ const testRun = spawnSync(process.execPath, [
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageReadContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatImageUploadContracts.test.cjs'),
   join(repoRoot, 'tests', 'disposableReplayMaterializer.test.cjs'),
 ], {
   cwd: repoRoot,
