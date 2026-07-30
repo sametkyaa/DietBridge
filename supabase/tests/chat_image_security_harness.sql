@@ -12,6 +12,7 @@ declare
   v_record_validation_definition text;
   v_attachment_definition text;
   v_storage_insert_policy text;
+  v_storage_select_policy text;
 begin
   if to_regclass('public.chat_upload_intents') is null
      or to_regclass('public.chat_attachments') is null
@@ -246,6 +247,32 @@ begin
   if v_storage_insert_policy not ilike '%owner_id%'
      or v_storage_insert_policy not ilike '%auth.uid%::text%' then
     raise exception 'FAIL: STORAGE_OWNER_ID_POLICY';
+  end if;
+
+  select coalesce(qual, '')
+    into v_storage_select_policy
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'chat_images_select_live_attachment';
+  if v_storage_select_policy not ilike '%a.deleted_at is null%'
+     or v_storage_select_policy not ilike '%m.message_kind = ''image''%'
+     or v_storage_select_policy not ilike '%m.deleted_at is null%'
+     or v_storage_select_policy not ilike '%a.bucket_id = storage.objects.bucket_id%'
+     or v_storage_select_policy not ilike '%a.object_path = storage.objects.name%'
+     or v_storage_select_policy not ilike '%auth.uid()%'
+     or v_attachment_definition not ilike '%v_intent.status <> ''finalized''%'
+     or v_attachment_definition not ilike '%v_message_conversation_id is distinct from v_intent.conversation_id%'
+     or v_attachment_definition not ilike '%v_message_sender_id is distinct from v_intent.created_by%'
+     or v_attachment_definition not ilike '%v_message_client_message_id is distinct from v_intent.client_message_id%' then
+    raise exception 'FAIL: CHAT_IMAGE_PRIVATE_READ_LIVE_ATTACHMENT_CONTRACT';
+  end if;
+
+  if not has_table_privilege('authenticated', 'public.chat_attachments', 'SELECT')
+     or has_table_privilege('anon', 'public.chat_attachments', 'SELECT')
+     or not has_table_privilege('authenticated', 'public.chat_upload_intents', 'SELECT')
+     or has_table_privilege('anon', 'public.chat_upload_intents', 'SELECT') then
+    raise exception 'FAIL: CHAT_IMAGE_PRIVATE_READ_TABLE_GRANTS';
   end if;
 
   if coalesce(pg_get_constraintdef(
