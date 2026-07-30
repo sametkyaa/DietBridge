@@ -206,16 +206,25 @@ begin
     raise exception 'FAIL: CHAT_IMAGE_JPEG_ONLY_RPC_CONTRACT';
   end if;
 
-  if has_function_privilege('authenticated', 'public.create_chat_image_upload_intent(uuid,uuid,text)', 'EXECUTE')
-     or has_function_privilege('authenticated', 'public.finalize_chat_image_message(uuid,text)', 'EXECUTE')
-     or has_function_privilege('authenticated', 'public.abort_chat_image_upload(uuid)', 'EXECUTE')
+  if not has_function_privilege('authenticated', 'public.create_chat_image_upload_intent(uuid,uuid,text)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.finalize_chat_image_message(uuid,text)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.abort_chat_image_upload(uuid)', 'EXECUTE')
      or has_function_privilege('anon', 'public.create_chat_image_upload_intent(uuid,uuid,text)', 'EXECUTE')
      or has_function_privilege('anon', 'public.finalize_chat_image_message(uuid,text)', 'EXECUTE')
      or has_function_privilege('anon', 'public.abort_chat_image_upload(uuid)', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.create_chat_image_upload_intent(uuid,uuid,text)', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.finalize_chat_image_message(uuid,text)', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.abort_chat_image_upload(uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.record_chat_image_validation(uuid,text,bigint,integer,integer)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.record_chat_image_validation(uuid,text,bigint,integer,integer)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.record_chat_image_validation(uuid,text,bigint,integer,integer)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.claim_chat_image_cleanup_batch(integer)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.claim_chat_image_cleanup_batch(integer)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.claim_chat_image_cleanup_batch(integer)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.complete_chat_image_cleanup(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.complete_chat_image_cleanup(uuid)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.complete_chat_image_cleanup(uuid)', 'EXECUTE') then
-    raise exception 'FAIL: CHAT_IMAGE_DORMANT_GRANTS';
+    raise exception 'FAIL: CHAT_IMAGE_ACTIVATION_GRANTS';
   end if;
 
   if not has_function_privilege('authenticated', 'public.send_chat_message(uuid,uuid,text)', 'EXECUTE')

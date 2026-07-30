@@ -2,7 +2,7 @@
   "version": 1,
   "hashAlgorithm": "sha256",
   "expectedCanonicalCount": 27,
-  "expectedImageCount": 5,
+  "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
     {
@@ -2758,6 +2758,20 @@
       "phase": "image",
       "sourceSha256": "49d17a4e185eabdc8b59bf9beacbcc64531f0e6ce3a21a33cfe4b3b57e8a8ec3",
       "materializedSha256": "49d17a4e185eabdc8b59bf9beacbcc64531f0e6ce3a21a33cfe4b3b57e8a8ec3",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260730180636_chat_image_cleanup_scheduler.sql",
+      "phase": "image",
+      "sourceSha256": "b57daa1a8bf9da602b2e1d76e450c1931284806c0b64dfc4c5b81e7940394216",
+      "materializedSha256": "b57daa1a8bf9da602b2e1d76e450c1931284806c0b64dfc4c5b81e7940394216",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260730180641_chat_image_rpc_activation.sql",
+      "phase": "image",
+      "sourceSha256": "2aebed688a35308b16943b316908ee6082e61178b391a00ab7bb8296f158c245",
+      "materializedSha256": "2aebed688a35308b16943b316908ee6082e61178b391a00ab7bb8296f158c245",
       "edits": []
     }
   ]

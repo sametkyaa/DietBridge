@@ -11,6 +11,8 @@ const migrationNames = [
   '20260729090200_chat_image_rpc.sql',
   '20260729090300_chat_image_storage.sql',
   '20260729090400_chat_image_cleanup.sql',
+  '20260730180636_chat_image_cleanup_scheduler.sql',
+  '20260730180641_chat_image_rpc_activation.sql',
 ];
 
 const readMigration = (name) => fs.readFileSync(
@@ -25,17 +27,14 @@ const assertMatches = (source, pattern, message) => {
   assert.match(source, pattern, message);
 };
 
-test('chat image migrations are present in the approved order without activation migration', () => {
+test('chat image migrations are present in the approved order with the isolated scheduler and activation migrations', () => {
   const migrationDirectory = path.join(repoRoot, 'supabase', 'migrations');
   const present = fs.readdirSync(migrationDirectory)
     .filter((name) => name.includes('chat_image'))
     .sort();
 
   assert.deepEqual(present, migrationNames);
-  assert.equal(fs.existsSync(path.join(
-    migrationDirectory,
-    '20260729090500_chat_image_activation.sql',
-  )), false);
+  assert.equal(present.includes('20260729090500_chat_image_activation.sql'), false);
 });
 
 test('historical migrations stay immutable while disposable syntax edits are explicitly allowlisted', () => {
@@ -44,7 +43,7 @@ test('historical migrations stay immutable while disposable syntax edits are exp
     'utf8',
   ));
   assert.equal(rules.files.filter(({ phase }) => phase === 'canonical').length, 27);
-  assert.equal(rules.files.filter(({ phase }) => phase === 'image').length, 5);
+  assert.equal(rules.files.filter(({ phase }) => phase === 'image').length, 7);
   assert.equal(rules.files.filter(({ edits }) => edits.length > 0).length, 16);
   for (const rule of rules.files) {
     const source = fs.readFileSync(path.join(repoRoot, rule.path));
@@ -170,6 +169,40 @@ test('cleanup is server-only, delayed and contains no scheduler or client pollin
   assertMatches(sql, /grant execute on function public\.complete_chat_image_cleanup\(uuid\) to service_role/i);
   assertMatches(sql, /chat_image_cleanup_queue_path_check[\s\S]+object_path ~ '[^']+jpg\$'/i);
   assert.doesNotMatch(sql, /\b(?:cron\.schedule|pg_cron|setInterval|removeAllChannels)\b/i);
+});
+
+test('scheduler has one five-minute Vault-backed POST job with no embedded secret', () => {
+  const sql = migrations['20260730180636_chat_image_cleanup_scheduler.sql'];
+  assertMatches(sql, /create extension if not exists pg_cron/i);
+  assertMatches(sql, /create extension if not exists pg_net/i);
+  assertMatches(sql, /cron\.unschedule\(v_existing_job_id\)/i);
+  assertMatches(sql, /'chat-image-cleanup-every-5-minutes'/i);
+  assertMatches(sql, /'\*\/5 \* \* \* \*'/i);
+  assertMatches(sql, /net\.http_post\(/i);
+  assertMatches(sql, /where name = 'chat_image_cleanup_function_url'/i);
+  assertMatches(sql, /'x-chat-image-cleanup-secret'/i);
+  assertMatches(sql, /where name = 'chat_image_cleanup_scheduler_secret'/i);
+  assertMatches(sql, /body := '\{\}'::jsonb/i);
+  assert.doesNotMatch(sql, /vault\.create_secret\s*\(/i);
+  assert.doesNotMatch(sql, /(?:sb_(?:secret|publishable)_|eyJ[A-Za-z0-9._-]{20,}|[A-Za-z0-9+/]{43}=)/i);
+  assert.doesNotMatch(sql, /(?:sb_(?:secret|publishable)_|eyJ[A-Za-z0-9._-]+)/i);
+});
+
+test('activation grants only the three user RPCs to authenticated and preserves service-only backend RPCs', () => {
+  const sql = migrations['20260730180641_chat_image_rpc_activation.sql'];
+  for (const signature of [
+    'create_chat_image_upload_intent\\(uuid, uuid, text\\)',
+    'finalize_chat_image_message\\(uuid, text\\)',
+    'abort_chat_image_upload\\(uuid\\)',
+  ]) {
+    assertMatches(sql, new RegExp(`revoke all on function public\\.${signature}[\\s\\S]+from public, anon, authenticated, service_role`, 'i'));
+    assertMatches(sql, new RegExp(`grant execute on function public\\.${signature} to authenticated`, 'i'));
+  }
+  assert.doesNotMatch(sql, /grant execute on function public\.(?:record_chat_image_validation|claim_chat_image_cleanup_batch|complete_chat_image_cleanup)[^;]+to authenticated/i);
+  assertMatches(sql, /has_function_privilege\('service_role', 'public\.record_chat_image_validation/i);
+  assertMatches(sql, /has_function_privilege\('service_role', 'public\.claim_chat_image_cleanup_batch/i);
+  assertMatches(sql, /has_function_privilege\('service_role', 'public\.complete_chat_image_cleanup/i);
+  assert.doesNotMatch(sql, /(?:send_chat_message|delete_chat_message|mark_chat_conversation_(?:delivered|read))/i);
 });
 
 test('storage owner_id compatibility and cleanup claims are JPEG-only', () => {

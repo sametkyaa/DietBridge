@@ -21,15 +21,15 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
 const makeTemp = (prefix) => mkdtempSync(join(tmpdir(), prefix));
 
-test('materializer creates exact 27+5 temp copies and an external manifest', async (t) => {
+test('materializer creates exact 27+7 temp copies and an external manifest', async (t) => {
   const parent = makeTemp('dietbridge-materializer-ok-');
   const outputRoot = join(parent, 'replay');
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const { materializeDisposableReplay } = await import(scriptUrl);
   const runtime = materializeDisposableReplay({ repoRoot, outputRoot });
 
-  assert.deepEqual(runtime.expectedHistory, { canonical: 27, image: 5, total: 32 });
-  assert.equal(runtime.files.length, 32);
+  assert.deepEqual(runtime.expectedHistory, { canonical: 27, image: 7, total: 34 });
+  assert.equal(runtime.files.length, 34);
   assert.equal(runtime.files.filter(({ exactEditsApplied }) => exactEditsApplied > 0).length, 16);
   assert.equal(runtime.files.filter(
     ({ sourceSha256, materializedSha256 }) => sourceSha256 !== materializedSha256,
