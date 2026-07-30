@@ -82,6 +82,7 @@ const SOURCES = [
   'features/chat/utils/chatImageUiState.ts',
   'features/chat/services/chatService.ts',
   'features/chat/services/chatImageService.ts',
+  'features/chat/services/chatImageReadService.ts',
 ];
 
 const EXPECTED_OUTPUTS = [
@@ -104,6 +105,7 @@ const EXPECTED_OUTPUTS = [
   'features/chat/utils/chatImageUiState.js',
   'features/chat/services/chatService.js',
   'features/chat/services/chatImageService.js',
+  'features/chat/services/chatImageReadService.js',
 ];
 
 const SUPABASE_CLIENT_STUB = `'use strict';
@@ -118,12 +120,14 @@ let storageHandler = () => {
 let channelHandler = () => {
   throw new Error('supabase.channel() was called without a stubbed handler.');
 };
+let functionHandler = async () => ({ data: null, error: null });
 let userId = null;
 exports.__setRpcHandler = (handler) => { rpcHandler = handler; };
 exports.__setFromHandler = (handler) => { fromHandler = handler; };
 exports.__setStorageHandler = (handler) => { storageHandler = handler; };
 exports.__setChannelHandler = (handler) => { channelHandler = handler; };
 exports.__setUserId = (id) => { userId = id; };
+exports.__setFunctionHandler = (handler) => { functionHandler = handler; };
 exports.supabase = {
   auth: {
     getUser: async () => ({ data: { user: userId ? { id: userId } : null }, error: null }),
@@ -131,6 +135,7 @@ exports.supabase = {
   rpc: (name, args) => rpcHandler(name, args),
   from: (table) => fromHandler(table),
   storage: { from: (bucket) => storageHandler(bucket) },
+  functions: { invoke: (name, options) => functionHandler(name, options) },
   channel: (name) => channelHandler(name),
   removeChannel: async () => undefined,
 };

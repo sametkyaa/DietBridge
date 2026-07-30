@@ -64,6 +64,7 @@ export const isChatImageUploadInFlight = (state: ChatImageUploadState): boolean 
   state.status === 'canonicalizing'
   || state.status === 'creating-intent'
   || state.status === 'uploading'
+  || state.status === 'validating'
   || state.status === 'finalizing'
 );
 
@@ -90,6 +91,8 @@ export const getChatImageUploadStatusLabel = (state: ChatImageUploadState): stri
       return 'Gönderim hazırlanıyor';
     case 'uploading':
       return 'Görsel yükleniyor';
+    case 'validating':
+      return 'Görsel doğrulanıyor';
     case 'finalizing':
       return 'Mesaj tamamlanıyor';
     default:

@@ -547,8 +547,11 @@ test('23. the happy path walks idle to succeeded through every stage', () => {
   assert.equal(state.progress, 0.5);
 
   state = reducer.chatImageUploadReducer(state, { type: 'uploaded', operationId: 1 });
-  assert.equal(state.status, 'finalizing');
+  assert.equal(state.status, 'validating');
   assert.equal(state.progress, null);
+
+  state = reducer.chatImageUploadReducer(state, { type: 'validated', operationId: 1 });
+  assert.equal(state.status, 'finalizing');
 
   state = reducer.chatImageUploadReducer(state, { type: 'finalized', operationId: 1 });
   assert.equal(state.status, 'succeeded');
@@ -584,6 +587,7 @@ test('24. stale and out-of-order async results are ignored', () => {
     intent: uploadIntent,
   });
   done = reducer.chatImageUploadReducer(done, { type: 'uploaded', operationId: 3 });
+  done = reducer.chatImageUploadReducer(done, { type: 'validated', operationId: 3 });
   done = reducer.chatImageUploadReducer(done, {
     type: 'finalized',
     operationId: 3,
@@ -593,6 +597,22 @@ test('24. stale and out-of-order async results are ignored', () => {
     done,
     'a succeeded upload is never rolled back into cancelled',
   );
+});
+
+test('validator runs after the exact Storage upload and before finalization', () => {
+  const hook = fs.readFileSync(path.join(repoRoot, 'features', 'chat', 'hooks', 'useChatImageUpload.ts'), 'utf8');
+  const uploadAt = hook.indexOf('await uploadCanonicalChatImage');
+  const validateAt = hook.indexOf('await validateChatImageUpload');
+  const finalizeAt = hook.indexOf('await finalizeChatImageMessage');
+  assert.ok(uploadAt >= 0 && validateAt > uploadAt && finalizeAt > validateAt);
+  assert.match(hook, /stage === 'validating'/);
+  assert.match(hook, /type: 'validated'/);
+});
+
+test('validator errors map to safe known error codes', () => {
+  for (const code of ['unauthorized', 'invalid_request', 'not_found', 'intent_not_pending', 'intent_expired', 'object_not_found', 'invalid_image', 'image_too_large', 'image_dimensions_exceeded', 'validation_failed', 'internal_error']) {
+    assert.equal(typeof uploadTypes.CHAT_IMAGE_ERROR_MESSAGES[code], 'string', code);
+  }
 });
 
 test('25. cancellation clears all UI resources and rejects late results', () => {
