@@ -17,6 +17,15 @@ export type ChatImageErrorCode =
   | 'quota_exceeded'
   | 'intent_expired'
   | 'validation_pending'
+  | 'unauthorized'
+  | 'not_found'
+  | 'intent_not_pending'
+  | 'object_not_found'
+  | 'invalid_image'
+  | 'image_too_large'
+  | 'image_dimensions_exceeded'
+  | 'validation_failed'
+  | 'internal_error'
   | 'feature_unavailable'
   | 'storage_upload_failed'
   | 'invalid_response'
@@ -45,6 +54,15 @@ export const CHAT_IMAGE_ERROR_MESSAGES: Readonly<Record<ChatImageErrorCode, stri
   quota_exceeded: 'Çok fazla bekleyen görsel var. Lütfen biraz sonra tekrar deneyin.',
   intent_expired: 'Görsel gönderim süresi doldu. Lütfen görseli yeniden seçin.',
   validation_pending: 'Görsel doğrulaması tamamlanamadı. Lütfen daha sonra tekrar deneyin.',
+  unauthorized: 'Görseli doğrulama izniniz yok.',
+  not_found: 'Görsel gönderim kaydı bulunamadı.',
+  intent_not_pending: 'Bu görsel gönderimi artık doğrulanamıyor.',
+  object_not_found: 'Yüklenen görsel bulunamadı. Lütfen yeniden deneyin.',
+  invalid_image: 'Görsel güvenli biçimde doğrulanamadı. Lütfen başka bir görsel seçin.',
+  image_too_large: 'Görsel çok büyük. Lütfen daha küçük bir görsel seçin.',
+  image_dimensions_exceeded: 'Görsel boyutları izin verilen sınırı aşıyor.',
+  validation_failed: 'Görsel doğrulanırken geçici bir sorun oluştu. Lütfen tekrar deneyin.',
+  internal_error: 'Görsel doğrulaması şu anda tamamlanamadı. Lütfen tekrar deneyin.',
   feature_unavailable: 'Görsel gönderimi şu anda kullanılamıyor.',
   storage_upload_failed: 'Görsel yüklenemedi. Lütfen tekrar deneyin.',
   invalid_response: 'Görsel işlemi beklenmeyen bir yanıt döndürdü. Lütfen tekrar deneyin.',
@@ -94,6 +112,7 @@ export type ChatImageUploadStage =
   | 'canonicalizing'
   | 'creating-intent'
   | 'uploading'
+  | 'validating'
   | 'finalizing';
 
 export type ChatImageUploadStatus =

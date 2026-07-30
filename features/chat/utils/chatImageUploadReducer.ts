@@ -44,6 +44,7 @@ export type ChatImageUploadAction =
   | { type: 'canonicalized'; operationId: number; canonical: CanonicalChatImage }
   | { type: 'intent-created'; operationId: number; intent: ChatImageUploadIntent }
   | { type: 'uploaded'; operationId: number }
+  | { type: 'validated'; operationId: number }
   | { type: 'progress'; operationId: number; progress: number }
   | { type: 'finalized'; operationId: number }
   | {
@@ -119,7 +120,11 @@ export const chatImageUploadReducer = (
 
     case 'uploaded':
       if (state.status !== 'uploading') return state;
-      return { ...state, status: 'finalizing', progress: null, error: null };
+      return { ...state, status: 'validating', progress: null, error: null };
+
+    case 'validated':
+      if (state.status !== 'validating') return state;
+      return { ...state, status: 'finalizing', error: null };
 
     case 'progress':
       if (state.status !== 'uploading') return state;

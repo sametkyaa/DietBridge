@@ -83,7 +83,15 @@ const getErrorStatus = (error: unknown): number | null => {
 
 const RETRYABLE_CODES: ReadonlySet<ChatImageErrorCode> = new Set<ChatImageErrorCode>([
   'storage_upload_failed',
+  'validation_failed',
+  'internal_error',
   'unknown',
+]);
+
+const VALIDATOR_ERROR_CODES: ReadonlySet<ChatImageErrorCode> = new Set<ChatImageErrorCode>([
+  'unauthorized', 'invalid_request', 'not_found', 'intent_not_pending',
+  'intent_expired', 'object_not_found', 'invalid_image', 'image_too_large',
+  'image_dimensions_exceeded', 'validation_failed', 'internal_error',
 ]);
 
 /**
@@ -261,6 +269,40 @@ export const normalizeChatImageCaption = (caption: string | null | undefined): s
     throw createChatImageError('invalid_request');
   }
   return trimmed;
+};
+
+const getValidatorErrorCode = async (error: unknown): Promise<ChatImageErrorCode | null> => {
+  const record = asRecord(error);
+  const context = record?.context;
+  if (!context || typeof context !== 'object' || !('json' in context)) return null;
+  const json = (context as { json?: unknown }).json;
+  if (typeof json !== 'function') return null;
+  try {
+    const payload = await (json as () => Promise<unknown>)();
+    const code = asRecord(payload)?.code;
+    return typeof code === 'string' && VALIDATOR_ERROR_CODES.has(code as ChatImageErrorCode)
+      ? code as ChatImageErrorCode
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Invokes the bounded JPEG validator between Storage upload and finalization. */
+export const validateChatImageUpload = async (intentId: string): Promise<void> => {
+  if (!isValidUuid(intentId)) throw createChatImageError('invalid_request');
+  try {
+    const { error } = await supabase.functions.invoke('validate-chat-image', { body: { intentId } });
+    if (!error) return;
+    const code = await getValidatorErrorCode(error);
+    throw createChatImageError(code ?? 'internal_error', {
+      retryable: code === 'validation_failed' || code === 'internal_error',
+      cause: error,
+    });
+  } catch (error) {
+    if (error instanceof ChatImageError) throw error;
+    throw mapChatImageError(error, 'internal_error');
+  }
 };
 
 export const finalizeChatImageMessage = async (

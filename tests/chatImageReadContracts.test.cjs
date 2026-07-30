@@ -9,6 +9,7 @@ if (!buildDir) throw new Error('MEAL_PLAN_CONTRACT_BUILD_DIR is required.');
 const repoRoot = path.join(__dirname, '..');
 const supabaseClient = require(path.join(buildDir, 'lib', 'supabaseClient.js'));
 const chatService = require(path.join(buildDir, 'features', 'chat', 'services', 'chatService.js'));
+const readService = require(path.join(buildDir, 'features', 'chat', 'services', 'chatImageReadService.js'));
 const preview = require(path.join(buildDir, 'features', 'chat', 'utils', 'conversationPreview.js'));
 
 const ids = {
@@ -243,4 +244,54 @@ test('this slice adds no upload, picker, canonicalizer or signed-URL code', () =
   );
   assert.doesNotMatch(serviceSource, /createSignedUrl|storage\s*\.\s*from|\.upload\(/);
   assert.doesNotMatch(serviceSource, /create_chat_image_upload_intent|finalize_chat_image_message|abort_chat_image_upload/);
+});
+
+const readableMessage = (overrides = {}) => ({
+  id: ids.message,
+  messageKind: 'image',
+  deletedAt: null,
+  attachment: {
+    id: ids.attachment,
+    messageId: ids.message,
+    bucketId: 'chat-images',
+    objectPath,
+    mimeType: 'image/jpeg',
+    byteSize: 128000,
+    width: 2048,
+    height: 1536,
+    deletedAt: null,
+  },
+  ...overrides,
+});
+
+test('private URL resolver rejects malformed, tombstoned, and foreign attachment paths', () => {
+  assert.equal(readService.getReadableChatImagePath(readableMessage()), objectPath);
+  for (const message of [
+    readableMessage({ deletedAt: '2026-07-30T10:00:00.000Z' }),
+    readableMessage({ attachment: { ...readableMessage().attachment, objectPath: objectPath.replace('.jpg', '.JPG') } }),
+    readableMessage({ attachment: { ...readableMessage().attachment, objectPath: `pending/${ids.intent}/../${ids.object}.jpg` } }),
+    readableMessage({ attachment: { ...readableMessage().attachment, bucketId: 'avatars' } }),
+    readableMessage({ attachment: { ...readableMessage().attachment, deletedAt: '2026-07-30T10:00:00.000Z' } }),
+  ]) assert.equal(readService.getReadableChatImagePath(message), null);
+});
+
+test('private URL resolver batches paths, caches them and purges tombstones', async () => {
+  readService.clearChatImageSignedUrlCache();
+  let calls = 0;
+  supabaseClient.__setStorageHandler((bucket) => ({
+    createSignedUrls: async (paths, ttl) => {
+      calls += 1;
+      assert.equal(bucket, 'chat-images');
+      assert.equal(ttl, 300);
+      return { data: paths.map((item) => ({ path: item, signedUrl: `https://signed.invalid/${calls}` })), error: null };
+    },
+  }));
+  const first = await readService.resolveChatImageSignedUrls([readableMessage()]);
+  assert.equal(first.get(objectPath), 'https://signed.invalid/1');
+  const second = await readService.resolveChatImageSignedUrls([readableMessage()]);
+  assert.equal(second.get(objectPath), 'https://signed.invalid/1');
+  assert.equal(calls, 1, 'a fresh URL is served from bounded cache');
+  readService.purgeChatImageSignedUrl(objectPath);
+  await readService.resolveChatImageSignedUrls([readableMessage()]);
+  assert.equal(calls, 2);
 });

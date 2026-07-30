@@ -6,6 +6,7 @@ import {
   finalizeChatImageMessage,
   normalizeChatImageCaption,
   uploadCanonicalChatImage,
+  validateChatImageUpload,
 } from '../services/chatImageService';
 import type { ChatImageFinalizeResult } from '../services/chatImageService';
 import {
@@ -55,7 +56,7 @@ export interface ChatImageUploadController {
   state: ChatImageUploadState;
   /** Local-only selection. It creates no intent and starts no upload. */
   selectImage: (file: File) => void;
-  /** Starts canonicalization, intent creation, upload and finalization. */
+  /** Starts canonicalization, intent creation, upload, validation and finalization. */
   startUpload: (caption: string | null | undefined) => Promise<void>;
   retry: () => Promise<void>;
   /** Removes a local selection or cancels an in-flight network operation. */
@@ -204,6 +205,15 @@ export const useChatImageUpload = (
         await uploadCanonicalChatImage(intent, canonical);
         if (!isCurrent(operationId)) return;
         dispatch({ type: 'uploaded', operationId });
+        stage = 'validating';
+      }
+
+      if (stage === 'validating') {
+        const intentId = operation.intent?.id;
+        if (!intentId) throw createChatImageError('invalid_request');
+        await validateChatImageUpload(intentId);
+        if (!isCurrent(operationId)) return;
+        dispatch({ type: 'validated', operationId });
         stage = 'finalizing';
       }
 
