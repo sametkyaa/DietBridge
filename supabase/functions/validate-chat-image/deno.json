@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.window", "dom", "dom.iterable", "esnext"]
+  },
+  "imports": {
+    "jpeg-js": "npm:jpeg-js@0.4.4"
+  },
+  "tasks": {
+    "check": "deno check index.ts handler.ts contracts.ts jpegValidator.ts",
+    "test": "deno test --allow-net handler.test.ts jpegValidator.test.ts"
+  }
+}
