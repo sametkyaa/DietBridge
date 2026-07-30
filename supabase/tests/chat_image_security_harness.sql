@@ -13,6 +13,14 @@ declare
   v_attachment_definition text;
   v_storage_insert_policy text;
   v_storage_select_policy text;
+  v_storage_select_policy_count integer;
+  v_storage_select_cmd text;
+  v_storage_select_permissive text;
+  v_storage_select_roles text;
+  v_storage_select_with_check text;
+  v_canonical_select_qual text;
+  v_expected_select_qual constant text :=
+    '((bucket_id=''chat-images'')and(exists(select1from((chat_attachmentsajoinchat_messagesmon((m.id=a.message_id)))joinchat_conversationscon((c.id=m.conversation_id)))where((a.bucket_id=objects.bucket_id)and(a.object_path=objects.name)and(a.deleted_atisnull)and(m.message_kind=''image'')and(m.deleted_atisnull)and(((selectauth.uid()asuid)=c.dietitian_id)or((selectauth.uid()asuid)=c.client_id))))))';
 begin
   if to_regclass('public.chat_upload_intents') is null
      or to_regclass('public.chat_attachments') is null
@@ -249,18 +257,64 @@ begin
     raise exception 'FAIL: STORAGE_OWNER_ID_POLICY';
   end if;
 
-  select coalesce(qual, '')
-    into v_storage_select_policy
+  -- Private-read Storage SELECT policy: metadata contract (fail-closed).
+  -- Exactly one policy of this name, restricted to authenticated SELECT, must
+  -- exist; a public/anon role, a non-SELECT command, an unexpected WITH CHECK,
+  -- or a duplicate policy is rejected.
+  select count(*)
+    into v_storage_select_policy_count
     from pg_policies
     where schemaname = 'storage'
       and tablename = 'objects'
       and policyname = 'chat_images_select_live_attachment';
-  if v_storage_select_policy not ilike '%a.deleted_at is null%'
-     or v_storage_select_policy not ilike '%m.message_kind = ''image''%'
-     or v_storage_select_policy not ilike '%m.deleted_at is null%'
-     or v_storage_select_policy not ilike '%a.bucket_id = storage.objects.bucket_id%'
-     or v_storage_select_policy not ilike '%a.object_path = storage.objects.name%'
-     or v_storage_select_policy not ilike '%auth.uid()%'
+  if v_storage_select_policy_count <> 1 then
+    raise exception 'FAIL: CHAT_IMAGE_PRIVATE_READ_LIVE_ATTACHMENT_CONTRACT';
+  end if;
+
+  select p.cmd, p.permissive, array_to_string(p.roles, ','),
+         p.with_check, coalesce(p.qual, '')
+    into v_storage_select_cmd, v_storage_select_permissive, v_storage_select_roles,
+         v_storage_select_with_check, v_storage_select_policy
+    from pg_policies as p
+    where p.schemaname = 'storage'
+      and p.tablename = 'objects'
+      and p.policyname = 'chat_images_select_live_attachment';
+  if v_storage_select_cmd <> 'SELECT'
+     or v_storage_select_permissive <> 'PERMISSIVE'
+     or v_storage_select_roles <> 'authenticated'
+     or v_storage_select_with_check is not null then
+    raise exception 'FAIL: CHAT_IMAGE_PRIVATE_READ_LIVE_ATTACHMENT_CONTRACT';
+  end if;
+
+  -- Semantic canonicalization of the policy expression. Only PostgreSQL's
+  -- harmless normalization is neutralized: redundant ::text casts, the
+  -- storage.objects.<col> -> objects.<col> table qualification it emits,
+  -- double-quote identifier quoting, and whitespace. No boolean operator,
+  -- EXISTS, join, equality value, or predicate is removed; every mandatory
+  -- security component below is asserted individually and fails closed.
+  v_canonical_select_qual := regexp_replace(
+    replace(
+      replace(
+        lower(replace(v_storage_select_policy, '::text', '')),
+        'storage.objects.', 'objects.'),
+      '"', ''),
+    '\s+', '', 'g');
+  if position('bucket_id=''chat-images''' in v_canonical_select_qual) = 0
+     or position('exists(' in v_canonical_select_qual) = 0
+     or position('chat_attachmentsa' in v_canonical_select_qual) = 0
+     or position('joinchat_messagesm' in v_canonical_select_qual) = 0
+     or position('joinchat_conversationsc' in v_canonical_select_qual) = 0
+     or position('m.id=a.message_id' in v_canonical_select_qual) = 0
+     or position('c.id=m.conversation_id' in v_canonical_select_qual) = 0
+     or position('a.bucket_id=objects.bucket_id' in v_canonical_select_qual) = 0
+     or position('a.object_path=objects.name' in v_canonical_select_qual) = 0
+     or position('a.deleted_atisnull' in v_canonical_select_qual) = 0
+     or position('m.message_kind=''image''' in v_canonical_select_qual) = 0
+     or position('m.deleted_atisnull' in v_canonical_select_qual) = 0
+     or position('auth.uid()' in v_canonical_select_qual) = 0
+     or position('=c.dietitian_id' in v_canonical_select_qual) = 0
+     or position('=c.client_id' in v_canonical_select_qual) = 0
+     or v_canonical_select_qual <> v_expected_select_qual
      or v_attachment_definition not ilike '%v_intent.status <> ''finalized''%'
      or v_attachment_definition not ilike '%v_message_conversation_id is distinct from v_intent.conversation_id%'
      or v_attachment_definition not ilike '%v_message_sender_id is distinct from v_intent.created_by%'
