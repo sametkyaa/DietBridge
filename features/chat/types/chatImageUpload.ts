@@ -10,6 +10,7 @@ import type { ChatImageDimensions } from '../utils/canonicalJpegPlan';
 export type ChatImageErrorCode =
   | 'unsupported_type'
   | 'decode_failed'
+  | 'canvas_encode_failed'
   | 'invalid_dimensions'
   | 'output_too_large'
   | 'invalid_request'
@@ -47,6 +48,7 @@ export class ChatImageError extends Error {
 export const CHAT_IMAGE_ERROR_MESSAGES: Readonly<Record<ChatImageErrorCode, string>> = {
   unsupported_type: 'Yalnızca JPEG, PNG veya WebP görseller gönderilebilir.',
   decode_failed: 'Görsel okunamadı. Lütfen başka bir dosya deneyin.',
+  canvas_encode_failed: 'Görsel okunamadı. Lütfen başka bir dosya deneyin.',
   invalid_dimensions: 'Görsel boyutları geçersiz. Lütfen başka bir dosya deneyin.',
   output_too_large: 'Görsel çok büyük. Lütfen daha küçük bir görsel seçin.',
   invalid_request: 'Görsel bilgisi geçersiz. Lütfen tekrar deneyin.',

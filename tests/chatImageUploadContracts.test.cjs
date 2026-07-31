@@ -264,18 +264,180 @@ test('14. a non-JPEG encoder output is rejected instead of being uploaded', asyn
   const { deps } = createFakeDeps({ sizes: [1000], outputType: 'image/png' });
   await assert.rejects(
     () => canonicalizer.canonicalizeChatImage(fakeBlob(1000000, 'image/png'), { deps }),
-    (error) => error.code === 'decode_failed',
+    (error) => error.code === 'canvas_encode_failed',
   );
 
   const nullOutput = createFakeDeps({ sizes: [null] });
   await assert.rejects(
     () => canonicalizer.canonicalizeChatImage(fakeBlob(1000000, 'image/jpeg'), { deps: nullOutput.deps }),
-    (error) => error.code === 'decode_failed',
+    (error) => error.code === 'canvas_encode_failed',
   );
 });
 
 // ---------------------------------------------------------------------------
-// 15-22: Supabase service layer
+// 15-18: browser adapter regression coverage
+// ---------------------------------------------------------------------------
+
+const browserFixtures = [
+  {
+    name: 'PNG',
+    type: 'image/png',
+    bytes: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  },
+  {
+    name: 'JPEG',
+    type: 'image/jpeg',
+    bytes: Buffer.from(
+      '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/AP/EABQQAQAAAAAAAAAAAAAAAAAAADD/2gAIAQEAAT8Af//Z',
+      'base64',
+    ),
+  },
+  {
+    name: 'WebP',
+    type: 'image/webp',
+    bytes: Buffer.from(
+      'UklGRiIAAABXRUJQVlA4IBQAAAAwAQCdASoBAAEADsD+JaQAA3AA/v89WAAAA',
+      'base64',
+    ),
+  },
+].map((fixture) => ({
+  ...fixture,
+  file: Object.assign(new Blob([fixture.bytes], { type: fixture.type }), { valid: true }),
+}));
+
+const withFakeBrowserGlobals = () => {
+  const originalDocument = global.document;
+  const originalURL = global.URL;
+  const originalCreateImageBitmap = global.createImageBitmap;
+  const sourceByUrl = new Map();
+  const revokedUrls = [];
+  let urlIndex = 0;
+  let bitmapCalls = 0;
+
+  global.URL = {
+    createObjectURL: (blob) => {
+      const url = `blob:chat-image-${++urlIndex}`;
+      sourceByUrl.set(url, blob);
+      return url;
+    },
+    revokeObjectURL: (url) => revokedUrls.push(url),
+  };
+  global.createImageBitmap = async () => {
+    bitmapCalls += 1;
+    throw new Error('createImageBitmap is unavailable for this browser image');
+  };
+  global.document = {
+    createElement: (tagName) => {
+      if (tagName === 'img') {
+        const image = {
+          naturalWidth: 1,
+          naturalHeight: 1,
+          onload: null,
+          onerror: null,
+          _src: '',
+          set src(value) {
+            this._src = value;
+            if (!value) return;
+            queueMicrotask(() => {
+              const source = sourceByUrl.get(value);
+              if (source?.valid) this.onload?.();
+              else this.onerror?.(new Error('invalid image bytes'));
+            });
+          },
+          get src() {
+            return this._src;
+          },
+        };
+        return image;
+      }
+      if (tagName === 'canvas') {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({ drawImage: () => undefined }),
+          toBlob: (callback, type) => callback(new Blob([Buffer.alloc(128)], { type })),
+        };
+      }
+      throw new Error(`Unexpected element: ${tagName}`);
+    },
+  };
+
+  return {
+    revokedUrls,
+    get bitmapCalls() {
+      return bitmapCalls;
+    },
+    restore: () => {
+      if (originalDocument === undefined) delete global.document;
+      else global.document = originalDocument;
+      if (originalURL === undefined) delete global.URL;
+      else global.URL = originalURL;
+      if (originalCreateImageBitmap === undefined) delete global.createImageBitmap;
+      else global.createImageBitmap = originalCreateImageBitmap;
+    },
+  };
+};
+
+test('15. valid PNG, JPEG and WebP files use the HTMLImageElement fallback and become JPEG', async () => {
+  const browser = withFakeBrowserGlobals();
+  try {
+    const deps = canonicalizer.createBrowserCanonicalizerDeps();
+    for (const fixture of browserFixtures) {
+      const result = await canonicalizer.canonicalizeChatImage(fixture.file, { deps });
+      assert.equal(result.mimeType, 'image/jpeg', fixture.name);
+      assert.equal(result.blob.type, 'image/jpeg', fixture.name);
+      assert.equal(result.width, 1, fixture.name);
+      assert.equal(result.height, 1, fixture.name);
+    }
+    assert.equal(browser.bitmapCalls, browserFixtures.length);
+    assert.equal(browser.revokedUrls.length, browserFixtures.length);
+    assert.equal(new Set(browser.revokedUrls).size, browserFixtures.length);
+  } finally {
+    browser.restore();
+  }
+});
+
+test('16. invalid image bytes fail at decode and revoke the source URL', async () => {
+  const browser = withFakeBrowserGlobals();
+  try {
+    const deps = canonicalizer.createBrowserCanonicalizerDeps();
+    const invalid = Object.assign(new Blob([Buffer.from('not-an-image')], { type: 'image/png' }), { valid: false });
+    await assert.rejects(
+      () => canonicalizer.canonicalizeChatImage(invalid, { deps }),
+      (error) => error.code === 'decode_failed',
+    );
+    assert.equal(browser.revokedUrls.length, 1);
+  } finally {
+    browser.restore();
+  }
+});
+
+test('17. a canvas toBlob null result is a canvas encode failure, not a decode failure', async () => {
+  const { deps } = createFakeDeps({ sizes: [null] });
+  await assert.rejects(
+    () => canonicalizer.canonicalizeChatImage(fakeBlob(1000000, 'image/png'), { deps }),
+    (error) => error.code === 'canvas_encode_failed',
+  );
+});
+
+test('18. image-element cleanup is idempotent after canonicalization', async () => {
+  const browser = withFakeBrowserGlobals();
+  try {
+    const deps = canonicalizer.createBrowserCanonicalizerDeps();
+    const decoded = await deps.decodeImage(browserFixtures[0].file);
+    decoded.close();
+    decoded.close();
+    assert.equal(browser.revokedUrls.length, 1);
+  } finally {
+    browser.restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Supabase service layer
 // ---------------------------------------------------------------------------
 
 const intentRow = (overrides = {}) => ({
@@ -959,6 +1121,7 @@ test('this slice adds no picker, renderer or signed-URL code', () => {
   for (const code of [
     'unsupported_type',
     'decode_failed',
+    'canvas_encode_failed',
     'invalid_dimensions',
     'output_too_large',
     'access_denied',
