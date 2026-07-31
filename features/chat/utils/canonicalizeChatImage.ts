@@ -8,6 +8,7 @@ import {
 import {
   CanonicalChatImage,
   ChatImageError,
+  ChatImageErrorCode,
   createChatImageError,
 } from '../types/chatImageUpload';
 
@@ -75,10 +76,13 @@ const disposeQuietly = (canvas: CanonicalizerCanvas | null): void => {
   }
 };
 
-const toChatImageError = (error: unknown): ChatImageError => (
+const toChatImageError = (
+  error: unknown,
+  fallbackCode: ChatImageErrorCode = 'decode_failed',
+): ChatImageError => (
   error instanceof ChatImageError
     ? error
-    : createChatImageError('decode_failed', { cause: error })
+    : createChatImageError(fallbackCode, { cause: error })
 );
 
 /**
@@ -102,6 +106,7 @@ export const canonicalizeChatImage = async (
   let decoded: DecodedChatImage | null = null;
   let resized: DecodedChatImage | null = null;
   let canvas: CanonicalizerCanvas | null = null;
+  let failureCode: ChatImageErrorCode = 'decode_failed';
 
   try {
     decoded = await deps.decodeImage(file);
@@ -124,6 +129,7 @@ export const canonicalizeChatImage = async (
       drawable = resized;
     }
 
+    failureCode = 'canvas_encode_failed';
     canvas = deps.createCanvas(plan.target);
     canvas.drawImage(drawable, plan.target);
 
@@ -132,9 +138,9 @@ export const canonicalizeChatImage = async (
       const encoded = await canvas.encodeJpeg(quality);
       throwIfAborted(signal);
 
-      if (!encoded) throw createChatImageError('decode_failed');
+      if (!encoded) throw createChatImageError('canvas_encode_failed');
       if (encoded.type !== CHAT_IMAGE_OUTPUT_MIME_TYPE) {
-        throw createChatImageError('decode_failed');
+        throw createChatImageError('canvas_encode_failed');
       }
       if (!isAcceptableCanonicalJpegSize(encoded.size)) continue;
 
@@ -150,10 +156,10 @@ export const canonicalizeChatImage = async (
 
     throw createChatImageError('output_too_large');
   } catch (error) {
-    throw toChatImageError(error);
+    throw toChatImageError(error, failureCode);
   } finally {
     // Runs on success, failure and abort alike.
-    closeQuietly(resized);
+    if (resized !== decoded) closeQuietly(resized);
     closeQuietly(decoded);
     disposeQuietly(canvas);
   }
@@ -198,10 +204,14 @@ const decodeWithImageElement = async (
       image.src = objectUrl;
     });
   } catch (error) {
+    image.onload = null;
+    image.onerror = null;
+    image.src = '';
     globals.revokeObjectURL(objectUrl);
     throw toChatImageError(error);
   }
 
+  let closed = false;
   return {
     width: image.naturalWidth,
     height: image.naturalHeight,
@@ -209,6 +219,10 @@ const decodeWithImageElement = async (
     // The object URL stays alive while the element is drawable and is revoked
     // by the shared cleanup path.
     close: () => {
+      if (closed) return;
+      closed = true;
+      image.onload = null;
+      image.onerror = null;
       image.src = '';
       globals.revokeObjectURL(objectUrl);
     },
@@ -227,30 +241,46 @@ export const createBrowserCanonicalizerDeps = (): CanonicalizeChatImageDeps => {
     decodeImage: async (blob) => {
       if (!globals.createImageBitmap) return decodeWithImageElement(blob, globals);
 
-      const bitmap = await globals.createImageBitmap(blob, { imageOrientation: 'from-image' });
-      return {
-        width: bitmap.width,
-        height: bitmap.height,
-        source: bitmap,
-        close: () => bitmap.close(),
-      };
-    },
-    resizeImage: globals.createImageBitmap
-      ? async (image, target) => {
-        const createBitmap = globals.createImageBitmap;
-        if (!createBitmap || !(image.source instanceof ImageBitmap)) return image;
-
-        const bitmap = await createBitmap(image.source, {
-          resizeWidth: target.width,
-          resizeHeight: target.height,
-          resizeQuality: 'high',
-        });
+      try {
+        const bitmap = await globals.createImageBitmap(blob, { imageOrientation: 'from-image' });
         return {
           width: bitmap.width,
           height: bitmap.height,
           source: bitmap,
           close: () => bitmap.close(),
         };
+      } catch {
+        // Some Chrome/platform combinations reject a valid image or the
+        // orientation option. Keep the compatibility fallback object URL
+        // alive until the shared cleanup path closes the decoded image.
+        return decodeWithImageElement(blob, globals);
+      }
+    },
+    resizeImage: globals.createImageBitmap
+      ? async (image, target) => {
+        const createBitmap = globals.createImageBitmap;
+        if (
+          !createBitmap
+          || typeof ImageBitmap === 'undefined'
+          || !(image.source instanceof ImageBitmap)
+        ) return image;
+
+        try {
+          const bitmap = await createBitmap(image.source, {
+            resizeWidth: target.width,
+            resizeHeight: target.height,
+            resizeQuality: 'high',
+          });
+          return {
+            width: bitmap.width,
+            height: bitmap.height,
+            source: bitmap,
+            close: () => bitmap.close(),
+          };
+        } catch {
+          // drawImage below still rasterizes into the bounded target canvas.
+          return image;
+        }
       }
       : undefined,
     createCanvas: (target) => {
