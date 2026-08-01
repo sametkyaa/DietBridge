@@ -16,7 +16,8 @@ import {
   User
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { TASKS, USER_AVATAR } from '../../../shared/constants';
+import { TASKS } from '../../../shared/constants';
+import DietitianAvatar from '../../../shared/components/DietitianAvatar';
 import { useAppointments } from '../../appointments/context/AppointmentContext';
 import { fetchDietitianClients } from '../../clients/services/clientService';
 import { Client } from '../../../shared/types';
@@ -201,11 +202,10 @@ const DashboardPage = () => {
             <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
           </button>
           <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <img
-            src={USER_AVATAR}
-            alt="Profil"
-            className="w-12 h-12 rounded-full border-2 border-white shadow-sm object-cover"
-          />
+            <DietitianAvatar
+              alt="Profil"
+              className="w-12 h-12 rounded-full border-2 border-white shadow-sm object-cover"
+            />
           </button>
         </div>
       </header>

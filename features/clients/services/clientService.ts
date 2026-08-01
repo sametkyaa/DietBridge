@@ -3,69 +3,9 @@ import { supabase } from '../../../lib/supabaseClient';
 import { Client, ClientLifestyleReadModel } from '../../../shared/types';
 import { USER_AVATAR } from '../../../shared/constants';
 import { isValidUuid } from '../../../shared/utils/uuid';
+import { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
 
-const AVATAR_BUCKET = 'avatars';
-const AVATAR_SIGNED_URL_TTL_SECONDS = 5 * 60;
-const AVATAR_OBJECT_PATH_PATTERN =
-  /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/avatar\.(?:jpe?g|png|webp)$/i;
-
-type ProfilePhotoAccess = {
-  subjectUserId: string;
-  allowPrivatePath: boolean;
-};
-
-const resolveTrustedPublicAvatarUrl = (storedValue: string): string | null => {
-  try {
-    const parsedUrl = new URL(storedValue);
-    if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) return null;
-
-    const storageObjectPath = parsedUrl.pathname.toLowerCase();
-    if (
-      storageObjectPath.includes('/storage/v1/object/')
-      && !storageObjectPath.includes('/storage/v1/object/public/')
-    ) {
-      return null;
-    }
-
-    if (
-      parsedUrl.searchParams.has('token')
-      || parsedUrl.searchParams.has('expires')
-      || parsedUrl.searchParams.has('signature')
-    ) {
-      return null;
-    }
-
-    return parsedUrl.toString();
-  } catch {
-    return null;
-  }
-};
-
-export async function resolveProfilePhotoUrl(
-  storedValue: string | null | undefined,
-  access: ProfilePhotoAccess,
-): Promise<string | null> {
-  const normalizedValue = String(storedValue ?? '').trim();
-  if (!normalizedValue || !isValidUuid(access.subjectUserId)) return null;
-
-  if (/^[a-z][a-z\d+.-]*:/i.test(normalizedValue)) {
-    return resolveTrustedPublicAvatarUrl(normalizedValue);
-  }
-
-  if (!access.allowPrivatePath) return null;
-
-  const pathMatch = AVATAR_OBJECT_PATH_PATTERN.exec(normalizedValue);
-  if (!pathMatch || pathMatch[1].toLowerCase() !== access.subjectUserId.toLowerCase()) {
-    return null;
-  }
-
-  const { data, error } = await supabase.storage
-    .from(AVATAR_BUCKET)
-    .createSignedUrl(normalizedValue, AVATAR_SIGNED_URL_TTL_SECONDS);
-
-  if (error || !data?.signedUrl) return null;
-  return data.signedUrl;
-}
+export { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
 
 interface CatalogLabelRow {
   label: string | null;

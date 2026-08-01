@@ -48,7 +48,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           disabled={disabled || isSending}
           maxLength={MAX_MESSAGE_BODY_LENGTH}
           rows={2}
-          className="min-h-11 max-h-32 min-w-0 flex-1 resize-y border-0 bg-transparent px-2 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-11 max-h-32 min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60"
         />
         <button
           type="submit"

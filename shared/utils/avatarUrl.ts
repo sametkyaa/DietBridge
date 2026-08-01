@@ -93,7 +93,7 @@ export const getOwnedAvatarObjectPath = (
 const resolveTrustedPublicAvatarUrl = (storedValue: string): string | null => {
   try {
     const parsedUrl = new URL(storedValue);
-    if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) return null;
+    if ((parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') || parsedUrl.username || parsedUrl.password) return null;
 
     const storageObjectPath = parsedUrl.pathname.toLowerCase();
     if (
@@ -121,7 +121,7 @@ const resolveTrustedPublicAvatarUrl = (storedValue: string): string | null => {
  * Resolves a stored avatar value (`profiles.avatar_url`) into a displayable
  * URL. Canonical private object paths and Supabase Storage URLs pointing at
  * the private `avatars` bucket are resolved through short-lived signed URLs.
- * Trusted external HTTPS URLs (e.g. legacy hosted avatars) are passed through.
+ * Trusted external HTTP(S) URLs (e.g. legacy hosted avatars) are passed through.
  *
  * Read-side authorization is deliberately left to Storage RLS/policies: the
  * stored value already comes from the subject's own profile row, so the

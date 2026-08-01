@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Search } from 'lucide-react';
-import { USER_AVATAR } from '../constants';
 import ChatComposer from '../features/chat/components/ChatComposer';
 import ChatConversationList from '../features/chat/components/ChatConversationList';
 import ChatMessagePanel from '../features/chat/components/ChatMessagePanel';
@@ -13,6 +12,7 @@ import { useChatRealtime } from '../features/chat/hooks/useChatRealtime';
 import { deleteChatMessage } from '../features/chat/services/chatService';
 import { ChatConversationListItem, ChatMessage, ChatReadState } from '../features/chat/types/chat';
 import { useAuth } from '../features/auth/context/AuthContext';
+import DietitianAvatar from '../shared/components/DietitianAvatar';
 
 const Messages = () => {
   const navigate = useNavigate();
@@ -203,8 +203,7 @@ const Messages = () => {
             className="cursor-pointer rounded-full border-0 bg-transparent p-0 transition-opacity hover:opacity-80 focus:outline-none"
             aria-label="Profil sayfasına git"
           >
-            <img
-              src={USER_AVATAR}
+            <DietitianAvatar
               alt="Profil"
               className="h-10 w-10 rounded-full border-2 border-white object-cover shadow-sm"
             />

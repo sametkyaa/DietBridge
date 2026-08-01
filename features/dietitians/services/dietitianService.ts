@@ -1,6 +1,17 @@
 
 import { supabase } from '../../../lib/supabaseClient';
 import { DietitianProfile } from '../../../shared/types';
+import {
+  AVATAR_BUCKET,
+  getOwnedAvatarObjectPath,
+} from '../../../shared/utils/avatarUrl';
+
+const AVATAR_MAX_FILE_BYTES = 5 * 1024 * 1024;
+const AVATAR_MIME_EXTENSION_MAP: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
 
 export interface RegistrationData {
   email: string;
@@ -222,6 +233,7 @@ export const getCurrentDietitianProfile = async (): Promise<DietitianProfile | n
       specialization: data.specialization,
       bio: data.bio,
       diploma_url: data.diploma_url,
+      avatar_url: data.profiles?.avatar_url || undefined,
       is_verified: data.is_verified,
       verification_status: data.verification_status,
       verified_at: data.verified_at,
@@ -301,5 +313,133 @@ export const updateDietitianProfile = async (updates: Partial<DietitianProfile>)
   } catch (error: any) {
     console.error('Update error:', error);
     return { success: false, error: error.message };
+  }
+};
+
+export type AvatarFileValidation =
+  | { status: 'valid'; extension: string }
+  | { status: 'invalid'; userMessage: string };
+
+/**
+ * Validates an avatar file against the `avatars` bucket contract
+ * (JPEG/PNG/WebP, max 5 MiB).
+ */
+export const validateDietitianAvatarFile = (file: File): AvatarFileValidation => {
+  const extension = AVATAR_MIME_EXTENSION_MAP[file.type];
+  if (!extension) {
+    return {
+      status: 'invalid',
+      userMessage: 'Yalnızca JPEG, PNG veya WebP formatında görsel yükleyebilirsiniz.',
+    };
+  }
+  if (file.size <= 0) {
+    return { status: 'invalid', userMessage: 'Seçilen dosya boş görünüyor. Lütfen farklı bir görsel seçin.' };
+  }
+  if (file.size > AVATAR_MAX_FILE_BYTES) {
+    return {
+      status: 'invalid',
+      userMessage: 'Görsel boyutu 5 MB sınırını aşıyor. Lütfen daha küçük bir görsel seçin.',
+    };
+  }
+  return { status: 'valid', extension };
+};
+
+export type DietitianAvatarResult = {
+  success: boolean;
+  avatarPath?: string | null;
+  error?: string;
+};
+
+const AVATAR_GENERIC_ERROR = 'Profil fotoğrafı güncellenemedi. Lütfen tekrar deneyin.';
+
+const removeAvatarObjectBestEffort = async (objectPath: string, context: string): Promise<void> => {
+  const { error } = await supabase.storage.from(AVATAR_BUCKET).remove([objectPath]);
+  if (error) {
+    console.warn(`Avatar storage cleanup failed (${context}); orphan file may remain:`, error);
+  }
+};
+
+/**
+ * Uploads a new avatar for the current dietitian and persists the canonical
+ * object path (`<user-id>/avatar.<ext>`) to `profiles.avatar_url`.
+ * Cleans up the replaced object after a successful profile update.
+ */
+export const uploadDietitianAvatar = async (file: File): Promise<DietitianAvatarResult> => {
+  const validation = validateDietitianAvatarFile(file);
+  if (validation.status === 'invalid') {
+    return { success: false, error: validation.userMessage };
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: 'Oturum bulunamadı. Lütfen tekrar giriş yapın.' };
+
+    const { data: currentProfile, error: currentProfileError } = await supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (currentProfileError) throw currentProfileError;
+
+    const previousOwnedPath = getOwnedAvatarObjectPath(currentProfile?.avatar_url, user.id);
+    const objectPath = `${user.id}/avatar.${validation.extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(AVATAR_BUCKET)
+      .upload(objectPath, file, { cacheControl: '3600', upsert: true });
+    if (uploadError) throw uploadError;
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: objectPath, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+    if (updateError) {
+      await removeAvatarObjectBestEffort(objectPath, 'profile update failed');
+      throw updateError;
+    }
+
+    if (previousOwnedPath && previousOwnedPath !== objectPath) {
+      await removeAvatarObjectBestEffort(previousOwnedPath, 'avatar replaced');
+    }
+
+    return { success: true, avatarPath: objectPath };
+  } catch (error) {
+    console.error('Dietitian avatar upload error:', error);
+    return { success: false, error: AVATAR_GENERIC_ERROR };
+  }
+};
+
+/**
+ * Clears `profiles.avatar_url` for the current dietitian and removes the
+ * owned storage object afterwards on a best-effort basis.
+ */
+export const removeDietitianAvatar = async (): Promise<DietitianAvatarResult> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: 'Oturum bulunamadı. Lütfen tekrar giriş yapın.' };
+
+    const { data: currentProfile, error: currentProfileError } = await supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (currentProfileError) throw currentProfileError;
+
+    const previousOwnedPath = getOwnedAvatarObjectPath(currentProfile?.avatar_url, user.id);
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: null, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+    if (updateError) throw updateError;
+
+    if (previousOwnedPath) {
+      await removeAvatarObjectBestEffort(previousOwnedPath, 'avatar removed');
+    }
+
+    return { success: true, avatarPath: null };
+  } catch (error) {
+    console.error('Dietitian avatar remove error:', error);
+    return { success: false, error: 'Profil fotoğrafı kaldırılamadı. Lütfen tekrar deneyin.' };
   }
 };
