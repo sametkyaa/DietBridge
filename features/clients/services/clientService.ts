@@ -4,6 +4,7 @@ import { Client, ClientLifestyleReadModel } from '../../../shared/types';
 import { USER_AVATAR } from '../../../shared/constants';
 import { isValidUuid } from '../../../shared/utils/uuid';
 import { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
+import { isValidMeasurementValue } from '../utils/measurementContract';
 
 export { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
 
@@ -711,9 +712,13 @@ export interface Measurement {
   waist: number | null;
   hip: number | null;
   arm: number | null;
+  right_arm: number | null;
+  left_arm: number | null;
   chest: number | null;
   thigh: number | null;
   calf: number | null;
+  right_calf: number | null;
+  left_calf: number | null;
   neck: number | null;
   notes: string | null;
   created_at: string;
@@ -732,9 +737,11 @@ export interface SaveClientBodyMeasurementsInput {
   measuredAt: string;
   waist: number | null;
   hip: number | null;
-  arm: number | null;
+  right_arm: number | null;
+  left_arm: number | null;
   chest: number | null;
-  calf: number | null;
+  right_calf: number | null;
+  left_calf: number | null;
   neck: number | null;
   notes: string | null;
 }
@@ -747,18 +754,24 @@ const measurementRowNumericKeys = [
   'waist',
   'hip',
   'arm',
+  'right_arm',
+  'left_arm',
   'chest',
   'thigh',
   'calf',
+  'right_calf',
+  'left_calf',
   'neck',
 ] as const satisfies ReadonlyArray<keyof Measurement>;
 
 const bodyMeasurementNumericKeys = [
   'waist',
   'hip',
-  'arm',
+  'right_arm',
+  'left_arm',
   'chest',
-  'calf',
+  'right_calf',
+  'left_calf',
   'neck',
 ] as const satisfies ReadonlyArray<keyof SaveClientBodyMeasurementsInput>;
 
@@ -869,9 +882,7 @@ export const saveClientBodyMeasurements = async (
     if (!values.some((value) => value !== null)) {
       throw new Error('At least one body measurement value is required');
     }
-    if (values.some((value) => value !== null && (
-      !Number.isFinite(value) || value <= 0 || value > 500
-    ))) {
+    if (values.some((value) => !isValidMeasurementValue(value))) {
       throw new Error('Circumference is outside the supported range');
     }
 
@@ -880,14 +891,16 @@ export const saveClientBodyMeasurements = async (
       throw new Error('Measurement notes are too long');
     }
 
-    const { data, error } = await supabase.rpc('save_active_client_body_measurements', {
+    const { data, error } = await supabase.rpc('save_active_client_body_measurements_v2', {
       p_client_id: input.clientId,
       p_measured_at: input.measuredAt,
       p_waist: input.waist,
       p_hip: input.hip,
-      p_arm: input.arm,
+      p_right_arm: input.right_arm,
+      p_left_arm: input.left_arm,
       p_chest: input.chest,
-      p_calf: input.calf,
+      p_right_calf: input.right_calf,
+      p_left_calf: input.left_calf,
       p_neck: input.neck,
       p_notes: normalizedNotes,
     });
@@ -947,9 +960,8 @@ export const fetchClientMeasurements = async (
 
   let query = supabase
     .from('measurements')
-    .select('id, client_id, measured_at, weight, waist, hip, arm, chest, thigh, calf, neck, notes, created_at, updated_at')
+    .select('id, client_id, measured_at, weight, waist, hip, arm, right_arm, left_arm, chest, thigh, calf, right_calf, left_calf, neck, notes, created_at, updated_at')
     .eq('client_id', clientId)
-    .not('weight', 'is', null)
     .order('measured_at', { ascending: false });
 
   if (cursor !== null) {

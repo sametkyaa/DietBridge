@@ -1,5 +1,5 @@
 /**
- * Dependency-free contract test runner for the meal plan read/write services.
+ * Dependency-free contract test runner for the meal plan, chat and measurement contracts.
  *
  * The service modules import lib/supabaseClient, which reads import.meta.env
  * at module scope and cannot run under plain Node. This runner compiles the
@@ -23,6 +23,7 @@ const SOURCES = [
   'features/auth/services/authLifecycle.ts',
   'features/recipes/services/recipeService.ts',
   'features/recipes/utils/filterRecipes.ts',
+  'features/clients/utils/measurementContract.ts',
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
   'features/chat/utils/receipts.ts',
@@ -36,6 +37,7 @@ const EXPECTED_OUTPUTS = [
   'features/auth/services/authLifecycle.js',
   'features/recipes/services/recipeService.js',
   'features/recipes/utils/filterRecipes.js',
+  'features/clients/utils/measurementContract.js',
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
   'features/chat/utils/receipts.js',
@@ -113,6 +115,7 @@ const testRun = spawnSync(process.execPath, [
   '--test',
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
+  join(repoRoot, 'tests', 'measurementContracts.test.cjs'),
 ], {
   cwd: repoRoot,
   env: { ...process.env, MEAL_PLAN_CONTRACT_BUILD_DIR: buildDir },
