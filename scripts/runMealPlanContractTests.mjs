@@ -24,6 +24,9 @@ const SOURCES = [
   'features/recipes/services/recipeService.ts',
   'features/recipes/utils/filterRecipes.ts',
   'shared/utils/uuid.ts',
+  'features/chat/types/chat.ts',
+  'features/chat/utils/receipts.ts',
+  'features/chat/services/chatService.ts',
 ];
 
 const EXPECTED_OUTPUTS = [
@@ -34,6 +37,9 @@ const EXPECTED_OUTPUTS = [
   'features/recipes/services/recipeService.js',
   'features/recipes/utils/filterRecipes.js',
   'shared/utils/uuid.js',
+  'features/chat/types/chat.js',
+  'features/chat/utils/receipts.js',
+  'features/chat/services/chatService.js',
 ];
 
 const SUPABASE_CLIENT_STUB = `'use strict';
@@ -99,9 +105,14 @@ const stubDir = join(buildDir, 'lib');
 mkdirSync(stubDir, { recursive: true });
 writeFileSync(join(stubDir, 'supabaseClient.js'), SUPABASE_CLIENT_STUB, 'utf8');
 
+const avatarUtilsDir = join(buildDir, 'shared', 'utils');
+mkdirSync(avatarUtilsDir, { recursive: true });
+writeFileSync(join(avatarUtilsDir, 'avatarUrl.js'), "'use strict'; exports.resolveProfilePhotoUrl = async (value) => value ?? null;\n", 'utf8');
+
 const testRun = spawnSync(process.execPath, [
   '--test',
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatContracts.test.cjs'),
 ], {
   cwd: repoRoot,
   env: { ...process.env, MEAL_PLAN_CONTRACT_BUILD_DIR: buildDir },

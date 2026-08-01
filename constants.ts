@@ -1,4 +1,4 @@
-import { Client, Task, Appointment, Conversation, Recipe } from './types';
+import { Client, Task, Appointment, Recipe } from './types';
 
 // Avatars hotlinked from the original HTML provided
 const AVATAR_AYSE = "https://lh3.googleusercontent.com/aida-public/AB6AXuDXIbFtvnP37vVB94Yt4Wa43jNFkJe6kw4o1PA0ne8m_NZm1qMGaiF3xCLK68K7SFPwWz362D5Q18vhlBjMjIGbRDmhi1E7E_k2wU7qO1TuywifN5Fj6Y8h2SPPupvRd4LWJ4k71jmgPAPoA-m1tOVpCB0UklohXMl0Ka6jadsrFPvJ3ncTirKTX2gV9EudZG01yOyuMWjjT7PeGH6dhB9oiZdSWmHIUCdwbeHT28vx4r_jlURdkCDlHIWMI_IvXZ4Wy5Jq0guTV1Q";
@@ -139,46 +139,6 @@ export const APPOINTMENTS: Appointment[] = [
     clientName: 'Emine Demir',
     type: 'Telefon Görüşmesi',
     status: 'upcoming',
-  },
-];
-
-export const CONVERSATIONS: Conversation[] = [
-  {
-    id: '1',
-    clientName: 'Esma Sayar',
-    clientAvatar: AVATAR_AYSE,
-    lastMessage: 'Harika, hemen planıma ekliyorum!',
-    lastMessageTime: '14:26',
-    isOnline: true,
-    messages: [
-      { id: '1', sender: 'other', text: 'Merhaba, bugünkü öğle yemeğimin fotoğrafını gönderiyorum. Değerlendirebilir misiniz?', time: '14:20' },
-      { id: '2', sender: 'me', text: 'Merhaba Esma, elbette. Çok dengeli ve sağlıklı görünüyor, tebrikler! Sadece porsiyonu biraz daha küçük tutabilirsin.', time: '14:22' },
-      { id: '3', sender: 'other', text: 'Anladım, bir dahakine dikkat edeceğim. Teşekkürler!', time: '14:23' },
-      { id: '4', sender: 'me', text: 'Rica ederim, harika gidiyorsun. Yeni planını birazdan göndereceğim.', time: '14:25' },
-      { id: '5', sender: 'other', text: 'Harika, hemen planıma ekliyorum!', time: '14:26' },
-    ],
-  },
-  {
-    id: '2',
-    clientName: 'Mehmet Kaya',
-    clientAvatar: AVATAR_MEHMET,
-    lastMessage: '[Öğün Fotoğrafı]',
-    lastMessageTime: '13:15',
-    isOnline: false,
-    messages: [
-        { id: '1', sender: 'other', text: 'Buna bir bak!', time: '13:15' }
-    ],
-  },
-  {
-    id: '3',
-    clientName: 'Zeynep Aksoy',
-    clientAvatar: AVATAR_ZEYNEP,
-    lastMessage: 'Bu hafta çok daha iyi hissediyorum...',
-    lastMessageTime: 'Dün',
-    isOnline: false,
-    messages: [
-        { id: '1', sender: 'other', text: 'Geçen haftaya göre bu hafta çok daha iyi hissediyorum.', time: 'Dün' }
-    ],
   },
 ];
 
