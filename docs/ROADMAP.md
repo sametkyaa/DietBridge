@@ -270,7 +270,8 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** Yalnızca ilişkili taraflar konuşur; mesaj/görsel kalıcıdır; iki taraf güncellemeyi görür; yetkisiz okuma reddedilir; başarısız gönderim başarı göstermez.
 - **Manuel doğrulama:** İki taraflı mesaj, reconnect, duplicate gönderme, görsel limitleri, yetkisiz kullanıcı ve sayfalama.
 - **Teslim çıktıları:** Mesaj şeması/migration’ı, servis ve UI entegrasyonu, güvenlik test raporu.
-- **Durum:** Bekliyor.
+- **Kapanış notu — 2026-08-01:** Private görselli mesajlaşma tamamlandı. Web ve mobil gönderim akışları, Production validator/cleanup altyapısı ve beş dakikalık cleanup scheduler aktif durumda. Web → mobil ve mobil → web gerçek cihaz/tarayıcı E2E akışları; realtime, restart persistence, duplicate kontrolü ve Production canary doğrulaması geçti. Web image decode fallback ve mobil picker lifecycle hataları giderildi.
+- **Durum:** `COMPLETED`.
 
 ### Aşama 7 — Randevu yönetimi
 
@@ -463,7 +464,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 3 | Supabase ve RLS | Tamamlandı | `codex/supabase-security` | 2026-07-13 | 2026-07-16 | Production history `9/9` eşleşti; kontrollü adoption ve gerçek policy-removal migration’ı tamamlandı; RPC/RLS/mobil/cleanup/plan senkronizasyon kapıları geçti; PR #1 `main`e merge edildi |
 | 4 | Danışan yönetimi | Tamamlandı | `codex/client-management` | 2026-07-16 | 2026-07-18 | Measurement patch/pagination runtime, responsive/touch-target ve sıfır cleanup kapıları geçti; avatar signed URL cache/TTL davranışı P2 deferred kaldı |
 | 5 | Beslenme planı | Bekliyor | `codex/meal-plans` |  |  |  |
-| 6 | Mesajlaşma | Bekliyor | `codex/chat` |  |  |  |
+| 6 | Mesajlaşma | `COMPLETED` | `codex/phase6-closeout` | 2026-07-26 | 2026-08-01 | Private görsel mesajlaşma, validator/cleanup/scheduler, iki yönlü gerçek E2E ve Production canary tamamlandı; kapanış raporu eklendi |
 | 7 | Randevular | Bekliyor | `codex/appointments` |  |  |  |
 | 8 | Abonelik | Bekliyor | `codex/subscriptions` |  |  |  |
 | 9 | Mock temizliği | Bekliyor | `codex/mock-cleanup` |  |  |  |
