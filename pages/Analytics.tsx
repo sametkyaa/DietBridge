@@ -22,7 +22,8 @@ import {
   ChevronLeft,
   Sparkles
 } from 'lucide-react';
-import { USER_AVATAR, CLIENTS } from '../constants';
+import { CLIENTS } from '../constants';
+import DietitianAvatar from '../shared/components/DietitianAvatar';
 import { Client } from '../types';
 
 // --- Types & Mock Data Extensions ---
@@ -603,7 +604,7 @@ const Analytics = () => {
                 Dışa Aktar
               </button>
               <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <img src={USER_AVATAR} className="w-10 h-10 rounded-full border border-slate-200 ml-2 shadow-sm" alt="Profil" />
+            <DietitianAvatar className="w-10 h-10 rounded-full border border-slate-200 ml-2 shadow-sm" alt="Profil" />
           </button>
             </div>
           </div>

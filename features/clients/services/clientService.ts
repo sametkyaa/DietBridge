@@ -3,69 +3,10 @@ import { supabase } from '../../../lib/supabaseClient';
 import { Client, ClientLifestyleReadModel } from '../../../shared/types';
 import { USER_AVATAR } from '../../../shared/constants';
 import { isValidUuid } from '../../../shared/utils/uuid';
+import { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
+import { isValidMeasurementValue } from '../utils/measurementContract';
 
-const AVATAR_BUCKET = 'avatars';
-const AVATAR_SIGNED_URL_TTL_SECONDS = 5 * 60;
-const AVATAR_OBJECT_PATH_PATTERN =
-  /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/avatar\.(?:jpe?g|png|webp)$/i;
-
-type ProfilePhotoAccess = {
-  subjectUserId: string;
-  allowPrivatePath: boolean;
-};
-
-const resolveTrustedPublicAvatarUrl = (storedValue: string): string | null => {
-  try {
-    const parsedUrl = new URL(storedValue);
-    if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) return null;
-
-    const storageObjectPath = parsedUrl.pathname.toLowerCase();
-    if (
-      storageObjectPath.includes('/storage/v1/object/')
-      && !storageObjectPath.includes('/storage/v1/object/public/')
-    ) {
-      return null;
-    }
-
-    if (
-      parsedUrl.searchParams.has('token')
-      || parsedUrl.searchParams.has('expires')
-      || parsedUrl.searchParams.has('signature')
-    ) {
-      return null;
-    }
-
-    return parsedUrl.toString();
-  } catch {
-    return null;
-  }
-};
-
-export async function resolveProfilePhotoUrl(
-  storedValue: string | null | undefined,
-  access: ProfilePhotoAccess,
-): Promise<string | null> {
-  const normalizedValue = String(storedValue ?? '').trim();
-  if (!normalizedValue || !isValidUuid(access.subjectUserId)) return null;
-
-  if (/^[a-z][a-z\d+.-]*:/i.test(normalizedValue)) {
-    return resolveTrustedPublicAvatarUrl(normalizedValue);
-  }
-
-  if (!access.allowPrivatePath) return null;
-
-  const pathMatch = AVATAR_OBJECT_PATH_PATTERN.exec(normalizedValue);
-  if (!pathMatch || pathMatch[1].toLowerCase() !== access.subjectUserId.toLowerCase()) {
-    return null;
-  }
-
-  const { data, error } = await supabase.storage
-    .from(AVATAR_BUCKET)
-    .createSignedUrl(normalizedValue, AVATAR_SIGNED_URL_TTL_SECONDS);
-
-  if (error || !data?.signedUrl) return null;
-  return data.signedUrl;
-}
+export { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
 
 interface CatalogLabelRow {
   label: string | null;
@@ -771,9 +712,13 @@ export interface Measurement {
   waist: number | null;
   hip: number | null;
   arm: number | null;
+  right_arm: number | null;
+  left_arm: number | null;
   chest: number | null;
   thigh: number | null;
   calf: number | null;
+  right_calf: number | null;
+  left_calf: number | null;
   neck: number | null;
   notes: string | null;
   created_at: string;
@@ -792,9 +737,11 @@ export interface SaveClientBodyMeasurementsInput {
   measuredAt: string;
   waist: number | null;
   hip: number | null;
-  arm: number | null;
+  right_arm: number | null;
+  left_arm: number | null;
   chest: number | null;
-  calf: number | null;
+  right_calf: number | null;
+  left_calf: number | null;
   neck: number | null;
   notes: string | null;
 }
@@ -807,18 +754,24 @@ const measurementRowNumericKeys = [
   'waist',
   'hip',
   'arm',
+  'right_arm',
+  'left_arm',
   'chest',
   'thigh',
   'calf',
+  'right_calf',
+  'left_calf',
   'neck',
 ] as const satisfies ReadonlyArray<keyof Measurement>;
 
 const bodyMeasurementNumericKeys = [
   'waist',
   'hip',
-  'arm',
+  'right_arm',
+  'left_arm',
   'chest',
-  'calf',
+  'right_calf',
+  'left_calf',
   'neck',
 ] as const satisfies ReadonlyArray<keyof SaveClientBodyMeasurementsInput>;
 
@@ -929,9 +882,7 @@ export const saveClientBodyMeasurements = async (
     if (!values.some((value) => value !== null)) {
       throw new Error('At least one body measurement value is required');
     }
-    if (values.some((value) => value !== null && (
-      !Number.isFinite(value) || value <= 0 || value > 500
-    ))) {
+    if (values.some((value) => !isValidMeasurementValue(value))) {
       throw new Error('Circumference is outside the supported range');
     }
 
@@ -940,14 +891,16 @@ export const saveClientBodyMeasurements = async (
       throw new Error('Measurement notes are too long');
     }
 
-    const { data, error } = await supabase.rpc('save_active_client_body_measurements', {
+    const { data, error } = await supabase.rpc('save_active_client_body_measurements_v2', {
       p_client_id: input.clientId,
       p_measured_at: input.measuredAt,
       p_waist: input.waist,
       p_hip: input.hip,
-      p_arm: input.arm,
+      p_right_arm: input.right_arm,
+      p_left_arm: input.left_arm,
       p_chest: input.chest,
-      p_calf: input.calf,
+      p_right_calf: input.right_calf,
+      p_left_calf: input.left_calf,
       p_neck: input.neck,
       p_notes: normalizedNotes,
     });
@@ -1007,9 +960,8 @@ export const fetchClientMeasurements = async (
 
   let query = supabase
     .from('measurements')
-    .select('id, client_id, measured_at, weight, waist, hip, arm, chest, thigh, calf, neck, notes, created_at, updated_at')
+    .select('id, client_id, measured_at, weight, waist, hip, arm, right_arm, left_arm, chest, thigh, calf, right_calf, left_calf, neck, notes, created_at, updated_at')
     .eq('client_id', clientId)
-    .not('weight', 'is', null)
     .order('measured_at', { ascending: false });
 
   if (cursor !== null) {

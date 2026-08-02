@@ -13,6 +13,7 @@
  *  8. Deleted recipe snapshots keep source='recipe' with recipe_id=null
  *  9. Recipe snapshots retain their source, recipe id, description and image path
  * 10. Date selection maps to the correct Monday week start
+ * 11. Previous-week copy preserves durable meal image and recipe references
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -52,6 +53,7 @@ const PLANNED_RECIPE_IMAGE_ACCESS_MIGRATION = fs.readFileSync(
   path.join(__dirname, '..', 'supabase', 'migrations', '20260724100000_allow_clients_read_planned_recipe_images.sql'),
   'utf8',
 );
+const MEAL_PLANS_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'pages', 'MealPlans.tsx'), 'utf8');
 
 const buildSaveDays = (mealOverrides = {}) => WEEK_DATES.map((date, index) => ({
   plan_date: date,
@@ -142,6 +144,17 @@ const stubFetchRows = (rows) => {
 };
 
 supabaseStub.__setUserId(DIETITIAN_ID);
+
+test('11: previous-week copy preserves durable image and recipe fields while resetting identity and eaten state', () => {
+  const copyBlock = MEAL_PLANS_SOURCE.match(/const createPreviousWeekCopy[\s\S]*?return \{ meals, weeklyPlan, planNotes, isEmpty:/);
+  assert.ok(copyBlock, 'createPreviousWeekCopy implementation is present');
+  assert.match(copyBlock[0], /image:\s*meal\.photo_url/);
+  assert.match(copyBlock[0], /source:\s*meal\.source/);
+  assert.match(copyBlock[0], /recipeId:\s*meal\.recipe_id/);
+  assert.match(copyBlock[0], /mealId:\s*undefined/);
+  assert.match(copyBlock[0], /isEaten:\s*false/);
+  assert.doesNotMatch(copyBlock[0], /image:\s*null/);
+});
 
 test('1+2: canonical Storage path is accepted for write payload and read response', async () => {
   const captured = stubRpcResponse(buildRpcWeek());

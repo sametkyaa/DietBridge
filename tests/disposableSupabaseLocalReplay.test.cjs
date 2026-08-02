@@ -37,14 +37,14 @@ const runMaterializeOnly = async (options = {}) => {
   return runDisposableSupabaseLocalReplay({ materializeOnly: true, ...options });
 };
 
-test('materializes the exact 27+7 migration chain in deterministic order', async (t) => {
+test('materializes the exact 29+7 migration chain in deterministic order', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
-  assert.deepEqual(result.manifest.expectedHistory, { canonical: 27, image: 7, total: 34 });
-  assert.equal(result.manifest.files.length, 34);
-  assert.equal(result.disposableHistory.repositoryMigrationCount, 34);
+  assert.deepEqual(result.manifest.expectedHistory, { canonical: 29, image: 7, total: 36 });
+  assert.equal(result.manifest.files.length, 36);
+  assert.equal(result.disposableHistory.repositoryMigrationCount, 36);
   assert.equal(result.disposableHistory.localPrerequisiteCount, 1);
-  assert.equal(result.disposableHistory.disposableMigrationCount, 35);
+  assert.equal(result.disposableHistory.disposableMigrationCount, 37);
   assert.deepEqual(
     result.manifest.files.map((file) => file.path),
     [...result.manifest.files.map((file) => file.path)].sort(),
@@ -100,7 +100,7 @@ test('local prerequisite SQL creates no policy, grant, function, object, or fixt
   assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /public\.(profiles|dietitian_clients)/i);
 });
 
-test('repository migration order remains unchanged inside the 35-entry disposable history', async (t) => {
+test('repository migration order remains unchanged inside the 37-entry disposable history', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
   const repositoryPaths = result.manifest.files.map((file) => file.path);
@@ -108,6 +108,8 @@ test('repository migration order remains unchanged inside the 35-entry disposabl
   assert.deepEqual(disposableRepositoryPaths, repositoryPaths);
   assert.equal(result.disposableHistory.paths.filter((path) => path.endsWith('20260729090000_chat_image_schema.sql')).length, 1);
   assert.equal(result.disposableHistory.paths.filter((path) => path.endsWith('20260729090400_chat_image_cleanup.sql')).length, 1);
+  assert.equal(result.disposableHistory.paths.filter((path) => path.endsWith('20260801090000_align_measurements_with_mobile.sql')).length, 1);
+  assert.equal(result.disposableHistory.paths.filter((path) => path.endsWith('20260802090000_chat_active_relationship_hardening.sql')).length, 1);
 });
 
 test('reports the verified source and materialized hashes', async (t) => {

@@ -69,6 +69,7 @@ const SOURCES = [
   'features/auth/services/authLifecycle.ts',
   'features/recipes/services/recipeService.ts',
   'features/recipes/utils/filterRecipes.ts',
+  'features/clients/utils/measurementContract.ts',
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
   'features/chat/types/chatImage.ts',
@@ -92,6 +93,7 @@ const EXPECTED_OUTPUTS = [
   'features/auth/services/authLifecycle.js',
   'features/recipes/services/recipeService.js',
   'features/recipes/utils/filterRecipes.js',
+  'features/clients/utils/measurementContract.js',
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
   'features/chat/types/chatImage.js',
@@ -214,6 +216,8 @@ const testRun = spawnSync(process.execPath, [
   join(repoRoot, 'tests', 'chatImageOwnershipContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageUiContracts.test.cjs'),
   join(repoRoot, 'tests', 'disposableReplayMaterializer.test.cjs'),
+  join(repoRoot, 'tests', 'disposableSupabaseLocalReplay.test.cjs'),
+  join(repoRoot, 'tests', 'measurementContracts.test.cjs'),
 ], {
   cwd: repoRoot,
   env: {

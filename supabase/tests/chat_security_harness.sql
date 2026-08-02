@@ -23,17 +23,23 @@ create temporary table chat_test_context (
   client_client_message_id uuid not null,
   long_client_message_id uuid not null,
   pending_client_message_id uuid not null,
+  pending_fixture_client_message_id uuid not null,
   removed_client_message_id uuid not null,
+  removed_fixture_client_message_id uuid not null,
   unrelated_client_message_id uuid not null,
   empty_client_message_id uuid not null,
   overlong_client_message_id uuid not null,
   foreign_client_message_id uuid not null,
   unknown_message_id uuid not null,
   active_conversation_id uuid,
+  pending_conversation_id uuid,
+  removed_conversation_id uuid,
   foreign_conversation_id uuid,
   dietitian_message_id uuid,
   client_message_id uuid,
   long_message_id uuid,
+  pending_message_id uuid,
+  removed_message_id uuid,
   foreign_message_id uuid,
   newest_message_id uuid,
   older_message_id uuid
@@ -61,7 +67,9 @@ insert into chat_test_context (
   client_client_message_id,
   long_client_message_id,
   pending_client_message_id,
+  pending_fixture_client_message_id,
   removed_client_message_id,
+  removed_fixture_client_message_id,
   unrelated_client_message_id,
   empty_client_message_id,
   overlong_client_message_id,
@@ -69,6 +77,8 @@ insert into chat_test_context (
   unknown_message_id
 )
 values (
+  gen_random_uuid(),
+  gen_random_uuid(),
   gen_random_uuid(),
   gen_random_uuid(),
   gen_random_uuid(),
@@ -228,8 +238,6 @@ set status = case
     (select foreign_active_relation_id from chat_test_context),
     (select direct_relation_id from chat_test_context)
   ) then 'active'::public.client_status
-  when id = (select removed_relation_id from chat_test_context)
-    then 'removed'::public.client_status
   else status
 end
 where id in (
@@ -269,7 +277,7 @@ begin
     where id = (select removed_relation_id from chat_test_context)
       and dietitian_id = (select primary_dietitian_user_id from chat_test_context)
       and client_id = (select removed_client_user_id from chat_test_context)
-      and status = 'removed'::public.client_status
+      and status = 'pending'::public.client_status
   )
   or not exists (
     select 1 from public.dietitian_clients
@@ -319,6 +327,166 @@ begin
 end
 $$;
 
+-- Build a real conversation while the pending relationship is active, then
+-- move it through removed back to pending before the pending-access tests.
+update public.dietitian_clients
+set status = 'active'::public.client_status
+where id = (select pending_relation_id from chat_test_context);
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', primary_dietitian_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', primary_dietitian_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+declare
+  v_message public.chat_messages%rowtype;
+begin
+  select *
+    into v_message
+    from public.send_chat_message(
+      (select pending_relation_id from chat_test_context),
+      (select pending_fixture_client_message_id from chat_test_context),
+      'fixture pending history'
+    );
+
+  update chat_test_context
+  set pending_conversation_id = v_message.conversation_id,
+      pending_message_id = v_message.id;
+
+  if v_message.conversation_id is null
+     or v_message.sender_id is distinct from (select primary_dietitian_user_id from chat_test_context) then
+    raise exception 'FAIL: PENDING_FIXTURE_CONVERSATION_CREATED';
+  end if;
+end
+$$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', pending_client_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', pending_client_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+begin
+  perform public.mark_chat_conversation_read(
+    (select pending_conversation_id from chat_test_context),
+    (select pending_message_id from chat_test_context)
+  );
+end
+$$;
+reset role;
+
+update public.dietitian_clients
+set status = 'removed'::public.client_status
+where id = (select pending_relation_id from chat_test_context);
+
+update public.dietitian_clients
+set status = 'pending'::public.client_status
+where id = (select pending_relation_id from chat_test_context);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.dietitian_clients
+    where id = (select pending_relation_id from chat_test_context)
+      and status = 'pending'::public.client_status
+  )
+  or (select pending_conversation_id from chat_test_context) is null
+  or (select pending_message_id from chat_test_context) is null
+  or not exists (
+    select 1
+    from public.chat_read_states
+    where conversation_id = (select pending_conversation_id from chat_test_context)
+      and user_id = (select pending_client_user_id from chat_test_context)
+  ) then
+    raise exception 'FAIL: PENDING_FIXTURE_REVOKED_TO_PENDING';
+  end if;
+end
+$$;
+\echo PASS: PENDING_FIXTURE_REVOKED_TO_PENDING
+
+-- Build a real conversation while the relationship is active, then revoke the
+-- relationship before the inactive-access assertions below.
+update public.dietitian_clients
+set status = 'active'::public.client_status
+where id = (select removed_relation_id from chat_test_context);
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', primary_dietitian_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', primary_dietitian_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+declare
+  v_message public.chat_messages%rowtype;
+begin
+  select *
+    into v_message
+    from public.send_chat_message(
+      (select removed_relation_id from chat_test_context),
+      (select removed_fixture_client_message_id from chat_test_context),
+      'fixture removed history'
+    );
+
+  update chat_test_context
+  set removed_conversation_id = v_message.conversation_id,
+      removed_message_id = v_message.id;
+
+  if v_message.conversation_id is null
+     or v_message.sender_id is distinct from (select primary_dietitian_user_id from chat_test_context) then
+    raise exception 'FAIL: REMOVED_FIXTURE_CONVERSATION_CREATED';
+  end if;
+end
+$$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', removed_client_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', removed_client_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+begin
+  perform public.mark_chat_conversation_read(
+    (select removed_conversation_id from chat_test_context),
+    (select removed_message_id from chat_test_context)
+  );
+end
+$$;
+reset role;
+
+update public.dietitian_clients
+set status = 'removed'::public.client_status
+where id = (select removed_relation_id from chat_test_context);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.dietitian_clients
+    where id = (select removed_relation_id from chat_test_context)
+      and status = 'removed'::public.client_status
+  )
+  or (select removed_conversation_id from chat_test_context) is null
+  or (select removed_message_id from chat_test_context) is null
+  or not exists (
+    select 1
+    from public.chat_read_states
+    where conversation_id = (select removed_conversation_id from chat_test_context)
+      and user_id = (select removed_client_user_id from chat_test_context)
+  ) then
+    raise exception 'FAIL: REMOVED_FIXTURE_REVOKED_AFTER_CREATION';
+  end if;
+end
+$$;
+\echo PASS: REMOVED_FIXTURE_REVOKED_AFTER_CREATION
+
 -- Verify the installed auth.uid() implementation accepts the claim model used
 -- below before any authorization assertion is trusted.
 set local role authenticated;
@@ -352,6 +520,120 @@ begin
 end
 $$;
 reset role;
+
+-- Pending relationships cannot read or mutate an existing Chat fixture.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', pending_client_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', pending_client_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+begin
+  if exists (
+    select 1 from public.chat_conversations
+    where id = (select pending_conversation_id from chat_test_context)
+  ) then
+    raise exception 'FAIL: PENDING_CONVERSATION_SELECT_HIDDEN';
+  end if;
+
+  if exists (
+    select 1 from public.chat_messages
+    where id = (select pending_message_id from chat_test_context)
+  ) then
+    raise exception 'FAIL: PENDING_MESSAGE_SELECT_HIDDEN';
+  end if;
+
+  if exists (
+    select 1 from public.chat_read_states
+    where conversation_id = (select pending_conversation_id from chat_test_context)
+  ) then
+    raise exception 'FAIL: PENDING_READ_STATE_SELECT_HIDDEN';
+  end if;
+end
+$$;
+reset role;
+\echo PASS: PENDING_CONVERSATION_SELECT_HIDDEN
+\echo PASS: PENDING_MESSAGE_SELECT_HIDDEN
+\echo PASS: PENDING_READ_STATE_SELECT_HIDDEN
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', pending_client_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', pending_client_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+begin
+  begin
+    perform public.mark_chat_conversation_delivered(
+      (select pending_conversation_id from chat_test_context),
+      (select pending_message_id from chat_test_context)
+    );
+    raise exception 'FAIL: PENDING_DELIVERY_RPC_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    perform public.mark_chat_conversation_read(
+      (select pending_conversation_id from chat_test_context),
+      (select pending_message_id from chat_test_context)
+    );
+    raise exception 'FAIL: PENDING_READ_RPC_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    perform public.delete_chat_message((select pending_message_id from chat_test_context));
+    raise exception 'FAIL: PENDING_DELETE_RPC_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    insert into public.chat_read_states (conversation_id, user_id, last_read_message_id)
+    values (
+      (select pending_conversation_id from chat_test_context),
+      (select pending_client_user_id from chat_test_context),
+      (select pending_message_id from chat_test_context)
+    );
+    raise exception 'FAIL: PENDING_READ_STATE_INSERT_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    update public.chat_read_states
+    set last_read_message_id = (select pending_message_id from chat_test_context)
+    where conversation_id = (select pending_conversation_id from chat_test_context)
+      and user_id = (select pending_client_user_id from chat_test_context);
+    raise exception 'FAIL: PENDING_READ_STATE_UPDATE_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+end
+$$;
+reset role;
+\echo PASS: PENDING_DELIVERY_RPC_REJECTED
+\echo PASS: PENDING_READ_RPC_REJECTED
+\echo PASS: PENDING_DELETE_RPC_REJECTED
+\echo PASS: PENDING_READ_STATE_INSERT_REJECTED
+\echo PASS: PENDING_READ_STATE_UPDATE_REJECTED
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', primary_dietitian_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', primary_dietitian_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+begin
+  begin
+    perform public.delete_chat_message((select pending_message_id from chat_test_context));
+    raise exception 'FAIL: PENDING_SENDER_DELETE_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+end
+$$;
+reset role;
+\echo PASS: PENDING_SENDER_DELETE_REJECTED
 
 -- 1. send_chat_message rejects an authenticated database role without a user.
 set local role authenticated;
@@ -894,6 +1176,155 @@ reset role;
 \echo PASS: READ_OLDER_CURSOR_DOES_NOT_REGRESS
 \echo PASS: READ_OTHER_PARTICIPANT_STATE_UNCHANGED
 
+-- Removed relationships cannot read or mutate the history created while active.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', removed_client_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', removed_client_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+begin
+  if exists (
+    select 1 from public.chat_conversations
+    where id = (select removed_conversation_id from chat_test_context)
+  ) then
+    raise exception 'FAIL: REMOVED_CONVERSATION_SELECT_HIDDEN';
+  end if;
+
+  if exists (
+    select 1 from public.chat_messages
+    where id = (select removed_message_id from chat_test_context)
+  ) then
+    raise exception 'FAIL: REMOVED_MESSAGE_SELECT_HIDDEN';
+  end if;
+
+  if exists (
+    select 1 from public.chat_read_states
+    where conversation_id = (select removed_conversation_id from chat_test_context)
+  ) then
+    raise exception 'FAIL: REMOVED_READ_STATE_SELECT_HIDDEN';
+  end if;
+end
+$$;
+reset role;
+\echo PASS: REMOVED_CONVERSATION_SELECT_HIDDEN
+\echo PASS: REMOVED_MESSAGE_SELECT_HIDDEN
+\echo PASS: REMOVED_READ_STATE_SELECT_HIDDEN
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', removed_client_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', removed_client_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+begin
+  begin
+    perform public.mark_chat_conversation_delivered(
+      (select removed_conversation_id from chat_test_context),
+      (select removed_message_id from chat_test_context)
+    );
+    raise exception 'FAIL: REMOVED_DELIVERY_RPC_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    perform public.mark_chat_conversation_read(
+      (select removed_conversation_id from chat_test_context),
+      (select removed_message_id from chat_test_context)
+    );
+    raise exception 'FAIL: REMOVED_READ_RPC_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    perform public.delete_chat_message((select removed_message_id from chat_test_context));
+    raise exception 'FAIL: REMOVED_DELETE_RPC_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    insert into public.chat_read_states (conversation_id, user_id, last_read_message_id)
+    values (
+      (select removed_conversation_id from chat_test_context),
+      (select removed_client_user_id from chat_test_context),
+      (select removed_message_id from chat_test_context)
+    );
+    raise exception 'FAIL: REMOVED_READ_STATE_INSERT_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    update public.chat_read_states
+    set last_read_message_id = (select removed_message_id from chat_test_context)
+    where conversation_id = (select removed_conversation_id from chat_test_context)
+      and user_id = (select removed_client_user_id from chat_test_context);
+    raise exception 'FAIL: REMOVED_READ_STATE_UPDATE_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+end
+$$;
+reset role;
+\echo PASS: REMOVED_DELIVERY_RPC_REJECTED
+\echo PASS: REMOVED_READ_RPC_REJECTED
+\echo PASS: REMOVED_DELETE_RPC_REJECTED
+\echo PASS: REMOVED_READ_STATE_INSERT_REJECTED
+\echo PASS: REMOVED_READ_STATE_UPDATE_REJECTED
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', primary_dietitian_user_id::text, true)
+from chat_test_context \gset
+select set_config('request.jwt.claim.role', 'authenticated', true) \gset
+select set_config('request.jwt.claims', jsonb_build_object('sub', primary_dietitian_user_id::text, 'role', 'authenticated')::text, true)
+from chat_test_context \gset
+do $$
+begin
+  begin
+    perform public.mark_chat_conversation_delivered(
+      (select removed_conversation_id from chat_test_context),
+      (select removed_message_id from chat_test_context)
+    );
+    raise exception 'FAIL: REMOVED_SENDER_DELIVERY_RPC_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    perform public.mark_chat_conversation_read(
+      (select removed_conversation_id from chat_test_context),
+      (select removed_message_id from chat_test_context)
+    );
+    raise exception 'FAIL: REMOVED_SENDER_READ_RPC_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+
+  begin
+    perform public.delete_chat_message((select removed_message_id from chat_test_context));
+    raise exception 'FAIL: REMOVED_SENDER_DELETE_REJECTED';
+  exception when sqlstate '42501' then null;
+  end;
+end
+$$;
+reset role;
+\echo PASS: REMOVED_SENDER_DELIVERY_RPC_REJECTED
+\echo PASS: REMOVED_SENDER_READ_RPC_REJECTED
+\echo PASS: REMOVED_SENDER_DELETE_REJECTED
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.chat_messages
+    where id = (select removed_message_id from chat_test_context)
+      and body = 'fixture removed history'
+      and deleted_at is null
+  ) then
+    raise exception 'FAIL: INACTIVE_DENIALS_PRESERVED_REMOVED_MESSAGE';
+  end if;
+end
+$$;
+\echo PASS: INACTIVE_DENIALS_PRESERVED_REMOVED_MESSAGE
+
 -- 35--38. These statements use valid fixture FKs; insufficient privilege must
 -- occur before any data mutation and each test verifies that postcondition.
 set local role authenticated;
@@ -1163,17 +1594,17 @@ select set_config('request.jwt.claim.role', 'authenticated', true) \gset
 select set_config('request.jwt.claims', jsonb_build_object('sub', primary_dietitian_user_id::text, 'role', 'authenticated')::text, true) from chat_test_context \gset
 do $$
 begin
-  if not exists (
+  if exists (
     select 1 from public.chat_read_states
     where conversation_id = (select active_conversation_id from chat_test_context)
       and user_id = (select active_client_user_id from chat_test_context)
   ) then
-    raise exception 'FAIL: RLS_PARTICIPANT_PEER_RECEIPT_VISIBLE';
+    raise exception 'FAIL: RLS_PARTICIPANT_PEER_RECEIPT_HIDDEN';
   end if;
 end
 $$;
 reset role;
-\echo PASS: RLS_PARTICIPANT_PEER_RECEIPT_VISIBLE
+\echo PASS: RLS_PARTICIPANT_PEER_RECEIPT_HIDDEN
 
 rollback;
 

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { markConversationDelivered, markConversationRead } from '../services/chatService';
-import { ChatMessage, ChatReadState } from '../types/chat';
+import { ChatMessage, ChatReadState, ChatServiceError } from '../types/chat';
 import { isValidUuid } from '../../../shared/utils/uuid';
+
+const CHAT_RECEIPT_UPDATE_ERROR = 'Mesaj durumu güncellenemedi. Lütfen tekrar deneyin.';
 
 interface UseChatReadStateOptions {
   currentUserId?: string;
@@ -15,6 +17,7 @@ interface UseChatReadStateOptions {
   isMessageHistoryLoading: boolean;
   messageHistoryError: string | null;
   onReceiptCommitted: (result: ChatReadState & { relationId: string }) => void;
+  onReceiptError?: (message: string) => void;
 }
 
 interface ActiveReceiptContext {
@@ -47,6 +50,7 @@ export const useChatReadState = ({
   isMessageHistoryLoading,
   messageHistoryError,
   onReceiptCommitted,
+  onReceiptError,
 }: UseChatReadStateOptions): void => {
   const [isForeground, setIsForeground] = useState(false);
   const mountedRef = useRef(false);
@@ -54,12 +58,14 @@ export const useChatReadState = ({
   const lastContextKeyRef = useRef<string | null | undefined>(undefined);
   const activeContextRef = useRef<ActiveReceiptContext>({ currentUserId, relationId, conversationId });
   const onReceiptCommittedRef = useRef(onReceiptCommitted);
+  const onReceiptErrorRef = useRef(onReceiptError);
   const deliveryInFlightKeysRef = useRef(new Set<string>());
   const readInFlightKeysRef = useRef(new Set<string>());
   const completedKeysRef = useRef(new Set<string>());
 
   activeContextRef.current = { currentUserId, relationId, conversationId };
   onReceiptCommittedRef.current = onReceiptCommitted;
+  onReceiptErrorRef.current = onReceiptError;
 
   const contextKey = getReceiptContextKey(activeContextRef.current);
 
@@ -128,7 +134,16 @@ export const useChatReadState = ({
         || getReceiptContextKey(activeContextRef.current) !== expectedContextKey
       ) return;
       onReceiptCommittedRef.current({ ...state, relationId: expectedRelationId });
-    }).catch(() => undefined).finally(() => {
+    }).catch((cause) => {
+      if (
+        !mountedRef.current
+        || contextGenerationRef.current !== expectedGeneration
+        || getReceiptContextKey(activeContextRef.current) !== expectedContextKey
+      ) return;
+      onReceiptErrorRef.current?.(
+        cause instanceof ChatServiceError ? cause.userMessage : CHAT_RECEIPT_UPDATE_ERROR,
+      );
+    }).finally(() => {
       deliveryInFlightKeysRef.current.delete(requestKey);
     });
   }, [
@@ -171,7 +186,16 @@ export const useChatReadState = ({
         || getReceiptContextKey(activeContextRef.current) !== expectedContextKey
       ) return;
       onReceiptCommittedRef.current({ ...state, relationId: expectedRelationId });
-    }).catch(() => undefined).finally(() => {
+    }).catch((cause) => {
+      if (
+        !mountedRef.current
+        || contextGenerationRef.current !== expectedGeneration
+        || getReceiptContextKey(activeContextRef.current) !== expectedContextKey
+      ) return;
+      onReceiptErrorRef.current?.(
+        cause instanceof ChatServiceError ? cause.userMessage : CHAT_RECEIPT_UPDATE_ERROR,
+      );
+    }).finally(() => {
       readInFlightKeysRef.current.delete(requestKey);
     });
   }, [

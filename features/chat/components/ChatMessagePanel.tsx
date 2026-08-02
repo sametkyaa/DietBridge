@@ -24,6 +24,7 @@ interface ChatMessagePanelProps {
   isLoadingOlder: boolean;
   error: string | null;
   loadOlderError: string | null;
+  receiptError: string | null;
   hasMore: boolean;
   onLoadOlder: () => void;
   onRetry: () => void;
@@ -258,6 +259,7 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
   isLoadingOlder,
   error,
   loadOlderError,
+  receiptError,
   hasMore,
   onLoadOlder,
   onRetry,
@@ -547,6 +549,11 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
               ),
             )}
           </div>
+        </div>
+      )}
+      {receiptError && (
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
+          {receiptError}
         </div>
       )}
       {conversation && composer}

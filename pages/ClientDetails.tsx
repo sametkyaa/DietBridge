@@ -16,6 +16,7 @@ import {
 } from '../features/clients/services/clientService';
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
+import { parseMeasurementInput } from '../features/clients/utils/measurementContract';
 
 
 const ProfileAvatarFallback = ({ name, className }: { name: string, className?: string }) => {
@@ -70,12 +71,14 @@ const bodyMeasurementFieldDefinitions: ReadonlyArray<{
   max: number;
   step: string;
 }> = [
-  { key: 'waist', label: 'Bel (cm)', min: 0, max: 500, step: 'any' },
-  { key: 'hip', label: 'Kalça (cm)', min: 0, max: 500, step: 'any' },
-  { key: 'arm', label: 'Kol (cm)', min: 0, max: 500, step: 'any' },
-  { key: 'chest', label: 'Göğüs (cm)', min: 0, max: 500, step: 'any' },
-  { key: 'calf', label: 'Baldır (cm)', min: 0, max: 500, step: 'any' },
-  { key: 'neck', label: 'Boyun (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'waist', label: 'Bel çevresi (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'hip', label: 'Kalça çevresi (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'right_arm', label: 'Sağ kol çevresi (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'left_arm', label: 'Sol kol çevresi (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'chest', label: 'Göğüs çevresi (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'right_calf', label: 'Sağ baldır çevresi (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'left_calf', label: 'Sol baldır çevresi (cm)', min: 0, max: 500, step: 'any' },
+  { key: 'neck', label: 'Boyun çevresi (cm)', min: 0, max: 500, step: 'any' },
 ];
 
 const todayIsoDate = (): string => {
@@ -96,9 +99,11 @@ const createEmptyBodyMeasurementForm = (
   measuredAt,
   waist: '',
   hip: '',
-  arm: '',
+  right_arm: '',
+  left_arm: '',
   chest: '',
-  calf: '',
+  right_calf: '',
+  left_calf: '',
   neck: '',
   notes: '',
 });
@@ -115,12 +120,47 @@ const measurementToBodyMeasurementForm = (
   measuredAt: measurement.measured_at,
   waist: measurement.waist?.toString() ?? '',
   hip: measurement.hip?.toString() ?? '',
-  arm: measurement.arm?.toString() ?? '',
+  right_arm: measurement.right_arm?.toString() ?? '',
+  left_arm: measurement.left_arm?.toString() ?? '',
   chest: measurement.chest?.toString() ?? '',
-  calf: measurement.calf?.toString() ?? '',
+  right_calf: measurement.right_calf?.toString() ?? '',
+  left_calf: measurement.left_calf?.toString() ?? '',
   neck: measurement.neck?.toString() ?? '',
   notes: measurement.notes ?? '',
 });
+
+type BodyMeasurementDisplayValue = {
+  label: string;
+  value: number;
+  legacy?: boolean;
+};
+
+const getBodyMeasurementDisplayValues = (measurement: Measurement): BodyMeasurementDisplayValue[] => {
+  const values: BodyMeasurementDisplayValue[] = [];
+  if (measurement.waist !== null) values.push({ label: 'Bel', value: measurement.waist });
+  if (measurement.hip !== null) values.push({ label: 'Kalça', value: measurement.hip });
+
+  const hasSideSpecificArm = measurement.right_arm !== null || measurement.left_arm !== null;
+  if (measurement.right_arm !== null) values.push({ label: 'Sağ kol', value: measurement.right_arm });
+  if (measurement.left_arm !== null) values.push({ label: 'Sol kol', value: measurement.left_arm });
+  if (!hasSideSpecificArm && measurement.arm !== null) {
+    values.push({ label: 'Kol — eski kayıt', value: measurement.arm, legacy: true });
+  }
+
+  if (measurement.chest !== null) values.push({ label: 'Göğüs', value: measurement.chest });
+
+  const hasSideSpecificCalf = measurement.right_calf !== null || measurement.left_calf !== null;
+  if (measurement.right_calf !== null) values.push({ label: 'Sağ baldır', value: measurement.right_calf });
+  if (measurement.left_calf !== null) values.push({ label: 'Sol baldır', value: measurement.left_calf });
+  if (!hasSideSpecificCalf && measurement.calf !== null) {
+    values.push({ label: 'Baldır — eski kayıt', value: measurement.calf, legacy: true });
+  }
+
+  if (measurement.neck !== null) values.push({ label: 'Boyun', value: measurement.neck });
+  if (measurement.thigh !== null) values.push({ label: 'Uyluk — eski kayıt', value: measurement.thigh, legacy: true });
+
+  return values;
+};
 
 const compareMeasurementsNewestFirst = (left: Measurement, right: Measurement): number => {
   const dateComparison = right.measured_at.localeCompare(left.measured_at);
@@ -668,15 +708,13 @@ const ClientDetails = () => {
 
     for (const definition of bodyMeasurementFieldDefinitions) {
       const rawValue = bodyMeasurementForm[definition.key].trim();
-      if (!rawValue) continue;
-
-      const parsedValue = Number(rawValue);
-      if (!Number.isFinite(parsedValue)) {
+      const parsedValue = parseMeasurementInput(rawValue);
+      if (parsedValue.error === 'invalid') {
         errors[definition.key] = 'Geçerli bir sayı girin.';
-      } else if (parsedValue <= definition.min || parsedValue > definition.max) {
+      } else if (parsedValue.error === 'out_of_range') {
         errors[definition.key] = 'Değer 0’dan büyük ve en fazla 500 cm olmalıdır.';
       } else {
-        numericValues[definition.key] = parsedValue;
+        numericValues[definition.key] = parsedValue.value;
       }
     }
 
@@ -755,6 +793,9 @@ const ClientDetails = () => {
   const measurementsWithWeight = measurements.filter(
     (measurement): measurement is Measurement & { weight: number } => measurement.weight !== null
   );
+  const bodyMeasurementHistory = measurements
+    .map((measurement) => ({ measurement, values: getBodyMeasurementDisplayValues(measurement) }))
+    .filter(({ values }) => values.length > 0);
   const weightHistory = measurementsWithWeight.slice(0, 8).reverse().map((measurement) => {
     const date = new Date(`${measurement.measured_at}T00:00:00`);
     return {
@@ -1167,6 +1208,36 @@ const ClientDetails = () => {
                         )}
                     </div>
                   </>
+                )}
+
+                {measurementStatus === 'ready' && bodyMeasurementHistory.length > 0 && (
+                  <div className="min-w-0 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 className="mb-4 font-bold text-slate-800">Vücut Ölçüleri Geçmişi</h3>
+                    <div className="space-y-3">
+                      {bodyMeasurementHistory.map(({ measurement, values }) => (
+                        <article key={`body-${measurement.id}`} className="min-w-0 rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <h4 className="font-semibold text-slate-800">
+                                {new Date(`${measurement.measured_at}T00:00:00`).toLocaleDateString('tr-TR')}
+                              </h4>
+                              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                {values.map((item) => (
+                                  <span key={`${measurement.id}-${item.label}`} className="inline-flex min-w-0 items-center justify-between gap-3 rounded-lg bg-white px-2 py-1 text-xs text-slate-600">
+                                    <span className="min-w-0 break-words">{item.label}</span>
+                                    <span className="shrink-0 font-semibold">{item.value} cm</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            {values.some((item) => item.legacy) && (
+                              <span className="shrink-0 text-xs text-amber-700">Eski kayıt</span>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
                 )}
 
                 <div className="min-w-0 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">

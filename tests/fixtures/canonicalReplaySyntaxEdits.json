@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 27,
+  "expectedCanonicalCount": 29,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2772,6 +2772,20 @@
       "phase": "image",
       "sourceSha256": "2aebed688a35308b16943b316908ee6082e61178b391a00ab7bb8296f158c245",
       "materializedSha256": "2aebed688a35308b16943b316908ee6082e61178b391a00ab7bb8296f158c245",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260801090000_align_measurements_with_mobile.sql",
+      "phase": "canonical",
+      "sourceSha256": "9385d3159bfada5bf897c1764cb097eb55f41c072bbbfc8dfd7840c1f80acdb1",
+      "materializedSha256": "9385d3159bfada5bf897c1764cb097eb55f41c072bbbfc8dfd7840c1f80acdb1",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260802090000_chat_active_relationship_hardening.sql",
+      "phase": "canonical",
+      "sourceSha256": "4b4d56c99a77d7887d592abff5d9eaa779702294780d50575b54579c1a49ac81",
+      "materializedSha256": "4b4d56c99a77d7887d592abff5d9eaa779702294780d50575b54579c1a49ac81",
       "edits": []
     }
   ]

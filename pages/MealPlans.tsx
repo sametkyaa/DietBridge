@@ -24,8 +24,8 @@ import {
   ChevronRight,
   RotateCcw,
 } from 'lucide-react';
-import { USER_AVATAR } from '../constants';
 import { Client } from '../shared/types';
+import DietitianAvatar from '../shared/components/DietitianAvatar';
 import Toast from '../shared/components/Toast';
 import {
   fetchActiveDietitianClientList,
@@ -245,12 +245,12 @@ const createPreviousWeekCopy = (
         id: `copy-${dayName}-${rowId}`,
         mealId: undefined,
         name: meal.title,
-        image: null,
+        image: meal.photo_url,
         imagePreview: null,
         calories: meal.calories ?? 0,
         macros: meal.macros,
-        source: 'manual',
-        recipeId: null,
+        source: meal.source,
+        recipeId: meal.recipe_id,
         isEaten: false,
       };
     });
@@ -1097,7 +1097,7 @@ const MealPlans = () => {
             <div className="h-8 w-px bg-slate-200"></div>
 
             <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <img src={USER_AVATAR} className="w-10 h-10 rounded-full border border-slate-200 object-cover" alt="Dietitian" />
+            <DietitianAvatar className="w-10 h-10 rounded-full border border-slate-200 object-cover" alt="Diyetisyen profil fotoğrafı" />
           </button>
           </div>
         </header>

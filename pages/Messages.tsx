@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Bell, Search } from 'lucide-react';
 import ChatComposer from '../features/chat/components/ChatComposer';
 import ChatConversationList from '../features/chat/components/ChatConversationList';
 import ChatMessagePanel from '../features/chat/components/ChatMessagePanel';
@@ -31,6 +31,7 @@ const Messages = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isMessagePanelVisible, setIsMessagePanelVisible] = useState(false);
   const [latestVisibleIncomingMessage, setLatestVisibleIncomingMessage] = useState<ChatMessage | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
 
   const filteredConversations = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase('tr-TR');
@@ -86,6 +87,7 @@ const Messages = () => {
 
   useEffect(() => {
     setLatestVisibleIncomingMessage(null);
+    setReceiptError(null);
   }, [activeConversation?.conversationId]);
 
   const handleMessageCommitted = useCallback(async (
@@ -129,6 +131,10 @@ const Messages = () => {
     commitConversationReceipt(result.relationId, result);
   }, [activeConversation?.conversationId, activeRelationId, commitConversationReceipt]);
 
+  const handleReceiptError = useCallback((message: string) => {
+    setReceiptError(message);
+  }, []);
+
   const handleVisibleIncomingMessage = useCallback((message: ChatMessage) => {
     if (message.conversationId !== activeConversation?.conversationId || message.isOwn) return;
     setLatestVisibleIncomingMessage((current) => {
@@ -159,6 +165,7 @@ const Messages = () => {
     isMessageHistoryLoading: isLoadingMessages,
     messageHistoryError: messageError,
     onReceiptCommitted: handleReceiptCommitted,
+    onReceiptError: handleReceiptError,
   });
 
   const {
@@ -211,6 +218,10 @@ const Messages = () => {
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
+          <button className="relative rounded-full border border-slate-200 bg-white p-2.5 text-slate-600 transition-colors hover:bg-slate-50" type="button" aria-label="Bildirimler">
+            <Bell className="h-5 w-5" aria-hidden="true" />
+            <span className="absolute right-2.5 top-2 h-2 w-2 rounded-full border border-white bg-red-500" aria-hidden="true" />
+          </button>
           <button
             type="button"
             onClick={() => navigate('/profile')}
@@ -283,6 +294,7 @@ const Messages = () => {
             isLoadingOlder={isLoadingOlder}
             error={messageError}
             loadOlderError={loadOlderError}
+            receiptError={receiptError}
             hasMore={hasMore}
             onLoadOlder={() => void loadOlder()}
             onRetry={() => void refetchMessages()}

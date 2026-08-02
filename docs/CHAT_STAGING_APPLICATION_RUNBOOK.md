@@ -29,6 +29,18 @@ kapsamında değildir.
    - `20260726090100_chat_constraints_indexes.sql`
    - `20260726090200_chat_rls.sql`
    - `20260726090300_chat_rpc.sql`
+   - `20260727091215_chat_table_privilege_hardening.sql`
+   - `20260727094415_chat_realtime_publication.sql`
+   - `20260727131340_chat_legacy_message_text_compatibility.sql`
+   - `20260728103000_chat_delete_delivery_receipts.sql`
+   - `20260729090000_chat_image_schema.sql`
+   - `20260729090100_chat_image_rls_privileges.sql`
+   - `20260729090200_chat_image_rpc.sql`
+   - `20260729090300_chat_image_storage.sql`
+   - `20260729090400_chat_image_cleanup.sql`
+   - `20260730180636_chat_image_cleanup_scheduler.sql`
+   - `20260730180641_chat_image_rpc_activation.sql`
+   - `20260802090000_chat_active_relationship_hardening.sql`
 6. Postflight metadata ile tablo/kolon/FK/index/RLS/policy/function ACL'lerini
    doğrula.
 7. Yalnız disposable sentetik fixture ile active, pending, removed, cross-tenant,
@@ -37,6 +49,14 @@ kapsamında değildir.
    için sıfır olmalıdır.
 9. Web/mobil entegrasyonu ancak staging güvenlik matrisi PASS sonrasında Aşama 6.2+
    kapsamında başlatılabilir.
+
+## Harness PASS sözleşmesi
+
+Staging üzerinde çalıştırılmasına ancak açık kullanıcı onayıyla izin verilen
+`supabase/tests/chat_security_harness.sql`, yukarıdaki canonical migration
+zincirini varsayar. Harness tamamlandığında tam olarak 71 benzersiz `PASS:` etiketi
+ve tek `CHAT_SECURITY_HARNESS_PASS` marker'ı bulunmalı; herhangi bir `FAIL:` marker'ı
+veya beklenmeyen SQL hatası başarısızlıktır.
 
 ## Geri dönüş yaklaşımı
 

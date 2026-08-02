@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Bell, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { USER_AVATAR } from '../../../shared/constants';
+import DietitianAvatar from '../../../shared/components/DietitianAvatar';
 import { Client } from '../../../shared/types';
 import { fetchDietitianClientList, addClientByEmail } from '../services/clientService';
 
@@ -545,7 +545,7 @@ const ClientsPage = () => {
           {/* Mobile Profile Pic (visible only on small screens) */}
           <div className="md:hidden">
              <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <img src={USER_AVATAR} alt="Profil" className="w-10 h-10 rounded-full border border-slate-200 object-cover" />
+             <DietitianAvatar alt="Profil" className="w-10 h-10 rounded-full border border-slate-200 object-cover" />
           </button>
           </div>
         </div>
@@ -567,11 +567,10 @@ const ClientsPage = () => {
           </button>
           
           <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <img
-            src={USER_AVATAR}
-            alt="Profil"
-            className="hidden md:block w-10 h-10 rounded-full border border-slate-200 object-cover"
-          />
+            <DietitianAvatar
+              alt="Profil"
+              className="hidden md:block w-10 h-10 rounded-full border border-slate-200 object-cover"
+            />
           </button>
         </div>
       </header>
