@@ -1,14 +1,13 @@
 -- Align the Web measurements contract with the mobile side-specific fields.
--- Legacy arm/calf columns and the legacy body-measurement RPC remain intact.
+-- Legacy arm/calf columns and any legacy measurement RPCs remain untouched.
+-- The legacy RPC is optional because Production history variants may not have
+-- applied the older Web-only body-measurement migration.
 
 do $$
 begin
   if to_regclass('public.measurements') is null
-     or to_regclass('public.measurements_client_date_unique') is null
-     or to_regprocedure(
-       'public.save_active_client_body_measurements(uuid,date,numeric,numeric,numeric,numeric,numeric,numeric,text)'
-     ) is null then
-    raise exception 'Expected legacy measurement contract is missing; migration stopped.';
+     or to_regclass('public.measurements_client_date_unique') is null then
+    raise exception 'Expected measurements table contract is missing; migration stopped.';
   end if;
 
   if not exists (
@@ -36,26 +35,66 @@ comment on column public.measurements.left_arm is 'Left arm circumference in cen
 comment on column public.measurements.right_calf is 'Right calf circumference in centimeters; canonical mobile measurement field.';
 comment on column public.measurements.left_calf is 'Left calf circumference in centimeters; canonical mobile measurement field.';
 
+-- Existing unlimited numeric columns are normalized to numeric(5,2).
+-- The guard rejects values that would require rounding or violate the
+-- canonical range; Production preflight must report the same zero counts.
 do $$
 begin
-  if not exists (
+  if exists (
     select 1
-    from pg_catalog.pg_constraint
-    where conrelid = 'public.measurements'::regclass
-      and conname = 'measurements_side_circumference_range_check'
+    from public.measurements
+    where (right_arm is not null and (
+      right_arm <> pg_catalog.round(right_arm, 2)
+      or right_arm <= 0
+      or right_arm > 500
+    ))
+    or (left_arm is not null and (
+      left_arm <> pg_catalog.round(left_arm, 2)
+      or left_arm <= 0
+      or left_arm > 500
+    ))
+    or (right_calf is not null and (
+      right_calf <> pg_catalog.round(right_calf, 2)
+      or right_calf <= 0
+      or right_calf > 500
+    ))
+    or (left_calf is not null and (
+      left_calf <> pg_catalog.round(left_calf, 2)
+      or left_calf <= 0
+      or left_calf > 500
+    ))
   ) then
-    alter table public.measurements
-      add constraint measurements_side_circumference_range_check
-      check (
-        (right_arm is null or (right_arm > 0 and right_arm <= 500))
-        and (left_arm is null or (left_arm > 0 and left_arm <= 500))
-        and (right_calf is null or (right_calf > 0 and right_calf <= 500))
-        and (left_calf is null or (left_calf > 0 and left_calf <= 500))
-      )
-      not valid;
+    raise exception 'Existing side-specific measurement data requires rounding or violates the canonical range; migration stopped.'
+      using errcode = '22003';
   end if;
 end
 $$;
+
+do $$
+begin
+  alter table public.measurements
+    alter column right_arm type numeric(5,2)
+      using right_arm::numeric(5,2),
+    alter column left_arm type numeric(5,2)
+      using left_arm::numeric(5,2),
+    alter column right_calf type numeric(5,2)
+      using right_calf::numeric(5,2),
+    alter column left_calf type numeric(5,2)
+      using left_calf::numeric(5,2);
+end
+$$;
+
+alter table public.measurements
+  drop constraint if exists measurements_side_circumference_range_check;
+
+alter table public.measurements
+  add constraint measurements_side_circumference_range_check
+  check (
+    (right_arm is null or (right_arm > 0 and right_arm <= 500))
+    and (left_arm is null or (left_arm > 0 and left_arm <= 500))
+    and (right_calf is null or (right_calf > 0 and right_calf <= 500))
+    and (left_calf is null or (left_calf > 0 and left_calf <= 500))
+  );
 
 alter table public.measurements
   validate constraint measurements_side_circumference_range_check;

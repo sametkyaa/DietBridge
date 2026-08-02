@@ -106,11 +106,26 @@ test('measurement contract: legacy arm/calf values are fallback-only and never c
   assert.doesNotMatch(clientServiceSource, /left_calf:\s*input\.calf/);
 });
 
-test('measurement contract: migration adds nullable side-specific numeric columns and a protected RPC', () => {
+test('measurement contract: migration normalizes side-specific numeric columns without rounding', () => {
   for (const column of ['right_arm', 'left_arm', 'right_calf', 'left_calf']) {
     assert.match(migrationSource, new RegExp(`add column if not exists ${column} numeric\\(5,2\\)`));
+    assert.match(
+      migrationSource,
+      new RegExp(`alter column ${column}\\s+type numeric\\(5,2\\)\\s+using\\s+${column}::numeric\\(5,2\\)`),
+      `Missing controlled numeric(5,2) conversion for ${column}`,
+    );
+    assert.match(
+      migrationSource,
+      new RegExp(`${column}\\s+<>\\s+(?:pg_catalog\\.)?round\\(\\s*${column}\\s*,\\s*2\\s*\\)`),
+      `Missing precision guard for ${column}`,
+    );
     assert.match(migrationSource, new RegExp(`\\b${column}\\b is null or \\(${column} > 0`));
   }
+  assert.match(migrationSource, /drop constraint if exists measurements_side_circumference_range_check/);
+  assert.doesNotMatch(migrationSource, /drop column|drop table|truncate|delete from/i);
+  assert.doesNotMatch(migrationSource, /update public\.measurements/i);
+  assert.doesNotMatch(migrationSource, /to_regprocedure[\s\S]*save_active_client_body_measurements\(/i);
+  assert.match(migrationSource, /Existing side-specific measurement data requires rounding/);
   assert.match(migrationSource, /save_active_client_body_measurements_v2/);
   assert.match(migrationSource, /security definer/);
   assert.match(migrationSource, /set search_path = pg_catalog, public/);
