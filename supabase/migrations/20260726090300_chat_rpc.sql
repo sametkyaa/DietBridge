@@ -8,8 +8,7 @@ begin
      or to_regclass('public.chat_read_states') is null
      or to_regprocedure('public.enforce_chat_conversation_contract()') is null
      or to_regprocedure('public.enforce_chat_message_contract()') is null
-     or to_regprocedure('public.enforce_chat_read_state_contract()') is null
-     or to_regprocedure('public.chat_has_active_relationship(uuid,uuid)') is null then
+     or to_regprocedure('public.enforce_chat_read_state_contract()') is null then
     raise exception 'Chat RPC prerequisites are missing.';
   end if;
 
@@ -18,8 +17,7 @@ begin
     raise exception 'Chat RPC already exists; inspect schema drift first.';
   end if;
 end
-$$;
-
+$$
 -- The first parameter is the authenticated caller's relationship row rather
 -- than a conversation ID. This is intentional: it lets the function lazily
 -- create the one canonical conversation atomically on the first message.
@@ -37,6 +35,7 @@ declare
   v_actor_id uuid := auth.uid();
   v_dietitian_id uuid;
   v_client_id uuid;
+  v_relationship_status public.client_status;
   v_conversation_id uuid;
   v_body text := btrim(p_body);
   v_message public.chat_messages%rowtype;
@@ -52,14 +51,15 @@ begin
     raise exception 'Invalid chat message.' using errcode = '22023';
   end if;
 
-  select dc.dietitian_id, dc.client_id
-    into v_dietitian_id, v_client_id
+  select dc.dietitian_id, dc.client_id, dc.status
+    into v_dietitian_id, v_client_id, v_relationship_status
     from public.dietitian_clients as dc
     where dc.id = p_dietitian_client_id
     for key share;
 
-   if not found
-      or not public.chat_has_active_relationship(v_dietitian_id, v_client_id) then
+  if not found
+     or v_relationship_status is distinct from 'active'::public.client_status
+     or v_actor_id not in (v_dietitian_id, v_client_id) then
     raise exception 'Chat access denied.' using errcode = '42501';
   end if;
 
@@ -124,8 +124,7 @@ begin
 
   return v_message;
 end
-$function$;
-
+$function$
 create function public.mark_chat_conversation_read(
   p_conversation_id uuid,
   p_last_read_message_id uuid
@@ -155,8 +154,7 @@ begin
     where c.id = p_conversation_id
     for key share;
 
-  if not found
-     or not public.chat_has_active_relationship(v_dietitian_id, v_client_id) then
+  if not found or v_actor_id not in (v_dietitian_id, v_client_id) then
     raise exception 'Chat access denied.' using errcode = '42501';
   end if;
 
@@ -200,16 +198,13 @@ begin
 
   return v_result;
 end
-$function$;
-
-alter function public.send_chat_message(uuid, uuid, text) owner to postgres;
-alter function public.mark_chat_conversation_read(uuid, uuid) owner to postgres;
-
-revoke execute on function public.send_chat_message(uuid, uuid, text) from public, anon, service_role;
-revoke execute on function public.mark_chat_conversation_read(uuid, uuid) from public, anon, service_role;
-grant execute on function public.send_chat_message(uuid, uuid, text) to authenticated;
-grant execute on function public.mark_chat_conversation_read(uuid, uuid) to authenticated;
-
+$function$
+alter function public.send_chat_message(uuid, uuid, text) owner to postgres
+alter function public.mark_chat_conversation_read(uuid, uuid) owner to postgres
+revoke execute on function public.send_chat_message(uuid, uuid, text) from public, anon, service_role
+revoke execute on function public.mark_chat_conversation_read(uuid, uuid) from public, anon, service_role
+grant execute on function public.send_chat_message(uuid, uuid, text) to authenticated
+grant execute on function public.mark_chat_conversation_read(uuid, uuid) to authenticated
 do $$
 begin
   if not exists (
@@ -223,7 +218,6 @@ begin
     raise exception 'Chat RPC security-definer postcondition failed.';
   end if;
 end
-$$;
-
+$$
 -- Forward-only rollback: revoke authenticated execute and deploy a targeted
 -- replacement function. Never make direct client DML the emergency fallback.

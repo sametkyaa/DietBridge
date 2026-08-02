@@ -1,26 +1,22 @@
-begin;
-
+begin
 revoke all privileges
 on table
   public.chat_conversations,
   public.chat_messages,
   public.chat_read_states
-from anon;
-
+from anon
 revoke insert, update, delete, truncate, references, trigger
 on table
   public.chat_conversations,
   public.chat_messages,
   public.chat_read_states
-from authenticated;
-
+from authenticated
 grant select
 on table
   public.chat_conversations,
   public.chat_messages,
   public.chat_read_states
-to authenticated;
-
+to authenticated
 do $$
 declare
   v_table_name text;
@@ -91,6 +87,5 @@ begin
     end if;
   end loop;
 end;
-$$;
-
-commit;
+$$
+commit

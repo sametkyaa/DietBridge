@@ -21,6 +21,5 @@ begin
     raise exception 'Expected legacy client meals UPDATE policy is missing or does not match its reviewed contract.';
   end if;
 end
-$$;
-
-drop policy "Clients can update own meal completion" on public.meals;
+$$
+drop policy "Clients can update own meal completion" on public.meals

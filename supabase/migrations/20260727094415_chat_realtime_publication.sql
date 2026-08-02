@@ -1,5 +1,4 @@
-begin;
-
+begin
 do $$
 declare
   v_table_name text;
@@ -60,6 +59,5 @@ begin
     end if;
   end loop;
 end;
-$$;
-
-commit;
+$$
+commit

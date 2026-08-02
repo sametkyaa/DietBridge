@@ -1,0 +1,2792 @@
+{
+  "version": 1,
+  "hashAlgorithm": "sha256",
+  "expectedCanonicalCount": 29,
+  "expectedImageCount": 7,
+  "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
+  "files": [
+    {
+      "path": "supabase/migrations/20260713000000_staging_default_table_privileges.sql",
+      "phase": "canonical",
+      "sourceSha256": "7d56d97b111215f274492a1be3fac4c9ddc411c50a5240702120ed9e3e037508",
+      "materializedSha256": "d7611b31cbf1e01cb0bb7f6e72fa21b52b632899210c40c4a922df098afc8db9",
+      "edits": [
+        {
+          "line": 6,
+          "before": "revoke all on tables from anon, authenticated",
+          "after": "revoke all on tables from anon, authenticated;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260713000001_production_public_baseline.sql",
+      "phase": "canonical",
+      "sourceSha256": "5fc73fb9c762c71030da086603bae2a243b524f13c112d3881b029ca55ab9938",
+      "materializedSha256": "698d7a675bcf94a4221db4d9dd2786351425c6fb4cb23b436e2c946f03aa31b1",
+      "edits": [
+        {
+          "line": 1,
+          "before": "SET statement_timeout = 0",
+          "after": "SET statement_timeout = 0;"
+        },
+        {
+          "line": 2,
+          "before": "SET lock_timeout = 0",
+          "after": "SET lock_timeout = 0;"
+        },
+        {
+          "line": 3,
+          "before": "SET idle_in_transaction_session_timeout = 0",
+          "after": "SET idle_in_transaction_session_timeout = 0;"
+        },
+        {
+          "line": 4,
+          "before": "SET client_encoding = 'UTF8'",
+          "after": "SET client_encoding = 'UTF8';"
+        },
+        {
+          "line": 5,
+          "before": "SET standard_conforming_strings = on",
+          "after": "SET standard_conforming_strings = on;"
+        },
+        {
+          "line": 6,
+          "before": "SELECT pg_catalog.set_config('search_path', '', false)",
+          "after": "SELECT pg_catalog.set_config('search_path', '', false);"
+        },
+        {
+          "line": 7,
+          "before": "SET check_function_bodies = false",
+          "after": "SET check_function_bodies = false;"
+        },
+        {
+          "line": 8,
+          "before": "SET xmloption = content",
+          "after": "SET xmloption = content;"
+        },
+        {
+          "line": 9,
+          "before": "SET client_min_messages = warning",
+          "after": "SET client_min_messages = warning;"
+        },
+        {
+          "line": 10,
+          "before": "SET row_security = off",
+          "after": "SET row_security = off;"
+        },
+        {
+          "line": 11,
+          "before": "CREATE SCHEMA IF NOT EXISTS \"public\"",
+          "after": "CREATE SCHEMA IF NOT EXISTS \"public\";"
+        },
+        {
+          "line": 12,
+          "before": "ALTER SCHEMA \"public\" OWNER TO \"pg_database_owner\"",
+          "after": "ALTER SCHEMA \"public\" OWNER TO \"pg_database_owner\";"
+        },
+        {
+          "line": 13,
+          "before": "COMMENT ON SCHEMA \"public\" IS 'standard public schema'",
+          "after": "COMMENT ON SCHEMA \"public\" IS 'standard public schema';"
+        },
+        {
+          "line": 20,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 21,
+          "before": "ALTER TYPE \"public\".\"client_status\" OWNER TO \"postgres\"",
+          "after": "ALTER TYPE \"public\".\"client_status\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 27,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 28,
+          "before": "ALTER TYPE \"public\".\"meal_type\" OWNER TO \"postgres\"",
+          "after": "ALTER TYPE \"public\".\"meal_type\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 32,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 33,
+          "before": "ALTER TYPE \"public\".\"user_role\" OWNER TO \"postgres\"",
+          "after": "ALTER TYPE \"public\".\"user_role\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 41,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 42,
+          "before": "ALTER FUNCTION \"public\".\"current_user_role\"() OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"current_user_role\"() OWNER TO \"postgres\";"
+        },
+        {
+          "line": 149,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 150,
+          "before": "ALTER FUNCTION \"public\".\"handle_new_user\"() OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"handle_new_user\"() OWNER TO \"postgres\";"
+        },
+        {
+          "line": 161,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 162,
+          "before": "ALTER FUNCTION \"public\".\"is_current_user_dietitian\"() OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"is_current_user_dietitian\"() OWNER TO \"postgres\";"
+        },
+        {
+          "line": 187,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 188,
+          "before": "ALTER FUNCTION \"public\".\"protect_client_profile_system_fields\"() OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"protect_client_profile_system_fields\"() OWNER TO \"postgres\";"
+        },
+        {
+          "line": 213,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 214,
+          "before": "ALTER FUNCTION \"public\".\"protect_profile_system_fields\"() OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"protect_profile_system_fields\"() OWNER TO \"postgres\";"
+        },
+        {
+          "line": 281,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 282,
+          "before": "ALTER FUNCTION \"public\".\"save_my_current_weight\"(\"p_weight\" numeric) OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"save_my_current_weight\"(\"p_weight\" numeric) OWNER TO \"postgres\";"
+        },
+        {
+          "line": 291,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 292,
+          "before": "ALTER FUNCTION \"public\".\"set_client_profiles_updated_at\"() OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"set_client_profiles_updated_at\"() OWNER TO \"postgres\";"
+        },
+        {
+          "line": 301,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 302,
+          "before": "ALTER FUNCTION \"public\".\"set_profiles_updated_at\"() OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"set_profiles_updated_at\"() OWNER TO \"postgres\";"
+        },
+        {
+          "line": 310,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 311,
+          "before": "ALTER FUNCTION \"public\".\"set_updated_at\"() OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"set_updated_at\"() OWNER TO \"postgres\";"
+        },
+        {
+          "line": 341,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 342,
+          "before": "ALTER FUNCTION \"public\".\"sync_client_weight_to_measurements\"() OWNER TO \"postgres\"",
+          "after": "ALTER FUNCTION \"public\".\"sync_client_weight_to_measurements\"() OWNER TO \"postgres\";"
+        },
+        {
+          "line": 343,
+          "before": "SET default_tablespace = ''",
+          "after": "SET default_tablespace = '';"
+        },
+        {
+          "line": 344,
+          "before": "SET default_table_access_method = \"heap\"",
+          "after": "SET default_table_access_method = \"heap\";"
+        },
+        {
+          "line": 352,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 353,
+          "before": "ALTER TABLE \"public\".\"activity_levels\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"activity_levels\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 361,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 369,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 370,
+          "before": "ALTER TABLE \"public\".\"alcohol_statuses\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"alcohol_statuses\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 378,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 390,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 391,
+          "before": "ALTER TABLE \"public\".\"appointments\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"appointments\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 395,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 396,
+          "before": "ALTER TABLE \"public\".\"blood_types\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"blood_types\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 403,
+          "before": "    CACHE 1",
+          "after": "    CACHE 1;"
+        },
+        {
+          "line": 404,
+          "before": "ALTER SEQUENCE \"public\".\"blood_types_id_seq\" OWNER TO \"postgres\"",
+          "after": "ALTER SEQUENCE \"public\".\"blood_types_id_seq\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 405,
+          "before": "ALTER SEQUENCE \"public\".\"blood_types_id_seq\" OWNED BY \"public\".\"blood_types\".\"id\"",
+          "after": "ALTER SEQUENCE \"public\".\"blood_types_id_seq\" OWNED BY \"public\".\"blood_types\".\"id\";"
+        },
+        {
+          "line": 414,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 415,
+          "before": "ALTER TABLE \"public\".\"body_measurements\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"body_measurements\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 416,
+          "before": "COMMENT ON TABLE \"public\".\"body_measurements\" IS 'DEPRECATED: Veriler public.measurements tablosuna ta\u015f\u0131nm\u0131\u015ft\u0131r. Yeni geli\u015ftirmelerde kullan\u0131lmamal\u0131d\u0131r. Mobil uygulamadaki t\u00fcm referanslar measurements tablosuna ge\u00e7irildikten sonra kald\u0131r\u0131lacakt\u0131r.'",
+          "after": "COMMENT ON TABLE \"public\".\"body_measurements\" IS 'DEPRECATED: Veriler public.measurements tablosuna ta\u015f\u0131nm\u0131\u015ft\u0131r. Yeni geli\u015ftirmelerde kullan\u0131lmamal\u0131d\u0131r. Mobil uygulamadaki t\u00fcm referanslar measurements tablosuna ge\u00e7irildikten sonra kald\u0131r\u0131lacakt\u0131r.';"
+        },
+        {
+          "line": 424,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 425,
+          "before": "ALTER TABLE \"public\".\"chat_messages\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"chat_messages\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 433,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 434,
+          "before": "ALTER TABLE \"public\".\"client_goals\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"client_goals\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 442,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 450,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 451,
+          "before": "ALTER TABLE \"public\".\"client_medical_conditions\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"client_medical_conditions\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 461,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 462,
+          "before": "ALTER TABLE \"public\".\"client_medications\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"client_medications\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 503,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 504,
+          "before": "ALTER TABLE \"public\".\"client_profiles\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"client_profiles\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 505,
+          "before": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"goal\" IS 'DEPRECATED: Mobil uygulama goal_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.'",
+          "after": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"goal\" IS 'DEPRECATED: Mobil uygulama goal_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.';"
+        },
+        {
+          "line": 506,
+          "before": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"blood_type\" IS 'DEPRECATED: Mobil uygulama blood_type_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.'",
+          "after": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"blood_type\" IS 'DEPRECATED: Mobil uygulama blood_type_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.';"
+        },
+        {
+          "line": 507,
+          "before": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"chronic_conditions\" IS 'Dan\u0131\u015fan\u0131n kronik rahats\u0131zl\u0131klar\u0131. Birden fazla de\u011fer text[] olarak saklan\u0131r. NULL hen\u00fcz bilgi girilmedi\u011fini belirtir.'",
+          "after": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"chronic_conditions\" IS 'Dan\u0131\u015fan\u0131n kronik rahats\u0131zl\u0131klar\u0131. Birden fazla de\u011fer text[] olarak saklan\u0131r. NULL hen\u00fcz bilgi girilmedi\u011fini belirtir.';"
+        },
+        {
+          "line": 508,
+          "before": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"medications\" IS 'Dan\u0131\u015fan\u0131n kulland\u0131\u011f\u0131 ila\u00e7lar. Birden fazla de\u011fer text[] olarak saklan\u0131r. NULL hen\u00fcz bilgi girilmedi\u011fini belirtir.'",
+          "after": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"medications\" IS 'Dan\u0131\u015fan\u0131n kulland\u0131\u011f\u0131 ila\u00e7lar. Birden fazla de\u011fer text[] olarak saklan\u0131r. NULL hen\u00fcz bilgi girilmedi\u011fini belirtir.';"
+        },
+        {
+          "line": 509,
+          "before": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"activity_level\" IS 'DEPRECATED: Mobil uygulama activity_level_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.'",
+          "after": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"activity_level\" IS 'DEPRECATED: Mobil uygulama activity_level_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.';"
+        },
+        {
+          "line": 510,
+          "before": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"alcohol_status\" IS 'DEPRECATED: Mobil uygulama alcohol_status_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.'",
+          "after": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"alcohol_status\" IS 'DEPRECATED: Mobil uygulama alcohol_status_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.';"
+        },
+        {
+          "line": 511,
+          "before": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"nutrition_type\" IS 'DEPRECATED: Mobil uygulama nutrition_type_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.'",
+          "after": "COMMENT ON COLUMN \"public\".\"client_profiles\".\"nutrition_type\" IS 'DEPRECATED: Mobil uygulama nutrition_type_id kullanmal\u0131d\u0131r. Kod ge\u00e7i\u015finden sonra kald\u0131r\u0131lacakt\u0131r.';"
+        },
+        {
+          "line": 520,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 521,
+          "before": "ALTER TABLE \"public\".\"daily_logs\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"daily_logs\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 534,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 535,
+          "before": "ALTER TABLE \"public\".\"dietitian_clients\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"dietitian_clients\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 551,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 552,
+          "before": "ALTER TABLE \"public\".\"dietitian_profiles\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"dietitian_profiles\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 565,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 566,
+          "before": "ALTER TABLE \"public\".\"meal_change_requests\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"meal_change_requests\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 574,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 575,
+          "before": "ALTER TABLE \"public\".\"meal_plans\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"meal_plans\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 590,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 591,
+          "before": "ALTER TABLE \"public\".\"meals\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"meals\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 608,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 609,
+          "before": "ALTER TABLE \"public\".\"measurements\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"measurements\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 615,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 616,
+          "before": "ALTER TABLE \"public\".\"medical_conditions\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"medical_conditions\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 622,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 623,
+          "before": "ALTER TABLE \"public\".\"medications_catalog\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"medications_catalog\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 631,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 632,
+          "before": "ALTER TABLE \"public\".\"nutrition_types\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"nutrition_types\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 640,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 650,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 651,
+          "before": "ALTER TABLE \"public\".\"profiles\" OWNER TO \"postgres\"",
+          "after": "ALTER TABLE \"public\".\"profiles\" OWNER TO \"postgres\";"
+        },
+        {
+          "line": 652,
+          "before": "ALTER TABLE ONLY \"public\".\"blood_types\" ALTER COLUMN \"id\" SET DEFAULT \"nextval\"('\"public\".\"blood_types_id_seq\"'::\"regclass\")",
+          "after": "ALTER TABLE ONLY \"public\".\"blood_types\" ALTER COLUMN \"id\" SET DEFAULT \"nextval\"('\"public\".\"blood_types_id_seq\"'::\"regclass\");"
+        },
+        {
+          "line": 654,
+          "before": "    ADD CONSTRAINT \"activity_levels_code_key\" UNIQUE (\"code\")",
+          "after": "    ADD CONSTRAINT \"activity_levels_code_key\" UNIQUE (\"code\");"
+        },
+        {
+          "line": 656,
+          "before": "    ADD CONSTRAINT \"activity_levels_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"activity_levels_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 658,
+          "before": "    ADD CONSTRAINT \"alcohol_statuses_code_key\" UNIQUE (\"code\")",
+          "after": "    ADD CONSTRAINT \"alcohol_statuses_code_key\" UNIQUE (\"code\");"
+        },
+        {
+          "line": 660,
+          "before": "    ADD CONSTRAINT \"alcohol_statuses_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"alcohol_statuses_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 662,
+          "before": "    ADD CONSTRAINT \"appointments_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"appointments_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 664,
+          "before": "    ADD CONSTRAINT \"blood_types_code_key\" UNIQUE (\"code\")",
+          "after": "    ADD CONSTRAINT \"blood_types_code_key\" UNIQUE (\"code\");"
+        },
+        {
+          "line": 666,
+          "before": "    ADD CONSTRAINT \"blood_types_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"blood_types_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 668,
+          "before": "    ADD CONSTRAINT \"body_measurements_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"body_measurements_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 670,
+          "before": "    ADD CONSTRAINT \"chat_messages_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"chat_messages_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 672,
+          "before": "    ADD CONSTRAINT \"client_goals_code_key\" UNIQUE (\"code\")",
+          "after": "    ADD CONSTRAINT \"client_goals_code_key\" UNIQUE (\"code\");"
+        },
+        {
+          "line": 674,
+          "before": "    ADD CONSTRAINT \"client_goals_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"client_goals_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 676,
+          "before": "    ADD CONSTRAINT \"client_medical_conditions_client_id_condition_id_key\" UNIQUE (\"client_id\", \"condition_id\")",
+          "after": "    ADD CONSTRAINT \"client_medical_conditions_client_id_condition_id_key\" UNIQUE (\"client_id\", \"condition_id\");"
+        },
+        {
+          "line": 678,
+          "before": "    ADD CONSTRAINT \"client_medical_conditions_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"client_medical_conditions_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 680,
+          "before": "    ADD CONSTRAINT \"client_medications_client_id_medication_id_key\" UNIQUE (\"client_id\", \"medication_id\")",
+          "after": "    ADD CONSTRAINT \"client_medications_client_id_medication_id_key\" UNIQUE (\"client_id\", \"medication_id\");"
+        },
+        {
+          "line": 682,
+          "before": "    ADD CONSTRAINT \"client_medications_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"client_medications_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 684,
+          "before": "    ADD CONSTRAINT \"client_profiles_pkey\" PRIMARY KEY (\"user_id\")",
+          "after": "    ADD CONSTRAINT \"client_profiles_pkey\" PRIMARY KEY (\"user_id\");"
+        },
+        {
+          "line": 686,
+          "before": "    ADD CONSTRAINT \"daily_logs_client_id_date_key\" UNIQUE (\"client_id\", \"date\")",
+          "after": "    ADD CONSTRAINT \"daily_logs_client_id_date_key\" UNIQUE (\"client_id\", \"date\");"
+        },
+        {
+          "line": 688,
+          "before": "    ADD CONSTRAINT \"daily_logs_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"daily_logs_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 690,
+          "before": "    ADD CONSTRAINT \"dietitian_clients_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"dietitian_clients_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 692,
+          "before": "    ADD CONSTRAINT \"dietitian_profiles_pkey\" PRIMARY KEY (\"user_id\")",
+          "after": "    ADD CONSTRAINT \"dietitian_profiles_pkey\" PRIMARY KEY (\"user_id\");"
+        },
+        {
+          "line": 694,
+          "before": "    ADD CONSTRAINT \"meal_change_requests_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"meal_change_requests_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 696,
+          "before": "    ADD CONSTRAINT \"meal_plans_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"meal_plans_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 698,
+          "before": "    ADD CONSTRAINT \"meals_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"meals_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 700,
+          "before": "    ADD CONSTRAINT \"measurements_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"measurements_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 702,
+          "before": "    ADD CONSTRAINT \"medical_conditions_name_key\" UNIQUE (\"name\")",
+          "after": "    ADD CONSTRAINT \"medical_conditions_name_key\" UNIQUE (\"name\");"
+        },
+        {
+          "line": 704,
+          "before": "    ADD CONSTRAINT \"medical_conditions_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"medical_conditions_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 706,
+          "before": "    ADD CONSTRAINT \"medications_catalog_name_key\" UNIQUE (\"name\")",
+          "after": "    ADD CONSTRAINT \"medications_catalog_name_key\" UNIQUE (\"name\");"
+        },
+        {
+          "line": 708,
+          "before": "    ADD CONSTRAINT \"medications_catalog_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"medications_catalog_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 710,
+          "before": "    ADD CONSTRAINT \"nutrition_types_code_key\" UNIQUE (\"code\")",
+          "after": "    ADD CONSTRAINT \"nutrition_types_code_key\" UNIQUE (\"code\");"
+        },
+        {
+          "line": 712,
+          "before": "    ADD CONSTRAINT \"nutrition_types_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"nutrition_types_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 714,
+          "before": "    ADD CONSTRAINT \"profiles_email_key\" UNIQUE (\"email\")",
+          "after": "    ADD CONSTRAINT \"profiles_email_key\" UNIQUE (\"email\");"
+        },
+        {
+          "line": 716,
+          "before": "    ADD CONSTRAINT \"profiles_pkey\" PRIMARY KEY (\"id\")",
+          "after": "    ADD CONSTRAINT \"profiles_pkey\" PRIMARY KEY (\"id\");"
+        },
+        {
+          "line": 717,
+          "before": "CREATE UNIQUE INDEX \"dietitian_clients_dietitian_client_unique\" ON \"public\".\"dietitian_clients\" USING \"btree\" (\"dietitian_id\", \"client_id\")",
+          "after": "CREATE UNIQUE INDEX \"dietitian_clients_dietitian_client_unique\" ON \"public\".\"dietitian_clients\" USING \"btree\" (\"dietitian_id\", \"client_id\");"
+        },
+        {
+          "line": 718,
+          "before": "CREATE INDEX \"idx_chat_sender_receiver\" ON \"public\".\"chat_messages\" USING \"btree\" (\"sender_id\", \"receiver_id\")",
+          "after": "CREATE INDEX \"idx_chat_sender_receiver\" ON \"public\".\"chat_messages\" USING \"btree\" (\"sender_id\", \"receiver_id\");"
+        },
+        {
+          "line": 719,
+          "before": "CREATE INDEX \"idx_client_medical_conditions_client\" ON \"public\".\"client_medical_conditions\" USING \"btree\" (\"client_id\")",
+          "after": "CREATE INDEX \"idx_client_medical_conditions_client\" ON \"public\".\"client_medical_conditions\" USING \"btree\" (\"client_id\");"
+        },
+        {
+          "line": 720,
+          "before": "CREATE INDEX \"idx_client_medical_conditions_condition\" ON \"public\".\"client_medical_conditions\" USING \"btree\" (\"condition_id\")",
+          "after": "CREATE INDEX \"idx_client_medical_conditions_condition\" ON \"public\".\"client_medical_conditions\" USING \"btree\" (\"condition_id\");"
+        },
+        {
+          "line": 721,
+          "before": "CREATE INDEX \"idx_client_medications_client\" ON \"public\".\"client_medications\" USING \"btree\" (\"client_id\")",
+          "after": "CREATE INDEX \"idx_client_medications_client\" ON \"public\".\"client_medications\" USING \"btree\" (\"client_id\");"
+        },
+        {
+          "line": 722,
+          "before": "CREATE INDEX \"idx_client_medications_medication\" ON \"public\".\"client_medications\" USING \"btree\" (\"medication_id\")",
+          "after": "CREATE INDEX \"idx_client_medications_medication\" ON \"public\".\"client_medications\" USING \"btree\" (\"medication_id\");"
+        },
+        {
+          "line": 723,
+          "before": "CREATE INDEX \"idx_daily_logs_client\" ON \"public\".\"daily_logs\" USING \"btree\" (\"client_id\")",
+          "after": "CREATE INDEX \"idx_daily_logs_client\" ON \"public\".\"daily_logs\" USING \"btree\" (\"client_id\");"
+        },
+        {
+          "line": 724,
+          "before": "CREATE INDEX \"idx_dietitian_clients\" ON \"public\".\"dietitian_clients\" USING \"btree\" (\"dietitian_id\", \"client_id\")",
+          "after": "CREATE INDEX \"idx_dietitian_clients\" ON \"public\".\"dietitian_clients\" USING \"btree\" (\"dietitian_id\", \"client_id\");"
+        },
+        {
+          "line": 725,
+          "before": "CREATE INDEX \"idx_meal_change_requests_client_id\" ON \"public\".\"meal_change_requests\" USING \"btree\" (\"client_id\")",
+          "after": "CREATE INDEX \"idx_meal_change_requests_client_id\" ON \"public\".\"meal_change_requests\" USING \"btree\" (\"client_id\");"
+        },
+        {
+          "line": 726,
+          "before": "CREATE INDEX \"idx_meal_change_requests_dietitian_id\" ON \"public\".\"meal_change_requests\" USING \"btree\" (\"dietitian_id\")",
+          "after": "CREATE INDEX \"idx_meal_change_requests_dietitian_id\" ON \"public\".\"meal_change_requests\" USING \"btree\" (\"dietitian_id\");"
+        },
+        {
+          "line": 727,
+          "before": "CREATE INDEX \"idx_meal_change_requests_plan_date\" ON \"public\".\"meal_change_requests\" USING \"btree\" (\"plan_date\")",
+          "after": "CREATE INDEX \"idx_meal_change_requests_plan_date\" ON \"public\".\"meal_change_requests\" USING \"btree\" (\"plan_date\");"
+        },
+        {
+          "line": 728,
+          "before": "CREATE INDEX \"idx_meal_change_requests_status\" ON \"public\".\"meal_change_requests\" USING \"btree\" (\"status\")",
+          "after": "CREATE INDEX \"idx_meal_change_requests_status\" ON \"public\".\"meal_change_requests\" USING \"btree\" (\"status\");"
+        },
+        {
+          "line": 729,
+          "before": "CREATE INDEX \"idx_meal_plans_client\" ON \"public\".\"meal_plans\" USING \"btree\" (\"client_id\")",
+          "after": "CREATE INDEX \"idx_meal_plans_client\" ON \"public\".\"meal_plans\" USING \"btree\" (\"client_id\");"
+        },
+        {
+          "line": 730,
+          "before": "CREATE INDEX \"idx_meals_plan_id_sort_order\" ON \"public\".\"meals\" USING \"btree\" (\"plan_id\", \"sort_order\")",
+          "after": "CREATE INDEX \"idx_meals_plan_id_sort_order\" ON \"public\".\"meals\" USING \"btree\" (\"plan_id\", \"sort_order\");"
+        },
+        {
+          "line": 731,
+          "before": "CREATE INDEX \"idx_meals_plan_id_time\" ON \"public\".\"meals\" USING \"btree\" (\"plan_id\", \"time\")",
+          "after": "CREATE INDEX \"idx_meals_plan_id_time\" ON \"public\".\"meals\" USING \"btree\" (\"plan_id\", \"time\");"
+        },
+        {
+          "line": 732,
+          "before": "CREATE INDEX \"idx_measurements_client_id\" ON \"public\".\"measurements\" USING \"btree\" (\"client_id\")",
+          "after": "CREATE INDEX \"idx_measurements_client_id\" ON \"public\".\"measurements\" USING \"btree\" (\"client_id\");"
+        },
+        {
+          "line": 733,
+          "before": "CREATE INDEX \"idx_measurements_measured_at\" ON \"public\".\"measurements\" USING \"btree\" (\"measured_at\" DESC)",
+          "after": "CREATE INDEX \"idx_measurements_measured_at\" ON \"public\".\"measurements\" USING \"btree\" (\"measured_at\" DESC);"
+        },
+        {
+          "line": 734,
+          "before": "CREATE UNIQUE INDEX \"measurements_client_date_unique\" ON \"public\".\"measurements\" USING \"btree\" (\"client_id\", \"measured_at\")",
+          "after": "CREATE UNIQUE INDEX \"measurements_client_date_unique\" ON \"public\".\"measurements\" USING \"btree\" (\"client_id\", \"measured_at\");"
+        },
+        {
+          "line": 735,
+          "before": "CREATE UNIQUE INDEX \"one_pending_or_active_dietitian_per_client\" ON \"public\".\"dietitian_clients\" USING \"btree\" (\"client_id\") WHERE (\"status\" = ANY (ARRAY['pending'::\"public\".\"client_status\", 'active'::\"public\".\"client_status\"]))",
+          "after": "CREATE UNIQUE INDEX \"one_pending_or_active_dietitian_per_client\" ON \"public\".\"dietitian_clients\" USING \"btree\" (\"client_id\") WHERE (\"status\" = ANY (ARRAY['pending'::\"public\".\"client_status\", 'active'::\"public\".\"client_status\"]));"
+        },
+        {
+          "line": 736,
+          "before": "CREATE UNIQUE INDEX \"one_pending_or_active_relation_per_dietitian_client\" ON \"public\".\"dietitian_clients\" USING \"btree\" (\"dietitian_id\", \"client_id\") WHERE (\"status\" = ANY (ARRAY['pending'::\"public\".\"client_status\", 'active'::\"public\".\"client_status\"]))",
+          "after": "CREATE UNIQUE INDEX \"one_pending_or_active_relation_per_dietitian_client\" ON \"public\".\"dietitian_clients\" USING \"btree\" (\"dietitian_id\", \"client_id\") WHERE (\"status\" = ANY (ARRAY['pending'::\"public\".\"client_status\", 'active'::\"public\".\"client_status\"]));"
+        },
+        {
+          "line": 737,
+          "before": "CREATE INDEX \"profiles_email_idx\" ON \"public\".\"profiles\" USING \"btree\" (\"email\")",
+          "after": "CREATE INDEX \"profiles_email_idx\" ON \"public\".\"profiles\" USING \"btree\" (\"email\");"
+        },
+        {
+          "line": 738,
+          "before": "CREATE OR REPLACE TRIGGER \"trg_client_profiles_updated_at\" BEFORE UPDATE ON \"public\".\"client_profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"set_client_profiles_updated_at\"()",
+          "after": "CREATE OR REPLACE TRIGGER \"trg_client_profiles_updated_at\" BEFORE UPDATE ON \"public\".\"client_profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"set_client_profiles_updated_at\"();"
+        },
+        {
+          "line": 739,
+          "before": "CREATE OR REPLACE TRIGGER \"trg_meal_change_requests_updated_at\" BEFORE UPDATE ON \"public\".\"meal_change_requests\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"set_updated_at\"()",
+          "after": "CREATE OR REPLACE TRIGGER \"trg_meal_change_requests_updated_at\" BEFORE UPDATE ON \"public\".\"meal_change_requests\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"set_updated_at\"();"
+        },
+        {
+          "line": 740,
+          "before": "CREATE OR REPLACE TRIGGER \"trg_measurements_updated_at\" BEFORE UPDATE ON \"public\".\"measurements\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"set_updated_at\"()",
+          "after": "CREATE OR REPLACE TRIGGER \"trg_measurements_updated_at\" BEFORE UPDATE ON \"public\".\"measurements\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"set_updated_at\"();"
+        },
+        {
+          "line": 741,
+          "before": "CREATE OR REPLACE TRIGGER \"trg_profiles_updated_at\" BEFORE UPDATE ON \"public\".\"profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"set_profiles_updated_at\"()",
+          "after": "CREATE OR REPLACE TRIGGER \"trg_profiles_updated_at\" BEFORE UPDATE ON \"public\".\"profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"set_profiles_updated_at\"();"
+        },
+        {
+          "line": 742,
+          "before": "CREATE OR REPLACE TRIGGER \"trg_protect_client_profile_system_fields\" BEFORE UPDATE ON \"public\".\"client_profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"protect_client_profile_system_fields\"()",
+          "after": "CREATE OR REPLACE TRIGGER \"trg_protect_client_profile_system_fields\" BEFORE UPDATE ON \"public\".\"client_profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"protect_client_profile_system_fields\"();"
+        },
+        {
+          "line": 743,
+          "before": "CREATE OR REPLACE TRIGGER \"trg_protect_profile_system_fields\" BEFORE UPDATE ON \"public\".\"profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"protect_profile_system_fields\"()",
+          "after": "CREATE OR REPLACE TRIGGER \"trg_protect_profile_system_fields\" BEFORE UPDATE ON \"public\".\"profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"protect_profile_system_fields\"();"
+        },
+        {
+          "line": 744,
+          "before": "CREATE OR REPLACE TRIGGER \"trg_sync_client_weight_to_measurements\" AFTER INSERT OR UPDATE OF \"current_weight\" ON \"public\".\"client_profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"sync_client_weight_to_measurements\"()",
+          "after": "CREATE OR REPLACE TRIGGER \"trg_sync_client_weight_to_measurements\" AFTER INSERT OR UPDATE OF \"current_weight\" ON \"public\".\"client_profiles\" FOR EACH ROW EXECUTE FUNCTION \"public\".\"sync_client_weight_to_measurements\"();"
+        },
+        {
+          "line": 746,
+          "before": "    ADD CONSTRAINT \"appointments_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"appointments_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\");"
+        },
+        {
+          "line": 748,
+          "before": "    ADD CONSTRAINT \"appointments_dietitian_id_fkey\" FOREIGN KEY (\"dietitian_id\") REFERENCES \"public\".\"profiles\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"appointments_dietitian_id_fkey\" FOREIGN KEY (\"dietitian_id\") REFERENCES \"public\".\"profiles\"(\"id\");"
+        },
+        {
+          "line": 750,
+          "before": "    ADD CONSTRAINT \"body_measurements_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"body_measurements_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 752,
+          "before": "    ADD CONSTRAINT \"chat_messages_receiver_id_fkey\" FOREIGN KEY (\"receiver_id\") REFERENCES \"public\".\"profiles\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"chat_messages_receiver_id_fkey\" FOREIGN KEY (\"receiver_id\") REFERENCES \"public\".\"profiles\"(\"id\");"
+        },
+        {
+          "line": 754,
+          "before": "    ADD CONSTRAINT \"chat_messages_sender_id_fkey\" FOREIGN KEY (\"sender_id\") REFERENCES \"public\".\"profiles\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"chat_messages_sender_id_fkey\" FOREIGN KEY (\"sender_id\") REFERENCES \"public\".\"profiles\"(\"id\");"
+        },
+        {
+          "line": 756,
+          "before": "    ADD CONSTRAINT \"client_medical_conditions_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"client_medical_conditions_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 758,
+          "before": "    ADD CONSTRAINT \"client_medical_conditions_condition_id_fkey\" FOREIGN KEY (\"condition_id\") REFERENCES \"public\".\"medical_conditions\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"client_medical_conditions_condition_id_fkey\" FOREIGN KEY (\"condition_id\") REFERENCES \"public\".\"medical_conditions\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 760,
+          "before": "    ADD CONSTRAINT \"client_medications_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"client_medications_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 762,
+          "before": "    ADD CONSTRAINT \"client_medications_medication_id_fkey\" FOREIGN KEY (\"medication_id\") REFERENCES \"public\".\"medications_catalog\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"client_medications_medication_id_fkey\" FOREIGN KEY (\"medication_id\") REFERENCES \"public\".\"medications_catalog\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 764,
+          "before": "    ADD CONSTRAINT \"client_profiles_activity_level_id_fkey\" FOREIGN KEY (\"activity_level_id\") REFERENCES \"public\".\"activity_levels\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"client_profiles_activity_level_id_fkey\" FOREIGN KEY (\"activity_level_id\") REFERENCES \"public\".\"activity_levels\"(\"id\");"
+        },
+        {
+          "line": 766,
+          "before": "    ADD CONSTRAINT \"client_profiles_alcohol_status_id_fkey\" FOREIGN KEY (\"alcohol_status_id\") REFERENCES \"public\".\"alcohol_statuses\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"client_profiles_alcohol_status_id_fkey\" FOREIGN KEY (\"alcohol_status_id\") REFERENCES \"public\".\"alcohol_statuses\"(\"id\");"
+        },
+        {
+          "line": 768,
+          "before": "    ADD CONSTRAINT \"client_profiles_blood_type_id_fkey\" FOREIGN KEY (\"blood_type_id\") REFERENCES \"public\".\"blood_types\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"client_profiles_blood_type_id_fkey\" FOREIGN KEY (\"blood_type_id\") REFERENCES \"public\".\"blood_types\"(\"id\");"
+        },
+        {
+          "line": 770,
+          "before": "    ADD CONSTRAINT \"client_profiles_goal_id_fkey\" FOREIGN KEY (\"goal_id\") REFERENCES \"public\".\"client_goals\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"client_profiles_goal_id_fkey\" FOREIGN KEY (\"goal_id\") REFERENCES \"public\".\"client_goals\"(\"id\");"
+        },
+        {
+          "line": 772,
+          "before": "    ADD CONSTRAINT \"client_profiles_nutrition_type_id_fkey\" FOREIGN KEY (\"nutrition_type_id\") REFERENCES \"public\".\"nutrition_types\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"client_profiles_nutrition_type_id_fkey\" FOREIGN KEY (\"nutrition_type_id\") REFERENCES \"public\".\"nutrition_types\"(\"id\");"
+        },
+        {
+          "line": 774,
+          "before": "    ADD CONSTRAINT \"client_profiles_user_id_fkey\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"client_profiles_user_id_fkey\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 776,
+          "before": "    ADD CONSTRAINT \"daily_logs_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"daily_logs_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\");"
+        },
+        {
+          "line": 778,
+          "before": "    ADD CONSTRAINT \"dietitian_clients_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"dietitian_clients_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\");"
+        },
+        {
+          "line": 780,
+          "before": "    ADD CONSTRAINT \"dietitian_clients_dietitian_id_fkey\" FOREIGN KEY (\"dietitian_id\") REFERENCES \"public\".\"profiles\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"dietitian_clients_dietitian_id_fkey\" FOREIGN KEY (\"dietitian_id\") REFERENCES \"public\".\"profiles\"(\"id\");"
+        },
+        {
+          "line": 782,
+          "before": "    ADD CONSTRAINT \"dietitian_profiles_user_id_fkey\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"dietitian_profiles_user_id_fkey\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 784,
+          "before": "    ADD CONSTRAINT \"meal_change_requests_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"meal_change_requests_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 786,
+          "before": "    ADD CONSTRAINT \"meal_change_requests_dietitian_id_fkey\" FOREIGN KEY (\"dietitian_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE SET NULL",
+          "after": "    ADD CONSTRAINT \"meal_change_requests_dietitian_id_fkey\" FOREIGN KEY (\"dietitian_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE SET NULL;"
+        },
+        {
+          "line": 788,
+          "before": "    ADD CONSTRAINT \"meal_plans_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"meal_plans_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\");"
+        },
+        {
+          "line": 790,
+          "before": "    ADD CONSTRAINT \"meal_plans_dietitian_id_fkey\" FOREIGN KEY (\"dietitian_id\") REFERENCES \"public\".\"profiles\"(\"id\")",
+          "after": "    ADD CONSTRAINT \"meal_plans_dietitian_id_fkey\" FOREIGN KEY (\"dietitian_id\") REFERENCES \"public\".\"profiles\"(\"id\");"
+        },
+        {
+          "line": 792,
+          "before": "    ADD CONSTRAINT \"meals_plan_id_fkey\" FOREIGN KEY (\"plan_id\") REFERENCES \"public\".\"meal_plans\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"meals_plan_id_fkey\" FOREIGN KEY (\"plan_id\") REFERENCES \"public\".\"meal_plans\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 794,
+          "before": "    ADD CONSTRAINT \"measurements_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"measurements_client_id_fkey\" FOREIGN KEY (\"client_id\") REFERENCES \"public\".\"profiles\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 796,
+          "before": "    ADD CONSTRAINT \"profiles_id_fkey\" FOREIGN KEY (\"id\") REFERENCES \"auth\".\"users\"(\"id\") ON DELETE CASCADE",
+          "after": "    ADD CONSTRAINT \"profiles_id_fkey\" FOREIGN KEY (\"id\") REFERENCES \"auth\".\"users\"(\"id\") ON DELETE CASCADE;"
+        },
+        {
+          "line": 797,
+          "before": "CREATE POLICY \"Authenticated users can view activity levels\" ON \"public\".\"activity_levels\" FOR SELECT TO \"authenticated\" USING (true)",
+          "after": "CREATE POLICY \"Authenticated users can view activity levels\" ON \"public\".\"activity_levels\" FOR SELECT TO \"authenticated\" USING (true);"
+        },
+        {
+          "line": 798,
+          "before": "CREATE POLICY \"Authenticated users can view alcohol statuses\" ON \"public\".\"alcohol_statuses\" FOR SELECT TO \"authenticated\" USING (true)",
+          "after": "CREATE POLICY \"Authenticated users can view alcohol statuses\" ON \"public\".\"alcohol_statuses\" FOR SELECT TO \"authenticated\" USING (true);"
+        },
+        {
+          "line": 799,
+          "before": "CREATE POLICY \"Authenticated users can view blood types\" ON \"public\".\"blood_types\" FOR SELECT TO \"authenticated\" USING (true)",
+          "after": "CREATE POLICY \"Authenticated users can view blood types\" ON \"public\".\"blood_types\" FOR SELECT TO \"authenticated\" USING (true);"
+        },
+        {
+          "line": 800,
+          "before": "CREATE POLICY \"Authenticated users can view client goals\" ON \"public\".\"client_goals\" FOR SELECT TO \"authenticated\" USING (true)",
+          "after": "CREATE POLICY \"Authenticated users can view client goals\" ON \"public\".\"client_goals\" FOR SELECT TO \"authenticated\" USING (true);"
+        },
+        {
+          "line": 801,
+          "before": "CREATE POLICY \"Authenticated users can view medical conditions\" ON \"public\".\"medical_conditions\" FOR SELECT TO \"authenticated\" USING (true)",
+          "after": "CREATE POLICY \"Authenticated users can view medical conditions\" ON \"public\".\"medical_conditions\" FOR SELECT TO \"authenticated\" USING (true);"
+        },
+        {
+          "line": 802,
+          "before": "CREATE POLICY \"Authenticated users can view medications catalog\" ON \"public\".\"medications_catalog\" FOR SELECT TO \"authenticated\" USING (true)",
+          "after": "CREATE POLICY \"Authenticated users can view medications catalog\" ON \"public\".\"medications_catalog\" FOR SELECT TO \"authenticated\" USING (true);"
+        },
+        {
+          "line": 803,
+          "before": "CREATE POLICY \"Authenticated users can view nutrition types\" ON \"public\".\"nutrition_types\" FOR SELECT TO \"authenticated\" USING (true)",
+          "after": "CREATE POLICY \"Authenticated users can view nutrition types\" ON \"public\".\"nutrition_types\" FOR SELECT TO \"authenticated\" USING (true);"
+        },
+        {
+          "line": 804,
+          "before": "CREATE POLICY \"Clients can manage own medical conditions\" ON \"public\".\"client_medical_conditions\" TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"Clients can manage own medical conditions\" ON \"public\".\"client_medical_conditions\" TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 805,
+          "before": "CREATE POLICY \"Clients can manage own medications\" ON \"public\".\"client_medications\" TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"Clients can manage own medications\" ON \"public\".\"client_medications\" TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 810,
+          "before": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"client_id\" = \"auth\".\"uid\"())))))",
+          "after": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"client_id\" = \"auth\".\"uid\"())))));"
+        },
+        {
+          "line": 813,
+          "before": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"client_id\" = \"auth\".\"uid\"())))))",
+          "after": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"client_id\" = \"auth\".\"uid\"())))));"
+        },
+        {
+          "line": 814,
+          "before": "CREATE POLICY \"Clients can view own meal plans\" ON \"public\".\"meal_plans\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"Clients can view own meal plans\" ON \"public\".\"meal_plans\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 817,
+          "before": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))))",
+          "after": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))));"
+        },
+        {
+          "line": 818,
+          "before": "CREATE POLICY \"Dietitians can delete own meal plans\" ON \"public\".\"meal_plans\" FOR DELETE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"dietitian_id\"))",
+          "after": "CREATE POLICY \"Dietitians can delete own meal plans\" ON \"public\".\"meal_plans\" FOR DELETE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"dietitian_id\"));"
+        },
+        {
+          "line": 821,
+          "before": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))))",
+          "after": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))));"
+        },
+        {
+          "line": 824,
+          "before": "  WHERE ((\"dc\".\"client_id\" = \"meal_plans\".\"client_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\"))))))",
+          "after": "  WHERE ((\"dc\".\"client_id\" = \"meal_plans\".\"client_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\"))))));"
+        },
+        {
+          "line": 829,
+          "before": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))))",
+          "after": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))));"
+        },
+        {
+          "line": 830,
+          "before": "CREATE POLICY \"Dietitians can update own meal plans\" ON \"public\".\"meal_plans\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"dietitian_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"dietitian_id\"))",
+          "after": "CREATE POLICY \"Dietitians can update own meal plans\" ON \"public\".\"meal_plans\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"dietitian_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"dietitian_id\"));"
+        },
+        {
+          "line": 835,
+          "before": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))))",
+          "after": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))));"
+        },
+        {
+          "line": 838,
+          "before": "  WHERE ((\"dc\".\"client_id\" = \"measurements\".\"client_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\")))))",
+          "after": "  WHERE ((\"dc\".\"client_id\" = \"measurements\".\"client_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\")))));"
+        },
+        {
+          "line": 841,
+          "before": "  WHERE ((\"dc\".\"client_id\" = \"client_medical_conditions\".\"client_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\")))))",
+          "after": "  WHERE ((\"dc\".\"client_id\" = \"client_medical_conditions\".\"client_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\")))));"
+        },
+        {
+          "line": 844,
+          "before": "  WHERE ((\"dc\".\"client_id\" = \"client_medications\".\"client_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\")))))",
+          "after": "  WHERE ((\"dc\".\"client_id\" = \"client_medications\".\"client_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\")))));"
+        },
+        {
+          "line": 847,
+          "before": "  WHERE ((\"dc\".\"client_id\" = \"client_profiles\".\"user_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\")))))",
+          "after": "  WHERE ((\"dc\".\"client_id\" = \"client_profiles\".\"user_id\") AND (\"dc\".\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"dc\".\"status\" = 'active'::\"public\".\"client_status\")))));"
+        },
+        {
+          "line": 848,
+          "before": "CREATE POLICY \"Dietitians can view client profiles for linking\" ON \"public\".\"profiles\" FOR SELECT TO \"authenticated\" USING (((\"role\" = 'client'::\"public\".\"user_role\") AND \"public\".\"is_current_user_dietitian\"()))",
+          "after": "CREATE POLICY \"Dietitians can view client profiles for linking\" ON \"public\".\"profiles\" FOR SELECT TO \"authenticated\" USING (((\"role\" = 'client'::\"public\".\"user_role\") AND \"public\".\"is_current_user_dietitian\"()));"
+        },
+        {
+          "line": 851,
+          "before": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))))",
+          "after": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"())))));"
+        },
+        {
+          "line": 852,
+          "before": "CREATE POLICY \"Dietitians can view own meal plans\" ON \"public\".\"meal_plans\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"dietitian_id\"))",
+          "after": "CREATE POLICY \"Dietitians can view own meal plans\" ON \"public\".\"meal_plans\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"dietitian_id\"));"
+        },
+        {
+          "line": 853,
+          "before": "CREATE POLICY \"Users can insert own body measurements\" ON \"public\".\"body_measurements\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"Users can insert own body measurements\" ON \"public\".\"body_measurements\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 854,
+          "before": "CREATE POLICY \"Users can insert own client profile\" ON \"public\".\"client_profiles\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"user_id\"))",
+          "after": "CREATE POLICY \"Users can insert own client profile\" ON \"public\".\"client_profiles\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"user_id\"));"
+        },
+        {
+          "line": 855,
+          "before": "CREATE POLICY \"Users can insert own daily logs\" ON \"public\".\"daily_logs\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"Users can insert own daily logs\" ON \"public\".\"daily_logs\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 856,
+          "before": "CREATE POLICY \"Users can insert own profile\" ON \"public\".\"profiles\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"id\"))",
+          "after": "CREATE POLICY \"Users can insert own profile\" ON \"public\".\"profiles\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"id\"));"
+        },
+        {
+          "line": 857,
+          "before": "CREATE POLICY \"Users can select own meal plans\" ON \"public\".\"meal_plans\" FOR SELECT TO \"authenticated\" USING (((\"client_id\" = \"auth\".\"uid\"()) OR (\"dietitian_id\" = \"auth\".\"uid\"())))",
+          "after": "CREATE POLICY \"Users can select own meal plans\" ON \"public\".\"meal_plans\" FOR SELECT TO \"authenticated\" USING (((\"client_id\" = \"auth\".\"uid\"()) OR (\"dietitian_id\" = \"auth\".\"uid\"())));"
+        },
+        {
+          "line": 860,
+          "before": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND ((\"mp\".\"client_id\" = \"auth\".\"uid\"()) OR (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"()))))))",
+          "after": "  WHERE ((\"mp\".\"id\" = \"meals\".\"plan_id\") AND ((\"mp\".\"client_id\" = \"auth\".\"uid\"()) OR (\"mp\".\"dietitian_id\" = \"auth\".\"uid\"()))))));"
+        },
+        {
+          "line": 861,
+          "before": "CREATE POLICY \"Users can update own body measurements\" ON \"public\".\"body_measurements\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"Users can update own body measurements\" ON \"public\".\"body_measurements\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 862,
+          "before": "CREATE POLICY \"Users can update own client profile\" ON \"public\".\"client_profiles\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"user_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"user_id\"))",
+          "after": "CREATE POLICY \"Users can update own client profile\" ON \"public\".\"client_profiles\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"user_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"user_id\"));"
+        },
+        {
+          "line": 863,
+          "before": "CREATE POLICY \"Users can update own daily logs\" ON \"public\".\"daily_logs\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"Users can update own daily logs\" ON \"public\".\"daily_logs\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 864,
+          "before": "CREATE POLICY \"Users can update own profile\" ON \"public\".\"profiles\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"id\")) WITH CHECK ((\"auth\".\"uid\"() = \"id\"))",
+          "after": "CREATE POLICY \"Users can update own profile\" ON \"public\".\"profiles\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"id\")) WITH CHECK ((\"auth\".\"uid\"() = \"id\"));"
+        },
+        {
+          "line": 865,
+          "before": "CREATE POLICY \"Users can view own body measurements\" ON \"public\".\"body_measurements\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"Users can view own body measurements\" ON \"public\".\"body_measurements\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 866,
+          "before": "CREATE POLICY \"Users can view own client profile\" ON \"public\".\"client_profiles\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"user_id\"))",
+          "after": "CREATE POLICY \"Users can view own client profile\" ON \"public\".\"client_profiles\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"user_id\"));"
+        },
+        {
+          "line": 867,
+          "before": "CREATE POLICY \"Users can view own daily logs\" ON \"public\".\"daily_logs\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"Users can view own daily logs\" ON \"public\".\"daily_logs\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 868,
+          "before": "CREATE POLICY \"Users can view own profile\" ON \"public\".\"profiles\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"id\"))",
+          "after": "CREATE POLICY \"Users can view own profile\" ON \"public\".\"profiles\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"id\"));"
+        },
+        {
+          "line": 869,
+          "before": "ALTER TABLE \"public\".\"activity_levels\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"activity_levels\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 870,
+          "before": "ALTER TABLE \"public\".\"alcohol_statuses\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"alcohol_statuses\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 871,
+          "before": "ALTER TABLE \"public\".\"blood_types\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"blood_types\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 872,
+          "before": "ALTER TABLE \"public\".\"body_measurements\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"body_measurements\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 873,
+          "before": "ALTER TABLE \"public\".\"client_goals\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"client_goals\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 874,
+          "before": "ALTER TABLE \"public\".\"client_medical_conditions\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"client_medical_conditions\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 875,
+          "before": "ALTER TABLE \"public\".\"client_medications\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"client_medications\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 876,
+          "before": "ALTER TABLE \"public\".\"client_profiles\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"client_profiles\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 879,
+          "before": "  WHERE ((\"p\".\"id\" = \"auth\".\"uid\"()) AND ((\"p\".\"role\")::\"text\" = 'client'::\"text\"))))))",
+          "after": "  WHERE ((\"p\".\"id\" = \"auth\".\"uid\"()) AND ((\"p\".\"role\")::\"text\" = 'client'::\"text\"))))));"
+        },
+        {
+          "line": 880,
+          "before": "ALTER TABLE \"public\".\"daily_logs\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"daily_logs\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 881,
+          "before": "ALTER TABLE \"public\".\"dietitian_clients\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"dietitian_clients\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 882,
+          "before": "CREATE POLICY \"dietitian_clients_select_own\" ON \"public\".\"dietitian_clients\" FOR SELECT TO \"authenticated\" USING (((\"dietitian_id\" = \"auth\".\"uid\"()) OR (\"client_id\" = \"auth\".\"uid\"())))",
+          "after": "CREATE POLICY \"dietitian_clients_select_own\" ON \"public\".\"dietitian_clients\" FOR SELECT TO \"authenticated\" USING (((\"dietitian_id\" = \"auth\".\"uid\"()) OR (\"client_id\" = \"auth\".\"uid\"())));"
+        },
+        {
+          "line": 887,
+          "before": "  WHERE ((\"c\".\"id\" = \"dietitian_clients\".\"client_id\") AND ((\"c\".\"role\")::\"text\" = 'client'::\"text\"))))))",
+          "after": "  WHERE ((\"c\".\"id\" = \"dietitian_clients\".\"client_id\") AND ((\"c\".\"role\")::\"text\" = 'client'::\"text\"))))));"
+        },
+        {
+          "line": 888,
+          "before": "CREATE POLICY \"dietitians_remove_own_connection\" ON \"public\".\"dietitian_clients\" FOR UPDATE TO \"authenticated\" USING (((\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"status\" = ANY (ARRAY['pending'::\"public\".\"client_status\", 'active'::\"public\".\"client_status\"])))) WITH CHECK (((\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"status\" = 'removed'::\"public\".\"client_status\")))",
+          "after": "CREATE POLICY \"dietitians_remove_own_connection\" ON \"public\".\"dietitian_clients\" FOR UPDATE TO \"authenticated\" USING (((\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"status\" = ANY (ARRAY['pending'::\"public\".\"client_status\", 'active'::\"public\".\"client_status\"])))) WITH CHECK (((\"dietitian_id\" = \"auth\".\"uid\"()) AND (\"status\" = 'removed'::\"public\".\"client_status\")));"
+        },
+        {
+          "line": 889,
+          "before": "ALTER TABLE \"public\".\"meal_change_requests\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"meal_change_requests\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 890,
+          "before": "CREATE POLICY \"meal_change_requests_insert_client\" ON \"public\".\"meal_change_requests\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"meal_change_requests_insert_client\" ON \"public\".\"meal_change_requests\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 891,
+          "before": "CREATE POLICY \"meal_change_requests_select_own\" ON \"public\".\"meal_change_requests\" FOR SELECT TO \"authenticated\" USING (((\"auth\".\"uid\"() = \"client_id\") OR (\"auth\".\"uid\"() = \"dietitian_id\")))",
+          "after": "CREATE POLICY \"meal_change_requests_select_own\" ON \"public\".\"meal_change_requests\" FOR SELECT TO \"authenticated\" USING (((\"auth\".\"uid\"() = \"client_id\") OR (\"auth\".\"uid\"() = \"dietitian_id\")));"
+        },
+        {
+          "line": 892,
+          "before": "CREATE POLICY \"meal_change_requests_update_parties\" ON \"public\".\"meal_change_requests\" FOR UPDATE TO \"authenticated\" USING (((\"auth\".\"uid\"() = \"client_id\") OR (\"auth\".\"uid\"() = \"dietitian_id\"))) WITH CHECK (((\"auth\".\"uid\"() = \"client_id\") OR (\"auth\".\"uid\"() = \"dietitian_id\")))",
+          "after": "CREATE POLICY \"meal_change_requests_update_parties\" ON \"public\".\"meal_change_requests\" FOR UPDATE TO \"authenticated\" USING (((\"auth\".\"uid\"() = \"client_id\") OR (\"auth\".\"uid\"() = \"dietitian_id\"))) WITH CHECK (((\"auth\".\"uid\"() = \"client_id\") OR (\"auth\".\"uid\"() = \"dietitian_id\")));"
+        },
+        {
+          "line": 893,
+          "before": "ALTER TABLE \"public\".\"meal_plans\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"meal_plans\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 894,
+          "before": "ALTER TABLE \"public\".\"meals\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"meals\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 895,
+          "before": "ALTER TABLE \"public\".\"measurements\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"measurements\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 896,
+          "before": "CREATE POLICY \"measurements_delete_own\" ON \"public\".\"measurements\" FOR DELETE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"measurements_delete_own\" ON \"public\".\"measurements\" FOR DELETE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 897,
+          "before": "CREATE POLICY \"measurements_insert_own\" ON \"public\".\"measurements\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"measurements_insert_own\" ON \"public\".\"measurements\" FOR INSERT TO \"authenticated\" WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 898,
+          "before": "CREATE POLICY \"measurements_select_own\" ON \"public\".\"measurements\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"measurements_select_own\" ON \"public\".\"measurements\" FOR SELECT TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 899,
+          "before": "CREATE POLICY \"measurements_update_own\" ON \"public\".\"measurements\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"))",
+          "after": "CREATE POLICY \"measurements_update_own\" ON \"public\".\"measurements\" FOR UPDATE TO \"authenticated\" USING ((\"auth\".\"uid\"() = \"client_id\")) WITH CHECK ((\"auth\".\"uid\"() = \"client_id\"));"
+        },
+        {
+          "line": 900,
+          "before": "ALTER TABLE \"public\".\"medical_conditions\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"medical_conditions\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 901,
+          "before": "ALTER TABLE \"public\".\"medications_catalog\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"medications_catalog\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 902,
+          "before": "ALTER TABLE \"public\".\"nutrition_types\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"nutrition_types\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 903,
+          "before": "ALTER TABLE \"public\".\"profiles\" ENABLE ROW LEVEL SECURITY",
+          "after": "ALTER TABLE \"public\".\"profiles\" ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "line": 904,
+          "before": "GRANT USAGE ON SCHEMA \"public\" TO \"postgres\"",
+          "after": "GRANT USAGE ON SCHEMA \"public\" TO \"postgres\";"
+        },
+        {
+          "line": 905,
+          "before": "GRANT USAGE ON SCHEMA \"public\" TO \"anon\"",
+          "after": "GRANT USAGE ON SCHEMA \"public\" TO \"anon\";"
+        },
+        {
+          "line": 906,
+          "before": "GRANT USAGE ON SCHEMA \"public\" TO \"authenticated\"",
+          "after": "GRANT USAGE ON SCHEMA \"public\" TO \"authenticated\";"
+        },
+        {
+          "line": 907,
+          "before": "GRANT USAGE ON SCHEMA \"public\" TO \"service_role\"",
+          "after": "GRANT USAGE ON SCHEMA \"public\" TO \"service_role\";"
+        },
+        {
+          "line": 908,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"current_user_role\"() TO \"anon\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"current_user_role\"() TO \"anon\";"
+        },
+        {
+          "line": 909,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"current_user_role\"() TO \"authenticated\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"current_user_role\"() TO \"authenticated\";"
+        },
+        {
+          "line": 910,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"current_user_role\"() TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"current_user_role\"() TO \"service_role\";"
+        },
+        {
+          "line": 911,
+          "before": "REVOKE ALL ON FUNCTION \"public\".\"handle_new_user\"() FROM PUBLIC",
+          "after": "REVOKE ALL ON FUNCTION \"public\".\"handle_new_user\"() FROM PUBLIC;"
+        },
+        {
+          "line": 912,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"handle_new_user\"() TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"handle_new_user\"() TO \"service_role\";"
+        },
+        {
+          "line": 913,
+          "before": "REVOKE ALL ON FUNCTION \"public\".\"is_current_user_dietitian\"() FROM PUBLIC",
+          "after": "REVOKE ALL ON FUNCTION \"public\".\"is_current_user_dietitian\"() FROM PUBLIC;"
+        },
+        {
+          "line": 914,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"is_current_user_dietitian\"() TO \"anon\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"is_current_user_dietitian\"() TO \"anon\";"
+        },
+        {
+          "line": 915,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"is_current_user_dietitian\"() TO \"authenticated\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"is_current_user_dietitian\"() TO \"authenticated\";"
+        },
+        {
+          "line": 916,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"is_current_user_dietitian\"() TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"is_current_user_dietitian\"() TO \"service_role\";"
+        },
+        {
+          "line": 917,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"protect_client_profile_system_fields\"() TO \"anon\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"protect_client_profile_system_fields\"() TO \"anon\";"
+        },
+        {
+          "line": 918,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"protect_client_profile_system_fields\"() TO \"authenticated\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"protect_client_profile_system_fields\"() TO \"authenticated\";"
+        },
+        {
+          "line": 919,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"protect_client_profile_system_fields\"() TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"protect_client_profile_system_fields\"() TO \"service_role\";"
+        },
+        {
+          "line": 920,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"protect_profile_system_fields\"() TO \"anon\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"protect_profile_system_fields\"() TO \"anon\";"
+        },
+        {
+          "line": 921,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"protect_profile_system_fields\"() TO \"authenticated\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"protect_profile_system_fields\"() TO \"authenticated\";"
+        },
+        {
+          "line": 922,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"protect_profile_system_fields\"() TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"protect_profile_system_fields\"() TO \"service_role\";"
+        },
+        {
+          "line": 923,
+          "before": "REVOKE ALL ON FUNCTION \"public\".\"save_my_current_weight\"(\"p_weight\" numeric) FROM PUBLIC",
+          "after": "REVOKE ALL ON FUNCTION \"public\".\"save_my_current_weight\"(\"p_weight\" numeric) FROM PUBLIC;"
+        },
+        {
+          "line": 924,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"save_my_current_weight\"(\"p_weight\" numeric) TO \"authenticated\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"save_my_current_weight\"(\"p_weight\" numeric) TO \"authenticated\";"
+        },
+        {
+          "line": 925,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"save_my_current_weight\"(\"p_weight\" numeric) TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"save_my_current_weight\"(\"p_weight\" numeric) TO \"service_role\";"
+        },
+        {
+          "line": 926,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"set_client_profiles_updated_at\"() TO \"anon\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"set_client_profiles_updated_at\"() TO \"anon\";"
+        },
+        {
+          "line": 927,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"set_client_profiles_updated_at\"() TO \"authenticated\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"set_client_profiles_updated_at\"() TO \"authenticated\";"
+        },
+        {
+          "line": 928,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"set_client_profiles_updated_at\"() TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"set_client_profiles_updated_at\"() TO \"service_role\";"
+        },
+        {
+          "line": 929,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"set_profiles_updated_at\"() TO \"anon\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"set_profiles_updated_at\"() TO \"anon\";"
+        },
+        {
+          "line": 930,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"set_profiles_updated_at\"() TO \"authenticated\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"set_profiles_updated_at\"() TO \"authenticated\";"
+        },
+        {
+          "line": 931,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"set_profiles_updated_at\"() TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"set_profiles_updated_at\"() TO \"service_role\";"
+        },
+        {
+          "line": 932,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"set_updated_at\"() TO \"anon\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"set_updated_at\"() TO \"anon\";"
+        },
+        {
+          "line": 933,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"set_updated_at\"() TO \"authenticated\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"set_updated_at\"() TO \"authenticated\";"
+        },
+        {
+          "line": 934,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"set_updated_at\"() TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"set_updated_at\"() TO \"service_role\";"
+        },
+        {
+          "line": 935,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"sync_client_weight_to_measurements\"() TO \"anon\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"sync_client_weight_to_measurements\"() TO \"anon\";"
+        },
+        {
+          "line": 936,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"sync_client_weight_to_measurements\"() TO \"authenticated\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"sync_client_weight_to_measurements\"() TO \"authenticated\";"
+        },
+        {
+          "line": 937,
+          "before": "GRANT ALL ON FUNCTION \"public\".\"sync_client_weight_to_measurements\"() TO \"service_role\"",
+          "after": "GRANT ALL ON FUNCTION \"public\".\"sync_client_weight_to_measurements\"() TO \"service_role\";"
+        },
+        {
+          "line": 938,
+          "before": "GRANT ALL ON TABLE \"public\".\"activity_levels\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"activity_levels\" TO \"anon\";"
+        },
+        {
+          "line": 939,
+          "before": "GRANT ALL ON TABLE \"public\".\"activity_levels\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"activity_levels\" TO \"authenticated\";"
+        },
+        {
+          "line": 940,
+          "before": "GRANT ALL ON TABLE \"public\".\"activity_levels\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"activity_levels\" TO \"service_role\";"
+        },
+        {
+          "line": 941,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"activity_levels_id_seq\" TO \"anon\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"activity_levels_id_seq\" TO \"anon\";"
+        },
+        {
+          "line": 942,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"activity_levels_id_seq\" TO \"authenticated\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"activity_levels_id_seq\" TO \"authenticated\";"
+        },
+        {
+          "line": 943,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"activity_levels_id_seq\" TO \"service_role\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"activity_levels_id_seq\" TO \"service_role\";"
+        },
+        {
+          "line": 944,
+          "before": "GRANT ALL ON TABLE \"public\".\"alcohol_statuses\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"alcohol_statuses\" TO \"anon\";"
+        },
+        {
+          "line": 945,
+          "before": "GRANT ALL ON TABLE \"public\".\"alcohol_statuses\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"alcohol_statuses\" TO \"authenticated\";"
+        },
+        {
+          "line": 946,
+          "before": "GRANT ALL ON TABLE \"public\".\"alcohol_statuses\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"alcohol_statuses\" TO \"service_role\";"
+        },
+        {
+          "line": 947,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"alcohol_statuses_id_seq\" TO \"anon\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"alcohol_statuses_id_seq\" TO \"anon\";"
+        },
+        {
+          "line": 948,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"alcohol_statuses_id_seq\" TO \"authenticated\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"alcohol_statuses_id_seq\" TO \"authenticated\";"
+        },
+        {
+          "line": 949,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"alcohol_statuses_id_seq\" TO \"service_role\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"alcohol_statuses_id_seq\" TO \"service_role\";"
+        },
+        {
+          "line": 950,
+          "before": "GRANT ALL ON TABLE \"public\".\"appointments\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"appointments\" TO \"anon\";"
+        },
+        {
+          "line": 951,
+          "before": "GRANT ALL ON TABLE \"public\".\"appointments\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"appointments\" TO \"authenticated\";"
+        },
+        {
+          "line": 952,
+          "before": "GRANT ALL ON TABLE \"public\".\"appointments\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"appointments\" TO \"service_role\";"
+        },
+        {
+          "line": 953,
+          "before": "GRANT ALL ON TABLE \"public\".\"blood_types\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"blood_types\" TO \"anon\";"
+        },
+        {
+          "line": 954,
+          "before": "GRANT ALL ON TABLE \"public\".\"blood_types\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"blood_types\" TO \"authenticated\";"
+        },
+        {
+          "line": 955,
+          "before": "GRANT ALL ON TABLE \"public\".\"blood_types\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"blood_types\" TO \"service_role\";"
+        },
+        {
+          "line": 956,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"blood_types_id_seq\" TO \"anon\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"blood_types_id_seq\" TO \"anon\";"
+        },
+        {
+          "line": 957,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"blood_types_id_seq\" TO \"authenticated\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"blood_types_id_seq\" TO \"authenticated\";"
+        },
+        {
+          "line": 958,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"blood_types_id_seq\" TO \"service_role\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"blood_types_id_seq\" TO \"service_role\";"
+        },
+        {
+          "line": 959,
+          "before": "GRANT ALL ON TABLE \"public\".\"body_measurements\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"body_measurements\" TO \"anon\";"
+        },
+        {
+          "line": 960,
+          "before": "GRANT ALL ON TABLE \"public\".\"body_measurements\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"body_measurements\" TO \"authenticated\";"
+        },
+        {
+          "line": 961,
+          "before": "GRANT ALL ON TABLE \"public\".\"body_measurements\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"body_measurements\" TO \"service_role\";"
+        },
+        {
+          "line": 962,
+          "before": "GRANT ALL ON TABLE \"public\".\"chat_messages\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"chat_messages\" TO \"anon\";"
+        },
+        {
+          "line": 963,
+          "before": "GRANT ALL ON TABLE \"public\".\"chat_messages\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"chat_messages\" TO \"authenticated\";"
+        },
+        {
+          "line": 964,
+          "before": "GRANT ALL ON TABLE \"public\".\"chat_messages\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"chat_messages\" TO \"service_role\";"
+        },
+        {
+          "line": 965,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_goals\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_goals\" TO \"anon\";"
+        },
+        {
+          "line": 966,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_goals\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_goals\" TO \"authenticated\";"
+        },
+        {
+          "line": 967,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_goals\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_goals\" TO \"service_role\";"
+        },
+        {
+          "line": 968,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"client_goals_id_seq\" TO \"anon\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"client_goals_id_seq\" TO \"anon\";"
+        },
+        {
+          "line": 969,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"client_goals_id_seq\" TO \"authenticated\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"client_goals_id_seq\" TO \"authenticated\";"
+        },
+        {
+          "line": 970,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"client_goals_id_seq\" TO \"service_role\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"client_goals_id_seq\" TO \"service_role\";"
+        },
+        {
+          "line": 971,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_medical_conditions\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_medical_conditions\" TO \"anon\";"
+        },
+        {
+          "line": 972,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_medical_conditions\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_medical_conditions\" TO \"authenticated\";"
+        },
+        {
+          "line": 973,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_medical_conditions\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_medical_conditions\" TO \"service_role\";"
+        },
+        {
+          "line": 974,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_medications\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_medications\" TO \"anon\";"
+        },
+        {
+          "line": 975,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_medications\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_medications\" TO \"authenticated\";"
+        },
+        {
+          "line": 976,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_medications\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_medications\" TO \"service_role\";"
+        },
+        {
+          "line": 977,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_profiles\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_profiles\" TO \"anon\";"
+        },
+        {
+          "line": 978,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_profiles\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_profiles\" TO \"authenticated\";"
+        },
+        {
+          "line": 979,
+          "before": "GRANT ALL ON TABLE \"public\".\"client_profiles\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"client_profiles\" TO \"service_role\";"
+        },
+        {
+          "line": 980,
+          "before": "GRANT ALL ON TABLE \"public\".\"daily_logs\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"daily_logs\" TO \"anon\";"
+        },
+        {
+          "line": 981,
+          "before": "GRANT ALL ON TABLE \"public\".\"daily_logs\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"daily_logs\" TO \"authenticated\";"
+        },
+        {
+          "line": 982,
+          "before": "GRANT ALL ON TABLE \"public\".\"daily_logs\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"daily_logs\" TO \"service_role\";"
+        },
+        {
+          "line": 983,
+          "before": "GRANT ALL ON TABLE \"public\".\"dietitian_clients\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"dietitian_clients\" TO \"anon\";"
+        },
+        {
+          "line": 984,
+          "before": "GRANT ALL ON TABLE \"public\".\"dietitian_clients\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"dietitian_clients\" TO \"authenticated\";"
+        },
+        {
+          "line": 985,
+          "before": "GRANT ALL ON TABLE \"public\".\"dietitian_clients\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"dietitian_clients\" TO \"service_role\";"
+        },
+        {
+          "line": 986,
+          "before": "GRANT ALL ON TABLE \"public\".\"dietitian_profiles\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"dietitian_profiles\" TO \"anon\";"
+        },
+        {
+          "line": 987,
+          "before": "GRANT ALL ON TABLE \"public\".\"dietitian_profiles\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"dietitian_profiles\" TO \"authenticated\";"
+        },
+        {
+          "line": 988,
+          "before": "GRANT ALL ON TABLE \"public\".\"dietitian_profiles\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"dietitian_profiles\" TO \"service_role\";"
+        },
+        {
+          "line": 989,
+          "before": "GRANT ALL ON TABLE \"public\".\"meal_change_requests\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"meal_change_requests\" TO \"anon\";"
+        },
+        {
+          "line": 990,
+          "before": "GRANT ALL ON TABLE \"public\".\"meal_change_requests\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"meal_change_requests\" TO \"authenticated\";"
+        },
+        {
+          "line": 991,
+          "before": "GRANT ALL ON TABLE \"public\".\"meal_change_requests\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"meal_change_requests\" TO \"service_role\";"
+        },
+        {
+          "line": 992,
+          "before": "GRANT ALL ON TABLE \"public\".\"meal_plans\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"meal_plans\" TO \"anon\";"
+        },
+        {
+          "line": 993,
+          "before": "GRANT ALL ON TABLE \"public\".\"meal_plans\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"meal_plans\" TO \"authenticated\";"
+        },
+        {
+          "line": 994,
+          "before": "GRANT ALL ON TABLE \"public\".\"meal_plans\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"meal_plans\" TO \"service_role\";"
+        },
+        {
+          "line": 995,
+          "before": "GRANT ALL ON TABLE \"public\".\"meals\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"meals\" TO \"anon\";"
+        },
+        {
+          "line": 996,
+          "before": "GRANT ALL ON TABLE \"public\".\"meals\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"meals\" TO \"authenticated\";"
+        },
+        {
+          "line": 997,
+          "before": "GRANT ALL ON TABLE \"public\".\"meals\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"meals\" TO \"service_role\";"
+        },
+        {
+          "line": 998,
+          "before": "GRANT ALL ON TABLE \"public\".\"measurements\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"measurements\" TO \"anon\";"
+        },
+        {
+          "line": 999,
+          "before": "GRANT ALL ON TABLE \"public\".\"measurements\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"measurements\" TO \"authenticated\";"
+        },
+        {
+          "line": 1000,
+          "before": "GRANT ALL ON TABLE \"public\".\"measurements\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"measurements\" TO \"service_role\";"
+        },
+        {
+          "line": 1001,
+          "before": "GRANT ALL ON TABLE \"public\".\"medical_conditions\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"medical_conditions\" TO \"anon\";"
+        },
+        {
+          "line": 1002,
+          "before": "GRANT ALL ON TABLE \"public\".\"medical_conditions\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"medical_conditions\" TO \"authenticated\";"
+        },
+        {
+          "line": 1003,
+          "before": "GRANT ALL ON TABLE \"public\".\"medical_conditions\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"medical_conditions\" TO \"service_role\";"
+        },
+        {
+          "line": 1004,
+          "before": "GRANT ALL ON TABLE \"public\".\"medications_catalog\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"medications_catalog\" TO \"anon\";"
+        },
+        {
+          "line": 1005,
+          "before": "GRANT ALL ON TABLE \"public\".\"medications_catalog\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"medications_catalog\" TO \"authenticated\";"
+        },
+        {
+          "line": 1006,
+          "before": "GRANT ALL ON TABLE \"public\".\"medications_catalog\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"medications_catalog\" TO \"service_role\";"
+        },
+        {
+          "line": 1007,
+          "before": "GRANT ALL ON TABLE \"public\".\"nutrition_types\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"nutrition_types\" TO \"anon\";"
+        },
+        {
+          "line": 1008,
+          "before": "GRANT ALL ON TABLE \"public\".\"nutrition_types\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"nutrition_types\" TO \"authenticated\";"
+        },
+        {
+          "line": 1009,
+          "before": "GRANT ALL ON TABLE \"public\".\"nutrition_types\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"nutrition_types\" TO \"service_role\";"
+        },
+        {
+          "line": 1010,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"nutrition_types_id_seq\" TO \"anon\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"nutrition_types_id_seq\" TO \"anon\";"
+        },
+        {
+          "line": 1011,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"nutrition_types_id_seq\" TO \"authenticated\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"nutrition_types_id_seq\" TO \"authenticated\";"
+        },
+        {
+          "line": 1012,
+          "before": "GRANT ALL ON SEQUENCE \"public\".\"nutrition_types_id_seq\" TO \"service_role\"",
+          "after": "GRANT ALL ON SEQUENCE \"public\".\"nutrition_types_id_seq\" TO \"service_role\";"
+        },
+        {
+          "line": 1013,
+          "before": "GRANT ALL ON TABLE \"public\".\"profiles\" TO \"anon\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"profiles\" TO \"anon\";"
+        },
+        {
+          "line": 1014,
+          "before": "GRANT ALL ON TABLE \"public\".\"profiles\" TO \"authenticated\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"profiles\" TO \"authenticated\";"
+        },
+        {
+          "line": 1015,
+          "before": "GRANT ALL ON TABLE \"public\".\"profiles\" TO \"service_role\"",
+          "after": "GRANT ALL ON TABLE \"public\".\"profiles\" TO \"service_role\";"
+        },
+        {
+          "line": 1016,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON SEQUENCES TO \"postgres\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON SEQUENCES TO \"postgres\";"
+        },
+        {
+          "line": 1017,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON SEQUENCES TO \"anon\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON SEQUENCES TO \"anon\";"
+        },
+        {
+          "line": 1018,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON SEQUENCES TO \"authenticated\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON SEQUENCES TO \"authenticated\";"
+        },
+        {
+          "line": 1019,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON SEQUENCES TO \"service_role\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON SEQUENCES TO \"service_role\";"
+        },
+        {
+          "line": 1020,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON FUNCTIONS TO \"postgres\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON FUNCTIONS TO \"postgres\";"
+        },
+        {
+          "line": 1021,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON FUNCTIONS TO \"anon\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON FUNCTIONS TO \"anon\";"
+        },
+        {
+          "line": 1022,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON FUNCTIONS TO \"authenticated\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON FUNCTIONS TO \"authenticated\";"
+        },
+        {
+          "line": 1023,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON FUNCTIONS TO \"service_role\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON FUNCTIONS TO \"service_role\";"
+        },
+        {
+          "line": 1024,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON TABLES TO \"postgres\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON TABLES TO \"postgres\";"
+        },
+        {
+          "line": 1025,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON TABLES TO \"anon\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON TABLES TO \"anon\";"
+        },
+        {
+          "line": 1026,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON TABLES TO \"authenticated\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON TABLES TO \"authenticated\";"
+        },
+        {
+          "line": 1027,
+          "before": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON TABLES TO \"service_role\"",
+          "after": "ALTER DEFAULT PRIVILEGES FOR ROLE \"postgres\" IN SCHEMA \"public\" GRANT ALL ON TABLES TO \"service_role\";"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260713010000_function_security_hardening.sql",
+      "phase": "canonical",
+      "sourceSha256": "71c0d0572a7be323bc7bdbde99673d6d03e28b96bb8d2c594a2f72c3949a4d58",
+      "materializedSha256": "ccb8777f82c6c41ae59b2c2ad5afbd50a0adf024c7aeb15b2433fdcbf8280c7c",
+      "edits": [
+        {
+          "line": 14,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 33,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 34,
+          "before": "alter function public.current_user_role() set search_path = pg_catalog, public",
+          "after": "alter function public.current_user_role() set search_path = pg_catalog, public;"
+        },
+        {
+          "line": 35,
+          "before": "alter function public.save_my_current_weight(numeric) set search_path = pg_catalog, public",
+          "after": "alter function public.save_my_current_weight(numeric) set search_path = pg_catalog, public;"
+        },
+        {
+          "line": 36,
+          "before": "alter function public.sync_client_weight_to_measurements() set search_path = pg_catalog, public",
+          "after": "alter function public.sync_client_weight_to_measurements() set search_path = pg_catalog, public;"
+        },
+        {
+          "line": 37,
+          "before": "alter function public.set_updated_at() set search_path = pg_catalog, public",
+          "after": "alter function public.set_updated_at() set search_path = pg_catalog, public;"
+        },
+        {
+          "line": 38,
+          "before": "alter function public.set_client_profiles_updated_at() set search_path = pg_catalog, public",
+          "after": "alter function public.set_client_profiles_updated_at() set search_path = pg_catalog, public;"
+        },
+        {
+          "line": 39,
+          "before": "alter function public.set_profiles_updated_at() set search_path = pg_catalog, public",
+          "after": "alter function public.set_profiles_updated_at() set search_path = pg_catalog, public;"
+        },
+        {
+          "line": 40,
+          "before": "alter function public.protect_client_profile_system_fields() set search_path = pg_catalog, public",
+          "after": "alter function public.protect_client_profile_system_fields() set search_path = pg_catalog, public;"
+        },
+        {
+          "line": 41,
+          "before": "alter function public.protect_profile_system_fields() set search_path = pg_catalog, public",
+          "after": "alter function public.protect_profile_system_fields() set search_path = pg_catalog, public;"
+        },
+        {
+          "line": 42,
+          "before": "revoke execute on function public.current_user_role() from public, anon",
+          "after": "revoke execute on function public.current_user_role() from public, anon;"
+        },
+        {
+          "line": 43,
+          "before": "grant execute on function public.current_user_role() to authenticated",
+          "after": "grant execute on function public.current_user_role() to authenticated;"
+        },
+        {
+          "line": 44,
+          "before": "revoke execute on function public.is_current_user_dietitian() from public, anon",
+          "after": "revoke execute on function public.is_current_user_dietitian() from public, anon;"
+        },
+        {
+          "line": 45,
+          "before": "grant execute on function public.is_current_user_dietitian() to authenticated",
+          "after": "grant execute on function public.is_current_user_dietitian() to authenticated;"
+        },
+        {
+          "line": 46,
+          "before": "revoke execute on function public.save_my_current_weight(numeric) from public, anon",
+          "after": "revoke execute on function public.save_my_current_weight(numeric) from public, anon;"
+        },
+        {
+          "line": 47,
+          "before": "grant execute on function public.save_my_current_weight(numeric) to authenticated",
+          "after": "grant execute on function public.save_my_current_weight(numeric) to authenticated;"
+        },
+        {
+          "line": 48,
+          "before": "revoke execute on function public.sync_client_weight_to_measurements() from public, anon, authenticated",
+          "after": "revoke execute on function public.sync_client_weight_to_measurements() from public, anon, authenticated;"
+        },
+        {
+          "line": 49,
+          "before": "revoke execute on function public.set_updated_at() from public, anon, authenticated",
+          "after": "revoke execute on function public.set_updated_at() from public, anon, authenticated;"
+        },
+        {
+          "line": 50,
+          "before": "revoke execute on function public.set_client_profiles_updated_at() from public, anon, authenticated",
+          "after": "revoke execute on function public.set_client_profiles_updated_at() from public, anon, authenticated;"
+        },
+        {
+          "line": 51,
+          "before": "revoke execute on function public.set_profiles_updated_at() from public, anon, authenticated",
+          "after": "revoke execute on function public.set_profiles_updated_at() from public, anon, authenticated;"
+        },
+        {
+          "line": 52,
+          "before": "revoke execute on function public.protect_client_profile_system_fields() from public, anon, authenticated",
+          "after": "revoke execute on function public.protect_client_profile_system_fields() from public, anon, authenticated;"
+        },
+        {
+          "line": 53,
+          "before": "revoke execute on function public.protect_profile_system_fields() from public, anon, authenticated",
+          "after": "revoke execute on function public.protect_profile_system_fields() from public, anon, authenticated;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260713010100_verification_consistency.sql",
+      "phase": "canonical",
+      "sourceSha256": "e38b77507d0ebd6f54c1b7ec5678bac7e24cab17afb8dceb2f1bc9773292b1ee",
+      "materializedSha256": "64ba4bb43dfb14fbea9c7bfad32585af04402eeefe472ce198c7d68e493a2176",
+      "edits": [
+        {
+          "line": 21,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 48,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 51,
+          "before": "for each row execute function public.sync_dietitian_verification_fields()",
+          "after": "for each row execute function public.sync_dietitian_verification_fields();"
+        },
+        {
+          "line": 52,
+          "before": "revoke execute on function public.sync_dietitian_verification_fields() from public, anon, authenticated",
+          "after": "revoke execute on function public.sync_dietitian_verification_fields() from public, anon, authenticated;"
+        },
+        {
+          "line": 55,
+          "before": "  check (is_verified is not distinct from (verification_status = 'approved'))",
+          "after": "  check (is_verified is not distinct from (verification_status = 'approved'));"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260713010200_auth_onboarding_hardening.sql",
+      "phase": "canonical",
+      "sourceSha256": "37852667d946bd20890908666d4b25ec83b1f45ff4ed94e107b4b9acbe770450",
+      "materializedSha256": "3cef4169c0d446facd58a36426be9c7918a16f73f6ae8104dcb527e1a87581c9",
+      "edits": [
+        {
+          "line": 12,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 49,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 50,
+          "before": "revoke execute on function public.handle_new_user() from public, anon, authenticated",
+          "after": "revoke execute on function public.handle_new_user() from public, anon, authenticated;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260713010300_critical_table_rls.sql",
+      "phase": "canonical",
+      "sourceSha256": "e813210481536aa997f8809a7cb35fc3da96e10850cc1972fe6ce9953d44d1f7",
+      "materializedSha256": "1d39d9eb864ba5fd5a54fd019ea4b5bee8ddd7a8c9788d7c538f38521e588536",
+      "edits": [
+        {
+          "line": 17,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 39,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 42,
+          "before": "for each row execute function public.protect_dietitian_profile_system_fields()",
+          "after": "for each row execute function public.protect_dietitian_profile_system_fields();"
+        },
+        {
+          "line": 43,
+          "before": "revoke execute on function public.protect_dietitian_profile_system_fields() from public, anon, authenticated",
+          "after": "revoke execute on function public.protect_dietitian_profile_system_fields() from public, anon, authenticated;"
+        },
+        {
+          "line": 45,
+          "before": "using (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'))",
+          "after": "using (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'));"
+        },
+        {
+          "line": 47,
+          "before": "using (exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = dietitian_profiles.user_id and dc.client_id = auth.uid() and dc.status = 'active'))",
+          "after": "using (exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = dietitian_profiles.user_id and dc.client_id = auth.uid() and dc.status = 'active'));"
+        },
+        {
+          "line": 49,
+          "before": "with check (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'))",
+          "after": "with check (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'));"
+        },
+        {
+          "line": 52,
+          "before": "with check (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'))",
+          "after": "with check (user_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'dietitian'));"
+        },
+        {
+          "line": 54,
+          "before": "using (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))",
+          "after": "using (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));"
+        },
+        {
+          "line": 56,
+          "before": "using (client_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'client') and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))",
+          "after": "using (client_id = auth.uid() and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'client') and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));"
+        },
+        {
+          "line": 58,
+          "before": "with check (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))",
+          "after": "with check (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));"
+        },
+        {
+          "line": 61,
+          "before": "with check (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))",
+          "after": "with check (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));"
+        },
+        {
+          "line": 63,
+          "before": "using (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'))",
+          "after": "using (dietitian_id = auth.uid() and public.is_current_user_dietitian() and exists (select 1 from public.dietitian_clients dc where dc.dietitian_id = appointments.dietitian_id and dc.client_id = appointments.client_id and dc.status = 'active'));"
+        },
+        {
+          "line": 65,
+          "before": "using ((sender_id = auth.uid() or receiver_id = auth.uid()) and exists (select 1 from public.dietitian_clients dc where dc.status = 'active' and ((dc.dietitian_id = chat_messages.sender_id and dc.client_id = chat_messages.receiver_id) or (dc.dietitian_id = chat_messages.receiver_id and dc.client_id = chat_messages.sender_id))))",
+          "after": "using ((sender_id = auth.uid() or receiver_id = auth.uid()) and exists (select 1 from public.dietitian_clients dc where dc.status = 'active' and ((dc.dietitian_id = chat_messages.sender_id and dc.client_id = chat_messages.receiver_id) or (dc.dietitian_id = chat_messages.receiver_id and dc.client_id = chat_messages.sender_id))));"
+        },
+        {
+          "line": 67,
+          "before": "with check (sender_id = auth.uid() and exists (select 1 from public.dietitian_clients dc where dc.status = 'active' and ((dc.dietitian_id = chat_messages.sender_id and dc.client_id = chat_messages.receiver_id) or (dc.dietitian_id = chat_messages.receiver_id and dc.client_id = chat_messages.sender_id))))",
+          "after": "with check (sender_id = auth.uid() and exists (select 1 from public.dietitian_clients dc where dc.status = 'active' and ((dc.dietitian_id = chat_messages.sender_id and dc.client_id = chat_messages.receiver_id) or (dc.dietitian_id = chat_messages.receiver_id and dc.client_id = chat_messages.sender_id))));"
+        },
+        {
+          "line": 68,
+          "before": "alter table public.dietitian_profiles enable row level security",
+          "after": "alter table public.dietitian_profiles enable row level security;"
+        },
+        {
+          "line": 69,
+          "before": "alter table public.appointments enable row level security",
+          "after": "alter table public.appointments enable row level security;"
+        },
+        {
+          "line": 70,
+          "before": "alter table public.chat_messages enable row level security",
+          "after": "alter table public.chat_messages enable row level security;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260713010400_meal_completion_rpc.sql",
+      "phase": "canonical",
+      "sourceSha256": "19ce4160ea67ce29afc52ce3e52941e3ea8f8b0a0ca79fedf410087be6a3e336",
+      "materializedSha256": "9b504ab9018a50567b1bcb08a1c971a3f7b514aa9f98a5bc77cd44c7c208311c",
+      "edits": [
+        {
+          "line": 12,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 36,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 37,
+          "before": "revoke execute on function public.set_my_meal_completion(uuid, boolean) from public, anon",
+          "after": "revoke execute on function public.set_my_meal_completion(uuid, boolean) from public, anon;"
+        },
+        {
+          "line": 38,
+          "before": "grant execute on function public.set_my_meal_completion(uuid, boolean) to authenticated",
+          "after": "grant execute on function public.set_my_meal_completion(uuid, boolean) to authenticated;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260713010500_ensure_auth_user_onboarding_trigger.sql",
+      "phase": "canonical",
+      "sourceSha256": "85d54f5decfa72d0b2d2217cf88b3a97abd1135cb4e8b005dfa8fbd3ba85786f",
+      "materializedSha256": "7bec2b6114aa4573a269c25192854021357a9cb3f2b5ba8e06a3b58942b3128e",
+      "edits": [
+        {
+          "line": 43,
+          "before": "$$",
+          "after": "$$;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260714010000_remove_legacy_client_meals_update_policy.sql",
+      "phase": "canonical",
+      "sourceSha256": "db00a6a4b961c209b841149173e08779d59cbd43a14954c1b1e385f52501147f",
+      "materializedSha256": "1b50c0bce6a9d49f23573ff84a3056c56f5eef9f3d7fd3ffb35844d0f47dd4d8",
+      "edits": [
+        {
+          "line": 24,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 25,
+          "before": "drop policy \"Clients can update own meal completion\" on public.meals",
+          "after": "drop policy \"Clients can update own meal completion\" on public.meals;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260722131259_expand_measurement_side_columns.sql",
+      "phase": "canonical",
+      "sourceSha256": "3fc781f7c4559fcd2f8f34c6a77d6c561dff2c7c3c35b753ee88fc88c18f0c24",
+      "materializedSha256": "3fc781f7c4559fcd2f8f34c6a77d6c561dff2c7c3c35b753ee88fc88c18f0c24",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260723093230_sync_dietitian_display_name.sql",
+      "phase": "canonical",
+      "sourceSha256": "3fb7edfdabaf81792caacf71a516e3d37eacf3bb685f483df414bfb48f998808",
+      "materializedSha256": "3fb7edfdabaf81792caacf71a516e3d37eacf3bb685f483df414bfb48f998808",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260723093510_revoke_anon_dietitian_display_name_execute.sql",
+      "phase": "canonical",
+      "sourceSha256": "d6499b62719afb10f6a129e274f5a0aa89a6fe3325094639493a4a83ccad6c29",
+      "materializedSha256": "d6499b62719afb10f6a129e274f5a0aa89a6fe3325094639493a4a83ccad6c29",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260723164416_create_dietitian_recipes.sql",
+      "phase": "canonical",
+      "sourceSha256": "09d8cb93d46b1aef55a1be66847631b563b08ad6c8fae69fb81a9d4e0ba494a1",
+      "materializedSha256": "09d8cb93d46b1aef55a1be66847631b563b08ad6c8fae69fb81a9d4e0ba494a1",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260723180039_production_compatible_weekly_meal_plan_rpc.sql",
+      "phase": "canonical",
+      "sourceSha256": "0c97cb136d33e7482f2ba5a3a0abf42dd11ea1c501af49fd362e849cf2a9a8e9",
+      "materializedSha256": "0c97cb136d33e7482f2ba5a3a0abf42dd11ea1c501af49fd362e849cf2a9a8e9",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260724063211_persist_recipe_meal_snapshots.sql",
+      "phase": "canonical",
+      "sourceSha256": "ef6436609ad42a8744bd39d10a49df8edc79aa7f78c41b5eefa74103bef53432",
+      "materializedSha256": "ef6436609ad42a8744bd39d10a49df8edc79aa7f78c41b5eefa74103bef53432",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260724071352_allow_clients_read_planned_recipe_images.sql",
+      "phase": "canonical",
+      "sourceSha256": "82a4c6d1b4bc435ee8eec1485d160c1e38e35e717e47c67f3a23622a6aee11cd",
+      "materializedSha256": "82a4c6d1b4bc435ee8eec1485d160c1e38e35e717e47c67f3a23622a6aee11cd",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260725125627_allow_dietitians_view_active_client_avatars.sql",
+      "phase": "canonical",
+      "sourceSha256": "0aa608f6c04745ad4be639fff0ade00f1b61b16bff81216a8dec3720e1e18557",
+      "materializedSha256": "0aa608f6c04745ad4be639fff0ade00f1b61b16bff81216a8dec3720e1e18557",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260725133956_20260725160000_client_relationship_security_contract_forward_fix.sql",
+      "phase": "canonical",
+      "sourceSha256": "d2fae58191b0908a965ce4927b6bf28e42ed2064e94a7c329be96b9bc83136eb",
+      "materializedSha256": "d2fae58191b0908a965ce4927b6bf28e42ed2064e94a7c329be96b9bc83136eb",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260726090000_chat_conversation_schema.sql",
+      "phase": "canonical",
+      "sourceSha256": "1b085b5e398c6ea7e0c010ca0751bccab7d794ea479464b40635c5dfa03385e2",
+      "materializedSha256": "99ee6616fc4a24a0787ea781679108f85c92d146b253cd2e47116458ba3b8060",
+      "edits": [
+        {
+          "line": 28,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 36,
+          "before": "  add column deleted_at timestamptz",
+          "after": "  add column deleted_at timestamptz;"
+        },
+        {
+          "line": 62,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 67,
+          "before": "    on delete restrict",
+          "after": "    on delete restrict;"
+        },
+        {
+          "line": 88,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 103,
+          "before": "$$",
+          "after": "$$;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260726090100_chat_constraints_indexes.sql",
+      "phase": "canonical",
+      "sourceSha256": "b309c9be83fe84459e8efe2404e1933e57c52cbaecdff034a090190d555efe67",
+      "materializedSha256": "d22f9aad1b5626eb7aefa595a9edfd8ec39b4a39d1276a4a8f83814a45e25b0b",
+      "edits": [
+        {
+          "line": 19,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 29,
+          "before": "    )",
+          "after": "    );"
+        },
+        {
+          "line": 46,
+          "before": "    unique (sender_id, client_message_id)",
+          "after": "    unique (sender_id, client_message_id);"
+        },
+        {
+          "line": 49,
+          "before": "  where conversation_id is not null",
+          "after": "  where conversation_id is not null;"
+        },
+        {
+          "line": 51,
+          "before": "  on public.chat_conversations (dietitian_id, last_message_at desc nulls last, id desc)",
+          "after": "  on public.chat_conversations (dietitian_id, last_message_at desc nulls last, id desc);"
+        },
+        {
+          "line": 53,
+          "before": "  on public.chat_conversations (client_id, last_message_at desc nulls last, id desc)",
+          "after": "  on public.chat_conversations (client_id, last_message_at desc nulls last, id desc);"
+        },
+        {
+          "line": 55,
+          "before": "  on public.chat_read_states (user_id, updated_at desc, conversation_id desc)",
+          "after": "  on public.chat_read_states (user_id, updated_at desc, conversation_id desc);"
+        },
+        {
+          "line": 110,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 143,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 197,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 200,
+          "before": "for each row execute function public.enforce_chat_conversation_contract()",
+          "after": "for each row execute function public.enforce_chat_conversation_contract();"
+        },
+        {
+          "line": 203,
+          "before": "for each row execute function public.enforce_chat_message_contract()",
+          "after": "for each row execute function public.enforce_chat_message_contract();"
+        },
+        {
+          "line": 206,
+          "before": "for each row execute function public.enforce_chat_read_state_contract()",
+          "after": "for each row execute function public.enforce_chat_read_state_contract();"
+        },
+        {
+          "line": 207,
+          "before": "revoke all on function public.enforce_chat_conversation_contract() from public, anon, authenticated, service_role",
+          "after": "revoke all on function public.enforce_chat_conversation_contract() from public, anon, authenticated, service_role;"
+        },
+        {
+          "line": 208,
+          "before": "revoke all on function public.enforce_chat_message_contract() from public, anon, authenticated, service_role",
+          "after": "revoke all on function public.enforce_chat_message_contract() from public, anon, authenticated, service_role;"
+        },
+        {
+          "line": 209,
+          "before": "revoke all on function public.enforce_chat_read_state_contract() from public, anon, authenticated, service_role",
+          "after": "revoke all on function public.enforce_chat_read_state_contract() from public, anon, authenticated, service_role;"
+        },
+        {
+          "line": 223,
+          "before": "$$",
+          "after": "$$;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260726090200_chat_rls.sql",
+      "phase": "canonical",
+      "sourceSha256": "1bfb787f698cc9de69f841ff040d15518aa2d5fbd7daf8c98587b695ddd116cc",
+      "materializedSha256": "c20cd5458cf7a96dcd9788878cd8d38e2e15664feae3e93ec1eb2ea71ae33fed",
+      "edits": [
+        {
+          "line": 12,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 13,
+          "before": "alter table public.chat_conversations enable row level security",
+          "after": "alter table public.chat_conversations enable row level security;"
+        },
+        {
+          "line": 14,
+          "before": "alter table public.chat_messages enable row level security",
+          "after": "alter table public.chat_messages enable row level security;"
+        },
+        {
+          "line": 15,
+          "before": "alter table public.chat_read_states enable row level security",
+          "after": "alter table public.chat_read_states enable row level security;"
+        },
+        {
+          "line": 16,
+          "before": "drop policy if exists \"Participants can select active relationship messages\" on public.chat_messages",
+          "after": "drop policy if exists \"Participants can select active relationship messages\" on public.chat_messages;"
+        },
+        {
+          "line": 17,
+          "before": "drop policy if exists \"Participants can send active relationship messages\" on public.chat_messages",
+          "after": "drop policy if exists \"Participants can send active relationship messages\" on public.chat_messages;"
+        },
+        {
+          "line": 18,
+          "before": "revoke all on table public.chat_conversations from public, anon",
+          "after": "revoke all on table public.chat_conversations from public, anon;"
+        },
+        {
+          "line": 19,
+          "before": "revoke all on table public.chat_messages from public, anon",
+          "after": "revoke all on table public.chat_messages from public, anon;"
+        },
+        {
+          "line": 20,
+          "before": "revoke all on table public.chat_read_states from public, anon",
+          "after": "revoke all on table public.chat_read_states from public, anon;"
+        },
+        {
+          "line": 21,
+          "before": "revoke insert, update, delete on table public.chat_conversations from authenticated",
+          "after": "revoke insert, update, delete on table public.chat_conversations from authenticated;"
+        },
+        {
+          "line": 22,
+          "before": "revoke insert, update, delete on table public.chat_messages from authenticated",
+          "after": "revoke insert, update, delete on table public.chat_messages from authenticated;"
+        },
+        {
+          "line": 23,
+          "before": "revoke insert, update, delete on table public.chat_read_states from authenticated",
+          "after": "revoke insert, update, delete on table public.chat_read_states from authenticated;"
+        },
+        {
+          "line": 24,
+          "before": "grant select on table public.chat_conversations to authenticated",
+          "after": "grant select on table public.chat_conversations to authenticated;"
+        },
+        {
+          "line": 25,
+          "before": "grant select on table public.chat_messages to authenticated",
+          "after": "grant select on table public.chat_messages to authenticated;"
+        },
+        {
+          "line": 26,
+          "before": "grant select on table public.chat_read_states to authenticated",
+          "after": "grant select on table public.chat_read_states to authenticated;"
+        },
+        {
+          "line": 28,
+          "before": "grant select, insert, update, delete on table public.chat_conversations to service_role",
+          "after": "grant select, insert, update, delete on table public.chat_conversations to service_role;"
+        },
+        {
+          "line": 29,
+          "before": "grant select, insert, update, delete on table public.chat_messages to service_role",
+          "after": "grant select, insert, update, delete on table public.chat_messages to service_role;"
+        },
+        {
+          "line": 30,
+          "before": "grant select, insert, update, delete on table public.chat_read_states to service_role",
+          "after": "grant select, insert, update, delete on table public.chat_read_states to service_role;"
+        },
+        {
+          "line": 38,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 66,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 79,
+          "before": ")",
+          "after": ");"
+        },
+        {
+          "line": 97,
+          "before": "$$",
+          "after": "$$;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260726090300_chat_rpc.sql",
+      "phase": "canonical",
+      "sourceSha256": "11fc55508e7dbf7455d7c5f84a4233f558035b9c14320ccf2de9d98d74200f50",
+      "materializedSha256": "6313eab3903ddf4cc474b693365e64b40280412aa8a30fbbd8b81107ed17ec7b",
+      "edits": [
+        {
+          "line": 20,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 127,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 201,
+          "before": "$function$",
+          "after": "$function$;"
+        },
+        {
+          "line": 202,
+          "before": "alter function public.send_chat_message(uuid, uuid, text) owner to postgres",
+          "after": "alter function public.send_chat_message(uuid, uuid, text) owner to postgres;"
+        },
+        {
+          "line": 203,
+          "before": "alter function public.mark_chat_conversation_read(uuid, uuid) owner to postgres",
+          "after": "alter function public.mark_chat_conversation_read(uuid, uuid) owner to postgres;"
+        },
+        {
+          "line": 204,
+          "before": "revoke execute on function public.send_chat_message(uuid, uuid, text) from public, anon, service_role",
+          "after": "revoke execute on function public.send_chat_message(uuid, uuid, text) from public, anon, service_role;"
+        },
+        {
+          "line": 205,
+          "before": "revoke execute on function public.mark_chat_conversation_read(uuid, uuid) from public, anon, service_role",
+          "after": "revoke execute on function public.mark_chat_conversation_read(uuid, uuid) from public, anon, service_role;"
+        },
+        {
+          "line": 206,
+          "before": "grant execute on function public.send_chat_message(uuid, uuid, text) to authenticated",
+          "after": "grant execute on function public.send_chat_message(uuid, uuid, text) to authenticated;"
+        },
+        {
+          "line": 207,
+          "before": "grant execute on function public.mark_chat_conversation_read(uuid, uuid) to authenticated",
+          "after": "grant execute on function public.mark_chat_conversation_read(uuid, uuid) to authenticated;"
+        },
+        {
+          "line": 221,
+          "before": "$$",
+          "after": "$$;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260727091215_chat_table_privilege_hardening.sql",
+      "phase": "canonical",
+      "sourceSha256": "36940898a049207d56a9d4d8ea0d11f1a93edf649fd1ddef6687591c49578f4b",
+      "materializedSha256": "3c85a01aba6dbbbda6a93184137583e70631afe801d534023647f7a7a5476d77",
+      "edits": [
+        {
+          "line": 1,
+          "before": "begin",
+          "after": "begin;"
+        },
+        {
+          "line": 7,
+          "before": "from anon",
+          "after": "from anon;"
+        },
+        {
+          "line": 13,
+          "before": "from authenticated",
+          "after": "from authenticated;"
+        },
+        {
+          "line": 19,
+          "before": "to authenticated",
+          "after": "to authenticated;"
+        },
+        {
+          "line": 90,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 91,
+          "before": "commit",
+          "after": "commit;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260727094415_chat_realtime_publication.sql",
+      "phase": "canonical",
+      "sourceSha256": "6e68e29924d2722be4e820ecd6befe2e6dd652ca7139e114cb260002c4b22dab",
+      "materializedSha256": "f5dd9ba3d64c79be1e933e33307dec083f7fd5398b80f64fffdd026a502af14e",
+      "edits": [
+        {
+          "line": 1,
+          "before": "begin",
+          "after": "begin;"
+        },
+        {
+          "line": 62,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 63,
+          "before": "commit",
+          "after": "commit;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260727131340_chat_legacy_message_text_compatibility.sql",
+      "phase": "canonical",
+      "sourceSha256": "bc0afabcaa43b170bffbe07712962b878b6a0adbfee32baae0fbc2cd39fe4bf0",
+      "materializedSha256": "c1f40d1c14e5d0725bafc62361540797df28ef7147a66a76fe9c78da19945dba",
+      "edits": [
+        {
+          "line": 1,
+          "before": "begin",
+          "after": "begin;"
+        },
+        {
+          "line": 21,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 23,
+          "before": "  alter column message_text drop not null",
+          "after": "  alter column message_text drop not null;"
+        },
+        {
+          "line": 43,
+          "before": "$$",
+          "after": "$$;"
+        },
+        {
+          "line": 44,
+          "before": "commit",
+          "after": "commit;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260728103000_chat_delete_delivery_receipts.sql",
+      "phase": "canonical",
+      "sourceSha256": "a4413131b47a28fd6a73c537d0e6bcd289920a37caa2c86d63e3659c98077028",
+      "materializedSha256": "a4413131b47a28fd6a73c537d0e6bcd289920a37caa2c86d63e3659c98077028",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260728160000_allow_active_clients_read_linked_dietitian_avatar.sql",
+      "phase": "canonical",
+      "sourceSha256": "d39aa6ce4043848a4f26243fd08e1576b13a267b88f6646eaa55c7e1c325a906",
+      "materializedSha256": "d39aa6ce4043848a4f26243fd08e1576b13a267b88f6646eaa55c7e1c325a906",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260729090000_chat_image_schema.sql",
+      "phase": "image",
+      "sourceSha256": "67381ac857c862114f895547de6f0295924315003a8fc31c8e9bcde9b6f37332",
+      "materializedSha256": "67381ac857c862114f895547de6f0295924315003a8fc31c8e9bcde9b6f37332",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260729090100_chat_image_rls_privileges.sql",
+      "phase": "image",
+      "sourceSha256": "3509a0de0124bc44ec5b1bc12da6f5a3e2a5e2454260f2e99195b9849d61ce21",
+      "materializedSha256": "3509a0de0124bc44ec5b1bc12da6f5a3e2a5e2454260f2e99195b9849d61ce21",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260729090200_chat_image_rpc.sql",
+      "phase": "image",
+      "sourceSha256": "36e95393dad6e0361fbb3fcfc75db9b4c653d1ca3b5ca03135f358dc3ea026f0",
+      "materializedSha256": "36e95393dad6e0361fbb3fcfc75db9b4c653d1ca3b5ca03135f358dc3ea026f0",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260729090300_chat_image_storage.sql",
+      "phase": "image",
+      "sourceSha256": "f73803a173e676f2121053c71fcfbb4d387cadc639029e727d243504b307a141",
+      "materializedSha256": "f73803a173e676f2121053c71fcfbb4d387cadc639029e727d243504b307a141",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260729090400_chat_image_cleanup.sql",
+      "phase": "image",
+      "sourceSha256": "49d17a4e185eabdc8b59bf9beacbcc64531f0e6ce3a21a33cfe4b3b57e8a8ec3",
+      "materializedSha256": "49d17a4e185eabdc8b59bf9beacbcc64531f0e6ce3a21a33cfe4b3b57e8a8ec3",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260730180636_chat_image_cleanup_scheduler.sql",
+      "phase": "image",
+      "sourceSha256": "b57daa1a8bf9da602b2e1d76e450c1931284806c0b64dfc4c5b81e7940394216",
+      "materializedSha256": "b57daa1a8bf9da602b2e1d76e450c1931284806c0b64dfc4c5b81e7940394216",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260730180641_chat_image_rpc_activation.sql",
+      "phase": "image",
+      "sourceSha256": "2aebed688a35308b16943b316908ee6082e61178b391a00ab7bb8296f158c245",
+      "materializedSha256": "2aebed688a35308b16943b316908ee6082e61178b391a00ab7bb8296f158c245",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260801090000_align_measurements_with_mobile.sql",
+      "phase": "canonical",
+      "sourceSha256": "9385d3159bfada5bf897c1764cb097eb55f41c072bbbfc8dfd7840c1f80acdb1",
+      "materializedSha256": "9385d3159bfada5bf897c1764cb097eb55f41c072bbbfc8dfd7840c1f80acdb1",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260802090000_chat_active_relationship_hardening.sql",
+      "phase": "canonical",
+      "sourceSha256": "4b4d56c99a77d7887d592abff5d9eaa779702294780d50575b54579c1a49ac81",
+      "materializedSha256": "4b4d56c99a77d7887d592abff5d9eaa779702294780d50575b54579c1a49ac81",
+      "edits": []
+    }
+  ]
+}

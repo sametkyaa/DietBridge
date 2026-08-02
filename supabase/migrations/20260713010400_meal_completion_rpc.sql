@@ -9,8 +9,7 @@ begin
     raise exception 'Meal completion RPC ön koşulu sağlanmadı; migration durduruldu.';
   end if;
 end
-$$;
-
+$$
 create function public.set_my_meal_completion(p_meal_id uuid, p_is_eaten boolean)
 returns boolean
 language plpgsql
@@ -34,6 +33,6 @@ begin
   end if;
   return true;
 end;
-$function$;
-revoke execute on function public.set_my_meal_completion(uuid, boolean) from public, anon;
-grant execute on function public.set_my_meal_completion(uuid, boolean) to authenticated;
+$function$
+revoke execute on function public.set_my_meal_completion(uuid, boolean) from public, anon
+grant execute on function public.set_my_meal_completion(uuid, boolean) to authenticated

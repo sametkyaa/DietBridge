@@ -44,7 +44,7 @@ Get-Content -Raw supabase/tests/chat_security_harness.sql | docker run --rm -i -
 ## Required migration and schema gate
 
 Read-only preflight, supabase_migrations.schema_migrations içinde aşağıdaki
-sekiz migration dosyasının tamamını arar. Herhangi biri eksikse fail-closed durun:
+on altı migration'ın tamamını arar. Herhangi biri eksikse fail-closed durun:
 
 ~~~text
 20260726090000_chat_conversation_schema.sql
@@ -55,6 +55,14 @@ sekiz migration dosyasının tamamını arar. Herhangi biri eksikse fail-closed 
 20260727094415_chat_realtime_publication.sql
 20260727131340_chat_legacy_message_text_compatibility.sql
 20260728103000_chat_delete_delivery_receipts.sql
+20260729090000_chat_image_schema.sql
+20260729090100_chat_image_rls_privileges.sql
+20260729090200_chat_image_rpc.sql
+20260729090300_chat_image_storage.sql
+20260729090400_chat_image_cleanup.sql
+20260730180636_chat_image_cleanup_scheduler.sql
+20260730180641_chat_image_rpc_activation.sql
+20260802090000_chat_active_relationship_hardening.sql
 ~~~
 
 20260727131340 için bu boolean true dönmelidir:
@@ -84,7 +92,8 @@ Preflight aşağıdakilerin her birini fail-closed doğrular:
 - chat_conversations, chat_messages, chat_read_states var ve RLS açık;
 - anon için chat table privilege yok; authenticated için yalnız SELECT var;
   INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER yok;
-- send_chat_message(uuid,uuid,text) ve
+- chat_has_active_relationship(uuid,uuid), send_chat_message(uuid,uuid,text),
+  delete_chat_message(uuid), mark_chat_conversation_delivered(uuid,uuid) ve
   mark_chat_conversation_read(uuid,uuid) SECURITY DEFINER, sabit
   search_path ve beklenen postgres owner ile tanımlı; PUBLIC, anon ve
   service_role execute edemez, yalnız authenticated execute edebilir;

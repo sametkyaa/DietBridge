@@ -9,8 +9,7 @@ begin
     raise exception 'Onboarding için beklenen nesne bulunamadı; migration durduruldu.';
   end if;
 end
-$$;
-
+$$
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -47,6 +46,5 @@ begin
   end if;
   return new;
 end;
-$function$;
-
-revoke execute on function public.handle_new_user() from public, anon, authenticated;
+$function$
+revoke execute on function public.handle_new_user() from public, anon, authenticated

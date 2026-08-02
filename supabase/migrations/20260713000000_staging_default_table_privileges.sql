@@ -3,4 +3,4 @@
 -- tablo yetkilerini otomatik olarak miras almasını engeller.
 
 alter default privileges in schema public
-revoke all on tables from anon, authenticated;
+revoke all on tables from anon, authenticated

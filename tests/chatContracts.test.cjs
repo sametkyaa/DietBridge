@@ -12,9 +12,7 @@ const chatService = require(path.join(buildDir, 'features', 'chat', 'services', 
 
 const repoRoot = path.join(__dirname, '..');
 const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
-const chatRlsMigration = readRepoFile('supabase/migrations/20260726090200_chat_rls.sql');
-const chatRpcMigration = readRepoFile('supabase/migrations/20260726090300_chat_rpc.sql');
-const chatReceiptMigration = readRepoFile('supabase/migrations/20260728103000_chat_delete_delivery_receipts.sql');
+const chatHardeningMigration = readRepoFile('supabase/migrations/20260802090000_chat_active_relationship_hardening.sql');
 const harness = readRepoFile('supabase/tests/chat_security_harness.sql');
 const productionRunbook = readRepoFile('docs/CHAT_PRODUCTION_SECURITY_HARNESS_RUNBOOK.md');
 const stagingRunbook = readRepoFile('docs/CHAT_STAGING_APPLICATION_RUNBOOK.md');
@@ -28,6 +26,14 @@ const chatMigrationNames = [
   '20260727094415_chat_realtime_publication.sql',
   '20260727131340_chat_legacy_message_text_compatibility.sql',
   '20260728103000_chat_delete_delivery_receipts.sql',
+  '20260729090000_chat_image_schema.sql',
+  '20260729090100_chat_image_rls_privileges.sql',
+  '20260729090200_chat_image_rpc.sql',
+  '20260729090300_chat_image_storage.sql',
+  '20260729090400_chat_image_cleanup.sql',
+  '20260730180636_chat_image_cleanup_scheduler.sql',
+  '20260730180641_chat_image_rpc_activation.sql',
+  '20260802090000_chat_active_relationship_hardening.sql',
 ];
 
 const extractFunction = (source, functionName) => {
@@ -63,15 +69,15 @@ const messageRow = (overrides = {}) => ({
   ...overrides,
 });
 
-test('chat SQL keeps one active relationship predicate across RLS and RPCs', () => {
-  const helper = extractFunction(chatRlsMigration, 'chat_has_active_relationship');
+test('chat forward hardening keeps one active relationship predicate across RLS and RPCs', () => {
+  const helper = extractFunction(chatHardeningMigration, 'chat_has_active_relationship');
   assert.match(helper, /returns boolean/i);
   assert.match(helper, /security definer/i);
   assert.match(helper, /set search_path = pg_catalog, public/i);
   assert.match(helper, /dc\.status\s*=\s*'active'::public\.client_status/i);
   assert.match(helper, /auth\.uid\(\)/i);
-  assert.match(chatRlsMigration, /revoke all on function public\.chat_has_active_relationship\(uuid, uuid\) from public, anon, authenticated, service_role;/i);
-  assert.match(chatRlsMigration, /grant execute on function public\.chat_has_active_relationship\(uuid, uuid\) to authenticated;/i);
+  assert.match(chatHardeningMigration, /revoke all on function public\.chat_has_active_relationship\(uuid, uuid\) from public, anon, authenticated, service_role;/i);
+  assert.match(chatHardeningMigration, /grant execute on function public\.chat_has_active_relationship\(uuid, uuid\) to authenticated;/i);
 
   const policyBlock = (source, policyName, endPattern) => {
     const match = source.match(new RegExp(`create policy "${policyName}"[\\s\\S]*?${endPattern}`, 'i'));
@@ -80,32 +86,23 @@ test('chat SQL keeps one active relationship predicate across RLS and RPCs', () 
   };
 
   assert.match(
-    policyBlock(chatRlsMigration, 'Chat participants can select conversations', '(?=\\r?\\n\\r?\\ncreate policy|\\r?\\n\\r?\\ndo \\$\\$)'),
+    policyBlock(chatHardeningMigration, 'Chat participants can select conversations', '(?=\\r?\\n\\r?\\ncreate policy|\\r?\\n\\r?\\ncreate or replace function)'),
     /chat_has_active_relationship\s*\(/i,
   );
   assert.match(
-    policyBlock(chatRlsMigration, 'Chat participants can select canonical messages', '(?=\\r?\\n\\r?\\ncreate policy|\\r?\\n\\r?\\ndo \\$\\$)'),
+    policyBlock(chatHardeningMigration, 'Chat participants can select canonical messages', '(?=\\r?\\n\\r?\\ncreate policy|\\r?\\n\\r?\\ncreate or replace function)'),
     /chat_has_active_relationship\s*\(/i,
   );
-  const initialReadStatePolicy = policyBlock(
-    chatRlsMigration,
-    'Chat participants can select own read state',
-    '(?=\\r?\\n\\r?\\ndo \\$\\$)',
-  );
-  assert.match(initialReadStatePolicy, /chat_has_active_relationship\s*\(/i);
-  assert.match(initialReadStatePolicy, /auth\.uid\(\)\s*\)\s*=\s*chat_read_states\.user_id/i);
-
   const finalReadStatePolicy = policyBlock(
-    chatReceiptMigration,
+    chatHardeningMigration,
     'Chat participants can select read states',
-    '(?=\\r?\\n\\r?\\nalter function)',
+    '(?=\\r?\\n\\r?\\ncreate or replace function)',
   );
   assert.match(finalReadStatePolicy, /chat_has_active_relationship\s*\(/i);
   assert.match(finalReadStatePolicy, /auth\.uid\(\)\s*\)\s*=\s*chat_read_states\.user_id/i);
 
   for (const [source, functionNames] of [
-    [chatRpcMigration, ['send_chat_message', 'mark_chat_conversation_read']],
-    [chatReceiptMigration, ['delete_chat_message', 'mark_chat_conversation_delivered', 'mark_chat_conversation_read']],
+    [chatHardeningMigration, ['send_chat_message', 'delete_chat_message', 'mark_chat_conversation_delivered', 'mark_chat_conversation_read']],
   ]) {
     for (const functionName of functionNames) {
       const definition = assertActiveFunction(source, functionName);
@@ -114,12 +111,12 @@ test('chat SQL keeps one active relationship predicate across RLS and RPCs', () 
     }
   }
 
-  assert.match(chatReceiptMigration, /revoke all on function public\.delete_chat_message\(uuid\) from public, anon, service_role;/i);
-  assert.match(chatReceiptMigration, /grant execute on function public\.delete_chat_message\(uuid\) to authenticated;/i);
-  assert.match(chatReceiptMigration, /revoke all on function public\.mark_chat_conversation_delivered\(uuid, uuid\) from public, anon, service_role;/i);
-  assert.match(chatReceiptMigration, /grant execute on function public\.mark_chat_conversation_delivered\(uuid, uuid\) to authenticated;/i);
-  assert.match(chatReceiptMigration, /revoke all on function public\.mark_chat_conversation_read\(uuid, uuid\) from public, anon, service_role;/i);
-  assert.match(chatReceiptMigration, /grant execute on function public\.mark_chat_conversation_read\(uuid, uuid\) to authenticated;/i);
+  assert.match(chatHardeningMigration, /revoke all on function public\.delete_chat_message\(uuid\) from public, anon, authenticated, service_role;/i);
+  assert.match(chatHardeningMigration, /grant execute on function public\.delete_chat_message\(uuid\) to authenticated;/i);
+  assert.match(chatHardeningMigration, /revoke all on function public\.mark_chat_conversation_delivered\(uuid, uuid\) from public, anon, authenticated, service_role;/i);
+  assert.match(chatHardeningMigration, /grant execute on function public\.mark_chat_conversation_delivered\(uuid, uuid\) to authenticated;/i);
+  assert.match(chatHardeningMigration, /revoke all on function public\.mark_chat_conversation_read\(uuid, uuid\) from public, anon, authenticated, service_role;/i);
+  assert.match(chatHardeningMigration, /grant execute on function public\.mark_chat_conversation_read\(uuid, uuid\) to authenticated;/i);
 });
 
 test('chat runbooks and harness share the same canonical migration and PASS contract', () => {

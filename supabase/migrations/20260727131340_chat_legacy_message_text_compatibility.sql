@@ -1,5 +1,4 @@
-begin;
-
+begin
 do $$
 declare
   v_message_text_not_null boolean;
@@ -19,11 +18,9 @@ begin
     raise exception 'Required column public.chat_messages.message_text does not exist';
   end if;
 end
-$$;
-
+$$
 alter table public.chat_messages
-  alter column message_text drop not null;
-
+  alter column message_text drop not null
 do $$
 declare
   v_message_text_not_null boolean;
@@ -43,6 +40,5 @@ begin
     raise exception 'Postcondition failed: public.chat_messages.message_text remains NOT NULL';
   end if;
 end
-$$;
-
-commit;
+$$
+commit

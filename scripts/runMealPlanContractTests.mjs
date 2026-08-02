@@ -1,5 +1,5 @@
 /**
- * Dependency-free contract test runner for the meal plan, chat and measurement contracts.
+ * Dependency-free contract test runner for the meal plan read/write services.
  *
  * The service modules import lib/supabaseClient, which reads import.meta.env
  * at module scope and cannot run under plain Node. This runner compiles the
@@ -8,13 +8,59 @@
  * node:test suite against the compiled output. No new dependencies.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const buildDir = mkdtempSync(join(tmpdir(), 'dietbridge-meal-plan-contracts-'));
+
+const CANONICAL_FIXTURE_RENAMES = new Map([
+  [
+    '20260724100000_allow_clients_read_planned_recipe_images.sql',
+    '20260724071352_allow_clients_read_planned_recipe_images.sql',
+  ],
+]);
+
+const resolveCanonicalSqlFixture = (exactFileName) => {
+  const lookupName = CANONICAL_FIXTURE_RENAMES.get(exactFileName) ?? exactFileName;
+  const roots = [
+    join(repoRoot, 'supabase', 'migrations'),
+    join(repoRoot, 'supabase', 'migration_archive'),
+  ];
+  const matches = [];
+  const pendingDirectories = [...roots];
+
+  while (pendingDirectories.length > 0) {
+    const directory = pendingDirectories.pop();
+    if (!existsSync(directory)) continue;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pendingDirectories.push(entryPath);
+      } else if (entry.isFile() && entry.name === lookupName) {
+        matches.push(entryPath);
+      }
+    }
+  }
+
+  if (matches.length === 0) {
+    throw new Error(`Canonical SQL fixture not found: ${exactFileName}`);
+  }
+  if (matches.length !== 1) {
+    throw new Error(`Canonical SQL fixture is ambiguous: ${exactFileName}`);
+  }
+  return relative(repoRoot, matches[0]);
+};
+
+const FIXTURE_BASENAMES = [
+  '20260723182501_persist_recipe_meal_snapshots.sql',
+  '20260724100000_allow_clients_read_planned_recipe_images.sql',
+];
+const fixtureOverrides = Object.fromEntries(
+  FIXTURE_BASENAMES.map((fileName) => [fileName, join(repoRoot, resolveCanonicalSqlFixture(fileName))]),
+);
 
 const SOURCES = [
   'features/meal-plans/services/mealPhotoService.ts',
@@ -26,8 +72,18 @@ const SOURCES = [
   'features/clients/utils/measurementContract.ts',
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
+  'features/chat/types/chatImage.ts',
+  'features/chat/types/chatImageUpload.ts',
   'features/chat/utils/receipts.ts',
+  'features/chat/utils/conversationPreview.ts',
+  'features/chat/utils/canonicalJpegPlan.ts',
+  'features/chat/utils/canonicalizeChatImage.ts',
+  'features/chat/utils/chatImageUploadReducer.ts',
+  'features/chat/utils/chatImageUploadResources.ts',
+  'features/chat/utils/chatImageUiState.ts',
   'features/chat/services/chatService.ts',
+  'features/chat/services/chatImageService.ts',
+  'features/chat/services/chatImageReadService.ts',
 ];
 
 const EXPECTED_OUTPUTS = [
@@ -40,8 +96,18 @@ const EXPECTED_OUTPUTS = [
   'features/clients/utils/measurementContract.js',
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
+  'features/chat/types/chatImage.js',
+  'features/chat/types/chatImageUpload.js',
   'features/chat/utils/receipts.js',
+  'features/chat/utils/conversationPreview.js',
+  'features/chat/utils/canonicalJpegPlan.js',
+  'features/chat/utils/canonicalizeChatImage.js',
+  'features/chat/utils/chatImageUploadReducer.js',
+  'features/chat/utils/chatImageUploadResources.js',
+  'features/chat/utils/chatImageUiState.js',
   'features/chat/services/chatService.js',
+  'features/chat/services/chatImageService.js',
+  'features/chat/services/chatImageReadService.js',
 ];
 
 const SUPABASE_CLIENT_STUB = `'use strict';
@@ -50,16 +116,30 @@ let rpcHandler = async () => ({ data: null, error: null });
 let fromHandler = () => {
   throw new Error('supabase.from() was called without a stubbed handler.');
 };
+let storageHandler = () => {
+  throw new Error('supabase.storage.from() was called without a stubbed handler.');
+};
+let channelHandler = () => {
+  throw new Error('supabase.channel() was called without a stubbed handler.');
+};
+let functionHandler = async () => ({ data: null, error: null });
 let userId = null;
 exports.__setRpcHandler = (handler) => { rpcHandler = handler; };
 exports.__setFromHandler = (handler) => { fromHandler = handler; };
+exports.__setStorageHandler = (handler) => { storageHandler = handler; };
+exports.__setChannelHandler = (handler) => { channelHandler = handler; };
 exports.__setUserId = (id) => { userId = id; };
+exports.__setFunctionHandler = (handler) => { functionHandler = handler; };
 exports.supabase = {
   auth: {
     getUser: async () => ({ data: { user: userId ? { id: userId } : null }, error: null }),
   },
   rpc: (name, args) => rpcHandler(name, args),
   from: (table) => fromHandler(table),
+  storage: { from: (bucket) => storageHandler(bucket) },
+  functions: { invoke: (name, options) => functionHandler(name, options) },
+  channel: (name) => channelHandler(name),
+  removeChannel: async () => undefined,
 };
 `;
 
@@ -111,14 +191,40 @@ const avatarUtilsDir = join(buildDir, 'shared', 'utils');
 mkdirSync(avatarUtilsDir, { recursive: true });
 writeFileSync(join(avatarUtilsDir, 'avatarUrl.js'), "'use strict'; exports.resolveProfilePhotoUrl = async (value) => value ?? null;\n", 'utf8');
 
+const fixtureShimPath = join(buildDir, 'canonicalSqlFixtureShim.cjs');
+writeFileSync(fixtureShimPath, `'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const overrides = ${JSON.stringify(fixtureOverrides)};
+const originalReadFileSync = fs.readFileSync;
+fs.readFileSync = (file, ...args) => {
+  const basename = typeof file === 'string' ? path.basename(file) : '';
+  const replacement = overrides[basename];
+  return replacement
+    ? originalReadFileSync.call(fs, replacement, ...args)
+    : originalReadFileSync.call(fs, file, ...args);
+};
+`, 'utf8');
+
 const testRun = spawnSync(process.execPath, [
   '--test',
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatImageReadContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatImageUploadContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatImageOwnershipContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatImageUiContracts.test.cjs'),
+  join(repoRoot, 'tests', 'disposableReplayMaterializer.test.cjs'),
+  join(repoRoot, 'tests', 'disposableSupabaseLocalReplay.test.cjs'),
   join(repoRoot, 'tests', 'measurementContracts.test.cjs'),
 ], {
   cwd: repoRoot,
-  env: { ...process.env, MEAL_PLAN_CONTRACT_BUILD_DIR: buildDir },
+  env: {
+    ...process.env,
+    MEAL_PLAN_CONTRACT_BUILD_DIR: buildDir,
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${fixtureShimPath}`].filter(Boolean).join(' '),
+  },
   stdio: 'inherit',
 });
 

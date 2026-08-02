@@ -16,8 +16,7 @@ begin
     raise exception 'Chat integrity functions already exist; inspect schema drift first.';
   end if;
 end
-$$;
-
+$$
 alter table public.chat_conversations
   add constraint chat_conversations_relation_key unique (dietitian_client_id),
   add constraint chat_conversations_participants_key unique (dietitian_id, client_id),
@@ -27,8 +26,7 @@ alter table public.chat_conversations
     check (
       (last_message_id is null and last_message_at is null)
       or (last_message_id is not null and last_message_at is not null)
-    );
-
+    )
 alter table public.chat_messages
   add constraint chat_messages_canonical_shape_check
     check (
@@ -45,21 +43,16 @@ alter table public.chat_messages
   add constraint chat_messages_canonical_created_at_check
     check (conversation_id is null or created_at is not null),
   add constraint chat_messages_sender_client_message_key
-    unique (sender_id, client_message_id);
-
+    unique (sender_id, client_message_id)
 create index chat_messages_conversation_created_id_idx
   on public.chat_messages (conversation_id, created_at desc, id desc)
-  where conversation_id is not null;
-
+  where conversation_id is not null
 create index chat_conversations_dietitian_last_message_idx
-  on public.chat_conversations (dietitian_id, last_message_at desc nulls last, id desc);
-
+  on public.chat_conversations (dietitian_id, last_message_at desc nulls last, id desc)
 create index chat_conversations_client_last_message_idx
-  on public.chat_conversations (client_id, last_message_at desc nulls last, id desc);
-
+  on public.chat_conversations (client_id, last_message_at desc nulls last, id desc)
 create index chat_read_states_user_updated_idx
-  on public.chat_read_states (user_id, updated_at desc, conversation_id desc);
-
+  on public.chat_read_states (user_id, updated_at desc, conversation_id desc)
 create function public.enforce_chat_conversation_contract()
 returns trigger
 language plpgsql
@@ -114,8 +107,7 @@ begin
   new.updated_at := now();
   return new;
 end
-$function$;
-
+$function$
 create function public.enforce_chat_message_contract()
 returns trigger
 language plpgsql
@@ -148,8 +140,7 @@ begin
   new.body := btrim(new.body);
   return new;
 end
-$function$;
-
+$function$
 create function public.enforce_chat_read_state_contract()
 returns trigger
 language plpgsql
@@ -203,24 +194,19 @@ begin
   new.updated_at := now();
   return new;
 end
-$function$;
-
+$function$
 create trigger trg_enforce_chat_conversation_contract
 before insert or update on public.chat_conversations
-for each row execute function public.enforce_chat_conversation_contract();
-
+for each row execute function public.enforce_chat_conversation_contract()
 create trigger trg_enforce_chat_message_contract
 before insert or update on public.chat_messages
-for each row execute function public.enforce_chat_message_contract();
-
+for each row execute function public.enforce_chat_message_contract()
 create trigger trg_enforce_chat_read_state_contract
 before insert or update on public.chat_read_states
-for each row execute function public.enforce_chat_read_state_contract();
-
-revoke all on function public.enforce_chat_conversation_contract() from public, anon, authenticated, service_role;
-revoke all on function public.enforce_chat_message_contract() from public, anon, authenticated, service_role;
-revoke all on function public.enforce_chat_read_state_contract() from public, anon, authenticated, service_role;
-
+for each row execute function public.enforce_chat_read_state_contract()
+revoke all on function public.enforce_chat_conversation_contract() from public, anon, authenticated, service_role
+revoke all on function public.enforce_chat_message_contract() from public, anon, authenticated, service_role
+revoke all on function public.enforce_chat_read_state_contract() from public, anon, authenticated, service_role
 do $$
 begin
   if to_regprocedure('public.enforce_chat_conversation_contract()') is null
@@ -234,7 +220,6 @@ begin
     raise exception 'Chat constraint postcondition failed.';
   end if;
 end
-$$;
-
+$$
 -- Forward-only rollback: preserve canonical tables and ship a targeted forward
 -- fix; dropping the constraints would make existing conversation history unsafe.

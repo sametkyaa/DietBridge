@@ -25,8 +25,7 @@ begin
     raise exception 'Canonical chat tables already exist; migration history or schema drift must be reconciled first.';
   end if;
 end
-$$;
-
+$$
 -- Legacy columns remain untouched. Canonical messages use the new nullable
 -- columns; the next migration prevents partially canonical rows.
 alter table public.chat_messages
@@ -34,8 +33,7 @@ alter table public.chat_messages
   add column client_message_id uuid,
   add column body text,
   add column edited_at timestamptz,
-  add column deleted_at timestamptz;
-
+  add column deleted_at timestamptz
 create table public.chat_conversations (
   id uuid primary key default gen_random_uuid(),
   dietitian_client_id uuid not null,
@@ -61,14 +59,12 @@ create table public.chat_conversations (
     foreign key (last_message_id)
     references public.chat_messages(id)
     on delete restrict
-);
-
+)
 alter table public.chat_messages
   add constraint chat_messages_conversation_fkey
     foreign key (conversation_id)
     references public.chat_conversations(id)
-    on delete restrict;
-
+    on delete restrict
 create table public.chat_read_states (
   conversation_id uuid not null,
   user_id uuid not null,
@@ -89,8 +85,7 @@ create table public.chat_read_states (
     foreign key (last_read_message_id)
     references public.chat_messages(id)
     on delete restrict
-);
-
+)
 do $$
 begin
   if to_regclass('public.chat_conversations') is null
@@ -105,7 +100,6 @@ begin
     raise exception 'Chat schema postcondition failed.';
   end if;
 end
-$$;
-
+$$
 -- Forward-only rollback: do not drop these tables or columns from an applied
 -- environment. Ship a separately reviewed forward-fix migration if needed.

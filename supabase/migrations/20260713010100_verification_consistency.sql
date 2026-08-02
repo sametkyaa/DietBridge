@@ -18,8 +18,7 @@ begin
     raise exception 'Verification trigger function zaten var; üzerine yazılmaz.';
   end if;
 end
-$$;
-
+$$
 create function public.sync_dietitian_verification_fields()
 returns trigger
 language plpgsql
@@ -46,13 +45,11 @@ begin
   new.is_verified := (new.verification_status = 'approved');
   return new;
 end;
-$function$;
-
+$function$
 create trigger trg_sync_dietitian_verification_fields
 before insert or update on public.dietitian_profiles
-for each row execute function public.sync_dietitian_verification_fields();
-
-revoke execute on function public.sync_dietitian_verification_fields() from public, anon, authenticated;
+for each row execute function public.sync_dietitian_verification_fields()
+revoke execute on function public.sync_dietitian_verification_fields() from public, anon, authenticated
 alter table public.dietitian_profiles
   add constraint dietitian_profiles_verification_consistency_check
-  check (is_verified is not distinct from (verification_status = 'approved'));
+  check (is_verified is not distinct from (verification_status = 'approved'))

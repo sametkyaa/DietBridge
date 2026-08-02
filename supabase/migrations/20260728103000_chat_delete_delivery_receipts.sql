@@ -110,9 +110,7 @@ declare v_actor_id uuid := auth.uid(); v_message public.chat_messages%rowtype;
 begin
   if v_actor_id is null or p_message_id is null then raise exception 'Chat access denied.' using errcode = '42501'; end if;
   select m.* into v_message from public.chat_messages as m join public.chat_conversations as c on c.id = m.conversation_id
-    where m.id = p_message_id
-      and public.chat_has_active_relationship(c.dietitian_id, c.client_id)
-    for update of m;
+    where m.id = p_message_id and v_actor_id in (c.dietitian_id, c.client_id) for update of m;
   if not found or v_message.conversation_id is null or v_message.sender_id is distinct from v_actor_id or v_message.client_message_id is null then
     raise exception 'Chat access denied.' using errcode = '42501';
   end if;
@@ -130,12 +128,7 @@ declare
   v_desired_message_id uuid := p_last_delivered_message_id; v_desired_created_at timestamptz;
 begin
   if v_actor_id is null or p_conversation_id is null or p_last_delivered_message_id is null then raise exception 'Chat access denied.' using errcode = '42501'; end if;
-  if not exists (
-    select 1
-    from public.chat_conversations as c
-    where c.id = p_conversation_id
-      and public.chat_has_active_relationship(c.dietitian_id, c.client_id)
-  ) then raise exception 'Chat access denied.' using errcode = '42501'; end if;
+  if not exists (select 1 from public.chat_conversations as c where c.id = p_conversation_id and v_actor_id in (c.dietitian_id, c.client_id)) then raise exception 'Chat access denied.' using errcode = '42501'; end if;
   select m.created_at into v_target_created_at from public.chat_messages as m where m.id = p_last_delivered_message_id and m.conversation_id = p_conversation_id;
   if not found then raise exception 'Invalid chat delivery pointer.' using errcode = '22023'; end if;
   v_desired_created_at := v_target_created_at;
@@ -159,12 +152,7 @@ declare
   v_delivered_message_id uuid := p_last_read_message_id; v_delivered_created_at timestamptz;
 begin
   if v_actor_id is null or p_conversation_id is null or p_last_read_message_id is null then raise exception 'Chat access denied.' using errcode = '42501'; end if;
-  if not exists (
-    select 1
-    from public.chat_conversations as c
-    where c.id = p_conversation_id
-      and public.chat_has_active_relationship(c.dietitian_id, c.client_id)
-  ) then raise exception 'Chat access denied.' using errcode = '42501'; end if;
+  if not exists (select 1 from public.chat_conversations as c where c.id = p_conversation_id and v_actor_id in (c.dietitian_id, c.client_id)) then raise exception 'Chat access denied.' using errcode = '42501'; end if;
   select m.created_at into v_target_created_at from public.chat_messages as m where m.id = p_last_read_message_id and m.conversation_id = p_conversation_id;
   if not found then raise exception 'Invalid chat read pointer.' using errcode = '22023'; end if;
   select rs.* into v_existing from public.chat_read_states as rs where rs.conversation_id = p_conversation_id and rs.user_id = v_actor_id for update;
@@ -180,13 +168,7 @@ $function$;
 alter table public.chat_messages replica identity full;
 drop policy if exists "Chat participants can select own read state" on public.chat_read_states;
 create policy "Chat participants can select read states" on public.chat_read_states for select to authenticated using (
-  (select auth.uid()) = chat_read_states.user_id
-  and exists (
-    select 1
-    from public.chat_conversations as c
-    where c.id = chat_read_states.conversation_id
-      and public.chat_has_active_relationship(c.dietitian_id, c.client_id)
-  )
+  (select auth.uid()) is not null and exists (select 1 from public.chat_conversations as c where c.id = chat_read_states.conversation_id and ((select auth.uid()) = c.dietitian_id or (select auth.uid()) = c.client_id))
 );
 
 alter function public.delete_chat_message(uuid) owner to postgres;
@@ -208,8 +190,7 @@ begin
      or has_table_privilege('authenticated', 'public.chat_read_states', 'UPDATE')
      or not has_function_privilege('authenticated', 'public.delete_chat_message(uuid)', 'EXECUTE')
      or not has_function_privilege('authenticated', 'public.mark_chat_conversation_delivered(uuid,uuid)', 'EXECUTE')
-     or not has_function_privilege('authenticated', 'public.mark_chat_conversation_read(uuid,uuid)', 'EXECUTE')
-     or to_regprocedure('public.chat_has_active_relationship(uuid,uuid)') is null then
+     or not has_function_privilege('authenticated', 'public.mark_chat_conversation_read(uuid,uuid)', 'EXECUTE') then
     raise exception 'Chat delete and receipt security postcondition failed.';
   end if;
 end
