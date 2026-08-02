@@ -1,3 +1,10 @@
+supabase/migrations/20260730180636_chat_image_cleanup_scheduler.sql text eol=lf
+supabase/migrations/20260730180641_chat_image_rpc_activation.sql text eol=lf
+supabase/migrations/20260801090000_align_measurements_with_mobile.sql text eol=lf
+supabase/migrations/20260802090000_chat_active_relationship_hardening.sql text eol=lf
+supabase/tests/disposable/*.sql text eol=lf
+tests/fixtures/*.json text eol=lf
+
 supabase/baseline_drafts/dietbridge_production_public_baseline.sql -text whitespace=-blank-at-eof,cr-at-eol
 supabase/migrations/20260713000001_production_public_baseline.sql -text whitespace=-blank-at-eof,cr-at-eol
 
