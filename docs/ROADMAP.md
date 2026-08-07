@@ -1,4 +1,320 @@
-# DietBridge Web — Production Geliştirme Yol Haritası
+# DietBridge — MVP Closure Roadmap
+
+> Son uzlaştırma: 2026-08-07. Bu bölüm bundan sonraki aktif çalışma planıdır. Aşağıdaki `Historical Production Roadmap` bölümü geçmiş yürütme kaydını korur; tarihsel durum cümleleri güncel görev seçimi veya release kararı değildir.
+
+## 1. MVP-0 sonucu ve kapsam dondurma kararı
+
+MVP-0 repository gerçekleriyle roadmap'i uzlaştırır, public launch öncesi çalışma modelini kaydeder ve MVP kapsamını dondurur. Bu uzlaştırmada uygulama kodu, dependency, Supabase schema/data, migration veya production değiştirilmemiştir.
+
+**Durum:** `COMPLETED — 2026-08-07`
+
+### MVP'de zorunlu
+
+1. Authentication
+2. Role / dietitian verification
+3. Dietitian profile
+4. Client management
+5. Client profile / lifestyle data
+6. Measurements
+7. Daily logs / günlük takip
+8. Weekly meal plans
+9. Meal CRUD
+10. Meal time / sort / notes / image
+11. Recipes
+12. Chat + image
+13. Appointments
+14. Dashboard
+15. Persistent Dashboard Daily Tasks
+16. Real-data Analytics
+17. Subscription / plans / client limits
+18. Web/mobile shared database contract
+19. Automated quality gates
+20. Release preparation
+21. Production validation / launch
+
+### MVP dışında
+
+- advanced AI analytics, AI clinical interpretation, AI risk scoring, AI recommendations ve AI prediction;
+- AI-generated client report ve automatic AI meal-plan generation;
+- advanced Notes system;
+- recurring task engine, AI-generated tasks ve team task assignment;
+- advanced notification automation;
+- comprehensive Settings ve advanced reporting;
+- large-scale repository cleanup ve non-critical bundle optimization.
+
+Bu alanlar public launch sonrasına bırakılabilir ve MVP blocker değildir. MVP dışı bir alan kullanıcıya gerçek, kalıcı ve production-ready bir özellikmiş gibi sunulamaz.
+
+## 2. Pre-Launch Production-First Strategy
+
+DietBridge public launch öncesindedir. Production ortamında aktif gerçek müşteri/diyetisyen verisi bulunmadığı, yalnız geliştirme/test hesapları bulunduğu ürün sahibi beyanı bu operasyon modelinin ön koşuludur. Bu beyan değişirse strateji yeniden değerlendirilir.
+
+MVP closure sürecinde ayrı staging deployment/parity kontrolü zorunlu release kapısı değildir. Database/backend değişiklikleri şu sırayla yürütülür:
+
+1. Repository ve production project identity doğrulaması
+2. Local/disposable ortamda migration ve test
+3. Production read-only preflight
+4. Production migration-history/schema doğrulaması
+5. Değişikliğin riskine uygun backup/restore point
+6. Küçük ve forward-only production mutation
+7. Production postflight
+8. Yalnız geliştirme/test hesaplarıyla pozitif ve negatif smoke test
+9. `PASS` olmadan sonraki bağımlı göreve geçmeme
+
+Kalıcı korumalar:
+
+- Doğrulanmamış migration production'a uygulanmaz.
+- Project identity doğrulanmadan mutation yapılmaz.
+- Destructive schema/data değişikliği otomatik yapılmaz.
+- Riskli değişiklik rollback/restore yaklaşımı olmadan uygulanmaz.
+- Migration history toplu ve kontrolsüz repair edilmez.
+- Web/mobile shared database contract bozulmaz.
+- Production mutation görevi ile preparation/read-only audit görevleri gerektiğinde ayrı tutulur.
+- Repository kökündeki `AGENTS.md` production-write onay kuralları aynen geçerlidir; production-first yaklaşımı onay yetkisi vermez.
+
+Public launch ve gerçek kullanıcı alımı başladıktan sonra production doğrudan geliştirme/test ortamı olarak kullanılmaz. Staging/release-environment ayrımı yeniden değerlendirilir ve zorunlu hale getirilir.
+
+## 3. Current MVP Closure Status
+
+Bu tablo 2026-08-07 tarihli repository kanıtına dayanır. Runtime veya production kanıtı olmayan alanlar `COMPLETED` değildir.
+
+| Alan | Güncel durum | Repository kanıtı / açık kapı |
+|---|---|---|
+| Auth | `IMPLEMENTED / RELEASE HARDENING PENDING` | Fail-closed access-state akışı mevcut; final production security ve RC matrisi açık |
+| Dietitian Profile | `MOSTLY READY` | Gerçek service/Storage akışı mevcut; release doğrulaması açık |
+| Client Management | `MOSTLY READY` | Gerçek ilişki, profil ve ölçüm akışları mevcut; final RC açık |
+| Measurements | `MOSTLY READY` | Gerçek read/write ve migration contract mevcut; final RC açık |
+| Daily Logs | `PARTIAL — DIETITIAN ACCESS PENDING` | Web read-model sorgusu var; active-dietitian SELECT yalnız tarihsel staging kanıtına sahip, canonical production migration zincirinde yok |
+| Meal Plans | `IMPLEMENTED / RELEASE VERIFICATION PENDING` | Atomik RPC, web/mobile read ve completion akışları mevcut; session lifecycle ve image cleanup kapanışı açık |
+| Meal CRUD / Image | `IMPLEMENTED / RELEASE VERIFICATION PENDING` | CRUD, time/sort/notes ve private image akışı mevcut; failure/orphan kapanışı açık |
+| Recipes | `IMPLEMENTED / RELEASE VERIFICATION PENDING` | Supabase CRUD/image servisi ve canonical migrations mevcut; `RecipeDetails` route'u hâlâ legacy `RECIPES` sabitini okuyor |
+| Chat + Image | `IMPLEMENTED` | Web/mobile service, realtime, private image migrations ve kapanış kanıtı mevcut |
+| Appointments | `IN PROGRESS — FAKE SUCCESS BLOCKER` | Backend create/delete var; DB hatasında local ekleme/silme fallback'i devam ediyor, update kapanışı yok |
+| Dashboard | `PARTIAL` | Client ve appointment bölümleri gerçek veriye bağlı; görevler local ve tüm closure özetleri tamam değil |
+| Daily Tasks | `MVP / PERSISTENT IMPLEMENTATION NOT STARTED` | `TASKS` sabiti ve component state kullanılıyor; schema/service/RLS yok |
+| Analytics | `MVP / REAL-DATA IMPLEMENTATION NOT STARTED` | Aktif web route hardcoded seriler ve sahte loading kullanıyor |
+| Subscription | `NOT STARTED` | Product/provider/schema/enforcement/checkout akışı yok |
+| Web/Mobile Contract | `PARTIAL` | Meal, measurement, recipe ve chat contract çalışmaları var; tek migration authority kararı henüz resmileştirilmedi |
+| CI | `PARTIAL` | `typecheck`, `lint`, `test`, `build` scriptleri var; `.github` CI workflow'u yok, test kapsamı dar |
+| Release | `BLOCKED` | Security, daily logs, meal release closure, appointments, tasks, analytics, subscription, CI ve RC kapıları açık |
+
+### Repository uzlaştırma notları
+
+- Aktif zincir `index.html → index.tsx → App.tsx`; dashboard, clients, analytics, meal plans, messages, recipes, appointments ve profile route'ları buradan yüklenir.
+- Eski roadmap'in chat'i sabit `CONVERSATIONS` ile bekliyor göstermesi güncel değildir. Chat + image uygulanmış ve tarihsel Aşama 6 kapanış kaydı da bunu doğrular.
+- Eski roadmap'in Recipes alanını tümüyle mock göstermesi güncel değildir. Liste/CRUD/image gerçek backend'e geçmiştir; legacy detail route nedeniyle release verification açık tutulur.
+- Eski roadmap'in “yalnız dev/build/preview var; lockfile/lint/test yok” envanteri güncel değildir. Web `package.json` artık `typecheck`, `lint`, `test`, `build` scriptlerini ve lockfile'ı içerir; CI workflow'u yine yoktur.
+- Aşama 5 satırının `Bekliyor` olması güncel değildir. Implementation tamamlanmış, release verification beklemektedir.
+- Production security bütünü geçmiş Aşama 3 kapanışıyla otomatik olarak tamam sayılmaz; güncel Security Advisor bulguları ayrıca yeniden sınıflandırılacaktır.
+
+## 4. Dashboard Daily Tasks MVP sözleşmesi
+
+Dashboard, diyetisyenin bugün ne yapması gerektiğini gördüğü operasyon merkezidir. Daily Tasks kaldırılacak/gizlenecek demo alanı değil, çekirdek MVP özelliğidir.
+
+### Minimum veri sözleşmesi
+
+- unique id;
+- dietitian ownership;
+- optional client relation;
+- title ve optional description;
+- due date ve optional due time;
+- priority;
+- status;
+- completed_at;
+- created_at ve updated_at.
+
+Nihai tablo ve enum adları ayrı tasarım/migration görevinde belirlenir.
+
+### MVP davranışı
+
+Diyetisyen görev oluşturabilir, düzenleyebilir, silebilir, tamamlayabilir, tekrar açabilir ve opsiyonel olarak kendi aktif danışanıyla ilişkilendirebilir. Geciken, bugünkü ve tamamlanan görevleri görebilir; refresh sonrası aynı kalıcı veriyi görür. Tenant isolation RLS ile zorunludur. DB işlemi başarısızsa UI başarılı davranmaz.
+
+Recurring tasks, team assignment, kanban, AI-generated tasks, automatic reminder engine ve push/email task automation MVP dışıdır.
+
+## 5. Real Analytics MVP sözleşmesi
+
+Analytics, diyetisyenin danışanın zaman içindeki ilerlemesini gerçek DietBridge verileriyle değerlendirdiği alandır. Aktif hardcoded sayfa production-ready değildir; ancak özellik MVP'den çıkarılmaz veya gizlenmez.
+
+### MVP kapsamı
+
+- **Danışan seçimi:** Diyetisyen yalnız kendi aktif danışanlarını seçer.
+- **KPI:** Veri varsa current weight, başlangıca göre weight change, target-weight gap, last measurement date, meal-plan adherence ve water tracking summary.
+- **Measurements:** Gerçek `measurements` üzerinden weight history ve DB'de gerçekten bulunan body measurement trendleri.
+- **Meal adherence:** Gerçek meal plan/meals üzerinden completed/planned meals, günlük ve haftalık uyum ile dönem trendi.
+- **Daily logs / water:** Gerçek `daily_logs` üzerinden daily water, water goal, goal achievement ve dönem ortalaması/trendi.
+- **Planned nutrition:** Güvenilir meal alanları varsa planned calories/protein/carbohydrate/fat. Bunlar gerçek tüketim diye adlandırılmaz; `is_eaten=true` gerçek gram tüketimi veya enerji alımı kanıtı değildir.
+- **Tarih filtreleri:** En az 7 gün, 30 gün, 3 ay ve tüm zamanlar.
+- **Edge states:** No measurements, no daily logs, no meal plan, incomplete macro data ve newly added client durumları doğru empty/error state üretir.
+
+AI interpretation, clinical recommendation, risk score, prediction, natural-language AI report ve AI intervention recommendation MVP dışıdır.
+
+## 6. MVP Closure Roadmap
+
+### MVP-0 — Scope Freeze / Roadmap Reconciliation
+
+- **Durum:** `COMPLETED — 2026-08-07`
+- **Amaç:** Repository durumunu roadmap ile eşitlemek, MVP kapsamını dondurmak ve pre-launch production-first stratejisini kaydetmek.
+
+### MVP-1 — Production Security Advisor Read-Only Triage
+
+- **Amaç:** Güncel production Supabase Security Advisor bulgularını mutation yapmadan sınıflandırmak.
+- **İncelenecekler:** anon executable `SECURITY DEFINER` functions, anon table grants, GraphQL exposure, authenticated function grants, mutable `search_path`, RLS/no-policy ve leaked-password protection bulguları.
+- **Çıktı sınıfları:** `MUST FIX BEFORE MVP`, `INTENTIONAL`, `LOW RISK / POST-MVP HARDENING`, `FALSE POSITIVE / NOT APPLICABLE`.
+
+### MVP-2 — Production Security Hardening + Daily Logs Access
+
+- **MVP-2A:** Hardening + `daily_logs` migration preparation
+- **MVP-2B:** Local/disposable validation
+- **MVP-2C:** Production read-only preflight
+- **MVP-2D:** Backup/restore point + controlled production application
+- **MVP-2E:** Production postflight + negative security smoke
+- **Kabul özeti:** Diyetisyen kendi aktif danışanının `daily_logs` verisini okuyabilir; başka diyetisyenin danışanına erişemez. Bu, Analytics'in ön koşuludur.
+
+### MVP-3 — Meal Plans Release Closure
+
+Yeni feature yerine mevcut implementasyonun release kapanışıdır. Web plan persistence, mobile same-plan visibility, meal completion RPC, restart persistence, session refresh, background/foreground, image upload failure, failed-save rollback ve meal-photo orphan cleanup doğrulanır. Hedef sonuç: `MEAL PLANS MVP DONE`.
+
+### MVP-4 — Appointment Reliability
+
+Mevcut backend CRUD korunur. DB başarısızlığındaki local fallback/fake success kaldırılır. Create, update, delete, ownership, client relation, date/time validation, loading, error, retry ve refresh persistence doğrulanır.
+
+### MVP-5 — Persistent Dashboard Daily Tasks
+
+- **MVP-5A:** Schema / migration / RLS
+- **MVP-5B:** Task service
+- **MVP-5C:** Dashboard UI integration
+- **MVP-5D:** Production smoke / tenant isolation / persistence
+
+Mevcut mock `TASKS` gerçek backend ile değiştirilir.
+
+### MVP-6 — Real Analytics
+
+- **MVP-6A:** Real data contract inventory
+- **MVP-6B:** Analytics service
+- **MVP-6C:** KPI summary
+- **MVP-6D:** Measurement / weight trends
+- **MVP-6E:** Water / daily-log trends
+- **MVP-6F:** Meal adherence
+- **MVP-6G:** Date filters + empty/error states
+
+Hardcoded/fake analytics kaldırılır; advanced AI analysis yapılmaz.
+
+### MVP-7 — Subscription / Plans / Client Limits
+
+- **MVP-7A:** Commercial/product contract — tiers, client limits, monthly/yearly, trial, cancellation, renewal, failed payment ve downgrade/upgrade kuralları
+- **MVP-7B:** Payment provider decision
+- **MVP-7C:** Subscription schema
+- **MVP-7D:** Server-side client-limit enforcement
+- **MVP-7E:** Checkout / webhook / lifecycle
+- **MVP-7F:** Subscription UI
+
+Provider kararı verilmeden provider-specific kod başlanmaz. Client limiti yalnız frontend kontrolü olamaz.
+
+### MVP-8 — Dashboard Closure
+
+Dashboard'un ana sorusu “Bugün ne yapmalıyım?”dır. Client summary, today's appointments, overdue tasks, today's tasks ve relevant quick actions gerçek veriden gelir. Dashboard ayrı Analytics sayfasına dönüştürülmez.
+
+### MVP-9 — MVP Mock / Local Cleanup
+
+Gerçek hale gelen Analytics ve Daily Tasks gizlenmez. MVP dışında kalan Notes, fake/local Settings, eski mock arrays, demo fallbacks ve kullanılmayan hardcoded analytics/tasks/recipes artefact'ları kaldırılır veya navigation/route'tan çıkarılır. Fake success/persistence bırakılmaz.
+
+### MVP-10 — Web/Mobile Shared Contract Closure
+
+Schema ownership, migration authority, table/RPC contracts, Storage paths, `daily_logs`, `measurements`, meal plans, meals ve chat doğrulanır.
+
+**Repository kanıtı:** Web reposunda production baseline, security, meal completion, recipe, chat/image ve measurement zincirini kapsayan çok sayıda canonical migration ile production history/reconciliation runbook'ları vardır. Mobil repoda yalnız üç dar uyumluluk migration'ı bulunur; mobil dokümanları meal completion RPC için aktif Web migration kaynağına referans verir.
+
+**Önerilen karar:** Resmî governance kararı ve iki repo history karşılaştırması tamamlanana kadar shared production schema için Web repository canonical migration authority kabul edilmelidir. Mobil repository shared schema'ya bağımsız migration push etmemeli; mevcut mobil migration'lar Web zinciriyle version/hash/contract bazında uzlaştırılmadan production'a uygulanmamalıdır. İki repository'nin aynı production database'e bağımsız migration push etme yolu kapatılmalıdır.
+
+### MVP-11 — CI / Automated Quality Gate
+
+Mevcut scriptlerle hedef sıra:
+
+```text
+npm ci → typecheck → lint → test → build
+```
+
+CI kritik test kapsamı auth, ownership, appointments, tasks, analytics calculations, meals, chat ve subscription limits alanlarını içerir.
+
+### MVP-12 — Production Release Candidate
+
+Ayrı staging zorunlu değildir. Pre-launch production üzerinde yalnız test/developer hesaplarıyla kontrollü, temizlenebilir fixture kullanılarak şu E2E smoke uygulanır:
+
+1. dietitian signup/login
+2. verification/role
+3. client relation
+4. client profile
+5. measurement
+6. daily log
+7. meal plan
+8. mobile meal completion
+9. recipe
+10. chat
+11. image
+12. appointment
+13. daily task
+14. analytics
+15. subscription
+16. client limit
+17. session restore
+18. logout
+
+### MVP-13 — Public Launch / Post-Launch Validation
+
+Public launch öncesinde backup/restore readiness, migration parity, Auth configuration, RLS, Storage, Edge Functions, payment webhook, environment variables, domain/redirects, monitoring ve rollback runbook son kez kontrol edilir. Ardından public user acquisition açılır. Launch sonrasında production doğrudan geliştirme/test ortamı olarak kullanılmaz.
+
+## 7. Kritik bağımlılık zinciri
+
+```text
+Scope
+→ Security
+→ Daily Logs
+→ Meal Release Closure
+→ Appointments
+→ Daily Tasks
+→ Analytics
+→ Subscription
+→ Dashboard Closure
+→ Mock Cleanup
+→ Web/Mobile Contract
+→ CI
+→ Release Candidate
+→ Public Launch
+```
+
+- Analytics, dietitian `daily_logs` access çözülmeden release-ready olamaz.
+- Daily Tasks, Dashboard MVP closure'ın ön koşuludur.
+- Subscription provider kararı verilmeden provider-specific payment kodu başlanmaz.
+- Security hardening tamamlanmadan public launch yapılmaz.
+- Analytics ve Tasks mock cleanup sırasında gizlenmez.
+- Production migration local/disposable validation yapılmadan uygulanmaz.
+
+## 8. MVP Definition of Done
+
+DietBridge MVP ancak aşağıdaki koşullar birlikte sağlandığında tamamlanır:
+
+- Yalnız doğru role/onaya sahip dietitian web'e erişir; client web erişimi engellenir.
+- Dietitian yalnız kendi clients/data alanına erişir.
+- Client management ve measurements kalıcıdır.
+- `daily_logs` doğru sahiplik ve tenant isolation ile çalışır.
+- Meal plan ve meal CRUD web/mobile ortak contract ile çalışır.
+- Recipes gerçek backend kullanır ve tüm aktif recipe route'ları aynı canonical kaynağı okur.
+- Chat + image kalıcıdır.
+- Appointments fake success üretmez.
+- Daily Tasks gerçek backend ve RLS kullanır; refresh sonrasında kaybolmaz.
+- Analytics tamamen gerçek data kullanır; hardcoded veri veya fake loading içermez.
+- Subscription backend tarafından doğrulanır; client limits server-side enforce edilir.
+- Production'da kullanıcıya fake persistence gösterilmez.
+- MVP dışı mock özellikler gerçek feature gibi gösterilmez.
+- `npm ci`, typecheck, lint, test ve build kalite kapıları çalışır.
+- Kritik E2E/RC senaryoları geçer.
+- Production security blocker kalmaz.
+- Backup/rollback/release runbook hazırdır.
+
+---
+
+# DietBridge Web — Historical Production Roadmap
+
+> Aşağıdaki Aşama 0–13 içeriği tarihsel çalışma ve karar kaydıdır. İçindeki “mevcut”, “bekliyor”, mock listeleri, staging zorunluluğu veya sonraki aşama ifadeleri 2026-08-07 itibarıyla aktif yönlendirme değildir. Güncel kapsam, durum, environment stratejisi, bağımlılıklar ve Definition of Done yukarıdaki `MVP Closure Roadmap` bölümündedir.
 
 ## 1. Amaç ve yürütme modeli
 
