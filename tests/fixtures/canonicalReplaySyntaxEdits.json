@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 29,
+  "expectedCanonicalCount": 30,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2786,6 +2786,13 @@
       "phase": "canonical",
       "sourceSha256": "4b4d56c99a77d7887d592abff5d9eaa779702294780d50575b54579c1a49ac81",
       "materializedSha256": "4b4d56c99a77d7887d592abff5d9eaa779702294780d50575b54579c1a49ac81",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260807115919_mvp_security_hardening_reconciliation.sql",
+      "phase": "canonical",
+      "sourceSha256": "37c4e62967a1cf680901534bfa6ff7852f87c0c3c80ff5b2449f288097e8eeb3",
+      "materializedSha256": "37c4e62967a1cf680901534bfa6ff7852f87c0c3c80ff5b2449f288097e8eeb3",
       "edits": []
     }
   ]

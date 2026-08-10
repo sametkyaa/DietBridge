@@ -135,10 +135,9 @@ checks as (
       where a.attrelid = 'public.daily_logs'::regclass
         and a.attname = 'client_id'
         and a.atttypid = 'uuid'::regtype
-        and a.attnotnull
         and not a.attisdropped
     ),
-    'daily_logs.client_id is UUID and NOT NULL'
+    'daily_logs.client_id exists as UUID; canonical nullability is preserved'
 
   union all
   select
@@ -217,6 +216,37 @@ checks as (
       and not has_function_privilege('anon', 'public.chat_has_active_relationship(uuid,uuid)', 'EXECUTE')
       and has_function_privilege('authenticated', 'public.chat_has_active_relationship(uuid,uuid)', 'EXECUTE'),
     'active client accepted; dietitian branch additionally approval-aware'
+
+  union all
+  select
+    'FUNCTION-08 chat image authorization',
+    exists (
+      select 1
+      from pg_proc as p
+      where p.oid = to_regprocedure('public.create_chat_image_upload_intent(uuid,uuid,text)')
+        and p.prosecdef
+        and pg_get_userbyid(p.proowner) = 'postgres'
+        and p.proconfig @> array['search_path=pg_catalog, public']::text[]
+        and position('chat_has_active_relationship' in pg_get_functiondef(p.oid)) > 0
+        and position('chat_has_active_relationship' in pg_get_functiondef(p.oid))
+            < position('insert into public.chat_upload_intents' in lower(pg_get_functiondef(p.oid)))
+        and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        and not has_function_privilege('anon', p.oid, 'EXECUTE')
+    )
+      and exists (
+        select 1
+        from pg_proc as p
+        where p.oid = to_regprocedure('public.finalize_chat_image_message(uuid,text)')
+          and p.prosecdef
+          and pg_get_userbyid(p.proowner) = 'postgres'
+          and p.proconfig @> array['search_path=pg_catalog, public']::text[]
+          and position('chat_has_active_relationship' in pg_get_functiondef(p.oid)) > 0
+          and position('chat_has_active_relationship' in pg_get_functiondef(p.oid))
+              < position('if v_intent.status = ''finalized''' in lower(pg_get_functiondef(p.oid)))
+          and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+          and not has_function_privilege('anon', p.oid, 'EXECUTE')
+      ),
+    'image create/finalize enforce active client or active approved dietitian before mutation/idempotent return'
 
   union all
   select
@@ -339,6 +369,17 @@ checks as (
 
   union all
   select
+    'DAILY-05 nullable client key fails closed',
+    not coalesce(((select auth.uid()) = null::uuid), false)
+      and not exists (
+        select 1
+        from public.dietitian_clients as dc
+        where dc.client_id = null::uuid
+      ),
+    'client-own and active-relationship equality predicates cannot match a NULL client_id'
+
+  union all
+  select
     'GRANT-01 explicit anon table deny matrix',
     not exists (
       select 1
@@ -365,15 +406,6 @@ checks as (
 
   union all
   select
-    'GRAPHQL-01 application entrypoint deny',
-    to_regprocedure('graphql_public.graphql(text,text,jsonb,jsonb)') is not null
-      and not has_function_privilege('anon', 'graphql_public.graphql(text,text,jsonb,jsonb)', 'EXECUTE')
-      and not has_function_privilege('authenticated', 'graphql_public.graphql(text,text,jsonb,jsonb)', 'EXECUTE')
-      and has_function_privilege('service_role', 'graphql_public.graphql(text,text,jsonb,jsonb)', 'EXECUTE'),
-    'anon/authenticated/PUBLIC denied; service_role preserved; extension retained'
-
-  union all
-  select
     'DEFAULT-01 future anon table/sequence deny',
     not exists (
       select 1
@@ -396,10 +428,21 @@ checks as (
       select 1
       from pg_default_acl as defaults
       join pg_roles as owner_role on owner_role.oid = defaults.defaclrole
-      join pg_namespace as namespace on namespace.oid = defaults.defaclnamespace
       where owner_role.rolname = 'postgres'
-        and namespace.nspname = 'public'
+        and defaults.defaclnamespace = 0
         and defaults.defaclobjtype = 'f'
+    )
+    and not exists (
+      select 1
+      from pg_default_acl as defaults
+      join pg_roles as owner_role on owner_role.oid = defaults.defaclrole
+      cross join lateral aclexplode(defaults.defaclacl) as privilege
+      left join pg_roles as grantee_role on grantee_role.oid = privilege.grantee
+      where owner_role.rolname = 'postgres'
+        and defaults.defaclnamespace = 0
+        and defaults.defaclobjtype = 'f'
+        and privilege.privilege_type = 'EXECUTE'
+        and (privilege.grantee = 0 or grantee_role.rolname = 'anon')
     )
     and not exists (
       select 1
@@ -413,8 +456,34 @@ checks as (
         and defaults.defaclobjtype = 'f'
         and privilege.privilege_type = 'EXECUTE'
         and (privilege.grantee = 0 or grantee_role.rolname = 'anon')
+    )
+    and exists (
+      select 1
+      from pg_default_acl as defaults
+      join pg_roles as owner_role on owner_role.oid = defaults.defaclrole
+      join pg_namespace as namespace on namespace.oid = defaults.defaclnamespace
+      cross join lateral aclexplode(defaults.defaclacl) as privilege
+      join pg_roles as grantee_role on grantee_role.oid = privilege.grantee
+      where owner_role.rolname = 'postgres'
+        and namespace.nspname = 'public'
+        and defaults.defaclobjtype = 'f'
+        and privilege.privilege_type = 'EXECUTE'
+        and grantee_role.rolname = 'authenticated'
+    )
+    and exists (
+      select 1
+      from pg_default_acl as defaults
+      join pg_roles as owner_role on owner_role.oid = defaults.defaclrole
+      join pg_namespace as namespace on namespace.oid = defaults.defaclnamespace
+      cross join lateral aclexplode(defaults.defaclacl) as privilege
+      join pg_roles as grantee_role on grantee_role.oid = privilege.grantee
+      where owner_role.rolname = 'postgres'
+        and namespace.nspname = 'public'
+        and defaults.defaclobjtype = 'f'
+        and privilege.privilege_type = 'EXECUTE'
+        and grantee_role.rolname = 'service_role'
     ),
-    'postgres-owned future public functions are not executable by PUBLIC/anon by default'
+    'global PUBLIC/anon EXECUTE is absent, public-schema defaults do not add it back, and authenticated/service_role EXECUTE is preserved'
 )
 select check_name, passed, expected
 from checks

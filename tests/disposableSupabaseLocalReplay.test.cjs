@@ -37,14 +37,14 @@ const runMaterializeOnly = async (options = {}) => {
   return runDisposableSupabaseLocalReplay({ materializeOnly: true, ...options });
 };
 
-test('materializes the exact 29+7 migration chain in deterministic order', async (t) => {
+test('materializes the exact 30+7 migration chain in deterministic order', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
-  assert.deepEqual(result.manifest.expectedHistory, { canonical: 29, image: 7, total: 36 });
-  assert.equal(result.manifest.files.length, 36);
-  assert.equal(result.disposableHistory.repositoryMigrationCount, 36);
+  assert.deepEqual(result.manifest.expectedHistory, { canonical: 30, image: 7, total: 37 });
+  assert.equal(result.manifest.files.length, 37);
+  assert.equal(result.disposableHistory.repositoryMigrationCount, 37);
   assert.equal(result.disposableHistory.localPrerequisiteCount, 1);
-  assert.equal(result.disposableHistory.disposableMigrationCount, 37);
+  assert.equal(result.disposableHistory.disposableMigrationCount, 38);
   assert.deepEqual(
     result.manifest.files.map((file) => file.path),
     [...result.manifest.files.map((file) => file.path)].sort(),

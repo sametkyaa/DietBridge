@@ -29,7 +29,8 @@ begin
      or to_regprocedure('public.sync_client_weight_to_measurements()') is null
      or to_regprocedure('public.request_client_connection_by_email(text)') is null
      or to_regprocedure('public.chat_has_active_relationship(uuid,uuid)') is null
-     or to_regprocedure('graphql_public.graphql(text,text,jsonb,jsonb)') is null then
+     or to_regprocedure('public.create_chat_image_upload_intent(uuid,uuid,text)') is null
+     or to_regprocedure('public.finalize_chat_image_message(uuid,text)') is null then
     raise exception 'MVP-2 function precondition failed: an expected signature is missing.';
   end if;
 
@@ -123,10 +124,9 @@ begin
     where a.attrelid = 'public.daily_logs'::regclass
       and a.attname = 'client_id'
       and a.atttypid = 'uuid'::regtype
-      and a.attnotnull
       and not a.attisdropped
   ) then
-    raise exception 'MVP-2 daily_logs precondition failed: client_id UUID/NOT NULL contract changed.';
+    raise exception 'MVP-2 daily_logs precondition failed: client_id UUID contract changed.';
   end if;
 
   if (
@@ -201,6 +201,25 @@ begin
       and pg_get_functiondef(p.oid) ~ 'is_current_user_dietitian'
   ) then
     raise exception 'MVP-2 RPC precondition failed: connection request no longer depends on the canonical helper.';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_proc as p
+    where p.oid = 'public.create_chat_image_upload_intent(uuid,uuid,text)'::regprocedure
+      and p.prosecdef
+      and pg_get_userbyid(p.proowner) = 'postgres'
+      and p.proconfig @> array['search_path=pg_catalog, public']::text[]
+  )
+  or not exists (
+    select 1
+    from pg_proc as p
+    where p.oid = 'public.finalize_chat_image_message(uuid,text)'::regprocedure
+      and p.prosecdef
+      and pg_get_userbyid(p.proowner) = 'postgres'
+      and p.proconfig @> array['search_path=pg_catalog, public']::text[]
+  ) then
+    raise exception 'MVP-2 chat image precondition failed: expected owner/SECURITY DEFINER/search_path contract changed.';
   end if;
 
   if (
@@ -354,6 +373,238 @@ $function$;
 revoke all on function public.chat_has_active_relationship(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.chat_has_active_relationship(uuid, uuid) to authenticated, service_role;
 
+-- Chat image RPCs are SECURITY DEFINER and therefore must enforce the same
+-- client-or-approved-dietitian active-relationship boundary inside their bodies.
+create or replace function public.create_chat_image_upload_intent(
+  p_conversation_id uuid,
+  p_client_message_id uuid,
+  p_expected_mime text
+)
+returns public.chat_upload_intents
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $function$
+declare
+  v_actor_id uuid := auth.uid();
+  v_existing public.chat_upload_intents%rowtype;
+  v_result public.chat_upload_intents%rowtype;
+  v_intent_id uuid := gen_random_uuid();
+  v_extension constant text := 'jpg';
+begin
+  if v_actor_id is null
+     or p_conversation_id is null
+     or p_client_message_id is null then
+    raise exception 'Chat access denied.' using errcode = '42501';
+  end if;
+
+  if p_expected_mime is distinct from 'image/jpeg' then
+    raise exception 'Unsupported chat image type.' using errcode = '22023';
+  end if;
+
+  if not exists (
+    select 1
+    from public.chat_conversations as c
+    where c.id = p_conversation_id
+      and public.chat_has_active_relationship(c.dietitian_id, c.client_id)
+  ) then
+    raise exception 'Chat access denied.' using errcode = '42501';
+  end if;
+
+  select i.*
+    into v_existing
+    from public.chat_upload_intents as i
+    where i.created_by = v_actor_id
+      and i.client_message_id = p_client_message_id
+    for update;
+
+  if found then
+    if v_existing.conversation_id is distinct from p_conversation_id
+       or v_existing.expected_mime is distinct from p_expected_mime then
+      raise exception 'Chat image idempotency key conflict.' using errcode = '22023';
+    end if;
+    return v_existing;
+  end if;
+
+  perform 1
+  from public.profiles as p
+  where p.id = v_actor_id
+  for update;
+  if not found then
+    raise exception 'Chat access denied.' using errcode = '42501';
+  end if;
+
+  if (
+    select count(*)
+    from public.chat_upload_intents as i
+    where i.created_by = v_actor_id
+      and i.status = 'pending'
+      and i.expires_at > now()
+  ) >= 10
+  or (
+    select count(*)
+    from public.chat_upload_intents as i
+    where i.created_by = v_actor_id
+      and i.conversation_id = p_conversation_id
+      and i.status = 'pending'
+      and i.expires_at > now()
+  ) >= 3 then
+    raise exception 'Chat image upload quota exceeded.' using errcode = '54000';
+  end if;
+
+  insert into public.chat_upload_intents (
+    id, conversation_id, created_by, client_message_id, bucket_id,
+    object_path, expected_mime, max_bytes, status, expires_at
+  ) values (
+    v_intent_id, p_conversation_id, v_actor_id, p_client_message_id,
+    'chat-images',
+    format('pending/%s/%s.%s', v_intent_id, gen_random_uuid(), v_extension),
+    p_expected_mime, 4194304, 'pending', now() + interval '15 minutes'
+  ) returning * into v_result;
+
+  return v_result;
+end
+$function$;
+
+create or replace function public.finalize_chat_image_message(
+  p_intent_id uuid,
+  p_caption text
+)
+returns public.chat_messages
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $function$
+declare
+  v_actor_id uuid := auth.uid();
+  v_intent public.chat_upload_intents%rowtype;
+  v_caption text := nullif(btrim(p_caption), '');
+  v_message public.chat_messages%rowtype;
+  v_existing public.chat_messages%rowtype;
+  v_object_owner text;
+  v_object_mime text;
+  v_object_size bigint;
+begin
+  if v_actor_id is null or p_intent_id is null then
+    raise exception 'Chat access denied.' using errcode = '42501';
+  end if;
+  if v_caption is not null and char_length(v_caption) > 4000 then
+    raise exception 'Invalid chat image caption.' using errcode = '22023';
+  end if;
+
+  select i.*
+    into v_intent
+    from public.chat_upload_intents as i
+    where i.id = p_intent_id
+      and i.created_by = v_actor_id
+    for update;
+
+  if not found then
+    raise exception 'Chat access denied.' using errcode = '42501';
+  end if;
+
+  if not exists (
+    select 1
+    from public.chat_conversations as c
+    where c.id = v_intent.conversation_id
+      and public.chat_has_active_relationship(c.dietitian_id, c.client_id)
+  ) then
+    raise exception 'Chat access denied.' using errcode = '42501';
+  end if;
+
+  if v_intent.status = 'finalized' then
+    select m.*
+      into v_existing
+      from public.chat_messages as m
+      where m.sender_id = v_actor_id
+        and m.client_message_id = v_intent.client_message_id;
+    if not found or v_existing.message_kind <> 'image' then
+      raise exception 'Chat image finalize state is inconsistent.' using errcode = '23514';
+    end if;
+    return v_existing;
+  end if;
+
+  if v_intent.status <> 'pending'
+     or v_intent.expires_at <= now()
+     or v_intent.validated_at is null then
+    raise exception 'Chat image intent cannot be finalized.' using errcode = '22023';
+  end if;
+
+  select
+    o.owner_id,
+    o.metadata ->> 'mimetype',
+    case
+      when o.metadata ->> 'size' ~ '^[0-9]+$'
+        then (o.metadata ->> 'size')::bigint
+      else null
+    end
+    into v_object_owner, v_object_mime, v_object_size
+    from storage.objects as o
+    where o.bucket_id = v_intent.bucket_id
+      and o.name = v_intent.object_path;
+
+  if not found
+     or v_object_owner is distinct from v_actor_id::text
+     or v_object_mime is distinct from v_intent.validated_mime
+     or v_object_size is distinct from v_intent.validated_byte_size then
+    raise exception 'Chat image object does not match validation.' using errcode = '22023';
+  end if;
+
+  insert into public.chat_messages (
+    conversation_id, sender_id, client_message_id, body, message_kind, created_at
+  ) values (
+    v_intent.conversation_id, v_actor_id, v_intent.client_message_id,
+    v_caption, 'image', now()
+  )
+  on conflict (sender_id, client_message_id) do nothing
+  returning * into v_message;
+
+  if v_message.id is null then
+    select m.*
+      into v_existing
+      from public.chat_messages as m
+      where m.sender_id = v_actor_id
+        and m.client_message_id = v_intent.client_message_id;
+    if not found
+       or v_existing.conversation_id is distinct from v_intent.conversation_id
+       or v_existing.message_kind <> 'image'
+       or v_existing.body is distinct from v_caption then
+      raise exception 'Chat image idempotency key conflict.' using errcode = '22023';
+    end if;
+    v_message := v_existing;
+  end if;
+
+  update public.chat_upload_intents
+     set status = 'finalized', finalized_at = now()
+   where id = v_intent.id;
+
+  insert into public.chat_attachments (
+    message_id, intent_id, bucket_id, object_path, mime_type,
+    byte_size, width, height
+  ) values (
+    v_message.id, v_intent.id, v_intent.bucket_id, v_intent.object_path,
+    v_intent.validated_mime, v_intent.validated_byte_size,
+    v_intent.validated_width, v_intent.validated_height
+  )
+  on conflict (message_id) do nothing;
+
+  if not exists (
+    select 1 from public.chat_attachments as a
+    where a.message_id = v_message.id
+      and a.intent_id = v_intent.id
+  ) then
+    raise exception 'Chat image attachment reconciliation failed.' using errcode = '23514';
+  end if;
+
+  update public.chat_conversations
+     set last_message_id = v_message.id,
+         last_message_at = v_message.created_at
+   where id = v_intent.conversation_id;
+
+  return v_message;
+end
+$function$;
+
 -- Existing policies are permissive. The restrictive gate explicitly allows only
 -- client accounts or approved dietitians; NULL and future roles fail closed.
 do $policies$
@@ -428,16 +679,13 @@ revoke all privileges on table
   public.profiles
 from anon;
 
--- Future objects in the application schema are anonymous-deny by default.
+-- Function PUBLIC EXECUTE is a PostgreSQL global built-in default; a per-schema
+-- revoke cannot remove it. Keep role-specific application defaults schema-scoped.
 -- Authenticated/service_role defaults remain unchanged to avoid breaking app flows.
 alter default privileges for role postgres in schema public revoke all on tables from anon;
 alter default privileges for role postgres in schema public revoke all on sequences from anon;
-alter default privileges for role postgres in schema public revoke execute on functions from public, anon;
-
--- Disable only the unused GraphQL entrypoint for application roles. Do not drop pg_graphql.
-revoke execute on function graphql_public.graphql(text, text, jsonb, jsonb)
-from public, anon, authenticated;
-grant execute on function graphql_public.graphql(text, text, jsonb, jsonb) to service_role;
+alter default privileges for role postgres revoke execute on functions from public;
+alter default privileges for role postgres in schema public revoke execute on functions from anon;
 
 do $postflight$
 declare
@@ -516,6 +764,33 @@ begin
         'selectexists(select1frompublic.dietitian_clientsasdcwheredc.dietitian_id=p_dietitian_idanddc.client_id=p_client_idanddc.status=''active''::public.client_statusand((selectauth.uid())=dc.client_idor((selectauth.uid())=dc.dietitian_idand(selectpublic.is_current_user_dietitian()))))'
   ) then
     raise exception 'MVP-2 postcondition failed: chat active-relationship helper is not canonical.';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_proc as p
+    where p.oid = 'public.create_chat_image_upload_intent(uuid,uuid,text)'::regprocedure
+      and p.prosecdef
+      and pg_get_userbyid(p.proowner) = 'postgres'
+      and p.proconfig @> array['search_path=pg_catalog, public']::text[]
+      and position('chat_has_active_relationship' in pg_get_functiondef(p.oid)) > 0
+      and position('chat_has_active_relationship' in pg_get_functiondef(p.oid))
+          < position('insert into public.chat_upload_intents' in lower(pg_get_functiondef(p.oid)))
+  )
+  or not exists (
+    select 1
+    from pg_proc as p
+    where p.oid = 'public.finalize_chat_image_message(uuid,text)'::regprocedure
+      and p.prosecdef
+      and pg_get_userbyid(p.proowner) = 'postgres'
+      and p.proconfig @> array['search_path=pg_catalog, public']::text[]
+      and position('chat_has_active_relationship' in pg_get_functiondef(p.oid)) > 0
+      and position('chat_has_active_relationship' in pg_get_functiondef(p.oid))
+          < position('if v_intent.status = ''finalized''' in lower(pg_get_functiondef(p.oid)))
+      and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      and not has_function_privilege('anon', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'MVP-2 postcondition failed: chat image RPC authorization is not canonical.';
   end if;
 
   if has_function_privilege('anon', 'public.current_user_role()', 'EXECUTE')
@@ -678,10 +953,21 @@ begin
     select 1
     from pg_default_acl as defaults
     join pg_roles as owner_role on owner_role.oid = defaults.defaclrole
-    join pg_namespace as namespace on namespace.oid = defaults.defaclnamespace
     where owner_role.rolname = 'postgres'
-      and namespace.nspname = 'public'
+      and defaults.defaclnamespace = 0
       and defaults.defaclobjtype = 'f'
+  )
+  or exists (
+    select 1
+    from pg_default_acl as defaults
+    join pg_roles as owner_role on owner_role.oid = defaults.defaclrole
+    cross join lateral aclexplode(defaults.defaclacl) as privilege
+    left join pg_roles as grantee_role on grantee_role.oid = privilege.grantee
+    where owner_role.rolname = 'postgres'
+      and defaults.defaclnamespace = 0
+      and defaults.defaclobjtype = 'f'
+      and privilege.privilege_type = 'EXECUTE'
+      and (privilege.grantee = 0 or grantee_role.rolname = 'anon')
   )
   or exists (
     select 1
@@ -695,15 +981,36 @@ begin
       and defaults.defaclobjtype = 'f'
       and privilege.privilege_type = 'EXECUTE'
       and (privilege.grantee = 0 or grantee_role.rolname = 'anon')
+  )
+  or not exists (
+    select 1
+    from pg_default_acl as defaults
+    join pg_roles as owner_role on owner_role.oid = defaults.defaclrole
+    join pg_namespace as namespace on namespace.oid = defaults.defaclnamespace
+    cross join lateral aclexplode(defaults.defaclacl) as privilege
+    join pg_roles as grantee_role on grantee_role.oid = privilege.grantee
+    where owner_role.rolname = 'postgres'
+      and namespace.nspname = 'public'
+      and defaults.defaclobjtype = 'f'
+      and privilege.privilege_type = 'EXECUTE'
+      and grantee_role.rolname = 'authenticated'
+  )
+  or not exists (
+    select 1
+    from pg_default_acl as defaults
+    join pg_roles as owner_role on owner_role.oid = defaults.defaclrole
+    join pg_namespace as namespace on namespace.oid = defaults.defaclnamespace
+    cross join lateral aclexplode(defaults.defaclacl) as privilege
+    join pg_roles as grantee_role on grantee_role.oid = privilege.grantee
+    where owner_role.rolname = 'postgres'
+      and namespace.nspname = 'public'
+      and defaults.defaclobjtype = 'f'
+      and privilege.privilege_type = 'EXECUTE'
+      and grantee_role.rolname = 'service_role'
   ) then
-    raise exception 'MVP-2 postcondition failed: postgres public function defaults still grant PUBLIC/anon execute.';
+    raise exception 'MVP-2 postcondition failed: postgres function defaults do not enforce global PUBLIC/anon deny with authenticated/service_role public-schema grants preserved.';
   end if;
 
-  if has_function_privilege('anon', 'graphql_public.graphql(text,text,jsonb,jsonb)', 'EXECUTE')
-     or has_function_privilege('authenticated', 'graphql_public.graphql(text,text,jsonb,jsonb)', 'EXECUTE')
-     or not has_function_privilege('service_role', 'graphql_public.graphql(text,text,jsonb,jsonb)', 'EXECUTE') then
-    raise exception 'MVP-2 postcondition failed: GraphQL entrypoint ACL is inconsistent.';
-  end if;
 end
 $postflight$;
 

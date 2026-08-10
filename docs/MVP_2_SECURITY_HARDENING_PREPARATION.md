@@ -99,7 +99,9 @@ Source scan signup/login sayfalarında veya auth service'lerinde pre-auth table 
 
 ## GraphQL kararı
 
-`pg_graphql` drop edilmez ve REST/PostgREST table grants değiştirilmez. Yalnız exact `graphql_public.graphql(text,text,jsonb,jsonb)` entrypoint'i PUBLIC, anon ve authenticated için kapatılır; service_role korunur. Bu, Web/Mobile için kullanılmayan attack surface'i daraltırken Dashboard/internal tooling riskini azaltır. MVP-2B REST smoke'ları ve service-role metadata kontrolü zorunludur.
+Verdict: **PLATFORM-MANAGED / POST-MVP HARDENING**.
+
+`graphql_public.graphql(text,text,jsonb,jsonb)` local clean stack'te `supabase_admin` owned'dır; application migration role'ü `postgres` bu entrypoint ACL'sini güvenli ve etkili biçimde değiştiremez. Reconciliation migration bu nedenle platform-owned function üzerinde `REVOKE`, `GRANT`, owner veya role-membership mutation yapmaz ve `pg_graphql` extension'ını değiştirmez. GraphQL table/column görünürlüğü standard PostgreSQL grants, row authorization ise RLS ile sınırlandırılmaya devam eder. Web/Mobile source scan'inde GraphQL caller bulunmamıştır ve doğrudan privilege bypass kanıtlanmamıştır. Kalan Advisor warning'leri tek başına exploit kanıtı değildir; post-MVP platform hardening olarak izlenir. Bu sınıflandırma GraphQL'in güvenli olduğunun kanıtlandığı anlamına gelmez; yalnız entrypoint disable işleminin MVP-2 application migration blocker'ı olmadığını kaydeder. MVP-2B anonymous object/data exposure ve authenticated cross-tenant RLS testleri zorunludur.
 
 ## Email confirmation readiness
 
@@ -146,10 +148,12 @@ Remote staging kullanılmayacaktır. Disposable local Supabase full migration re
 | Appointments | Approved own-active CRUD | foreign/pending/rejected |
 | Recipes | Approved CRUD preserved | pending/rejected CRUD |
 | Chat | Active client + approved linked dietitian text/read/image smoke | foreign/pending/rejected dietitian |
-| Anonymous | Auth endpoints only | 20 table REST, privileged functions, GraphQL entrypoint |
+| Anonymous | Auth endpoints only | 20 table REST, privileged functions, GraphQL application data |
 | Grants/defaults | Authenticated REST/RPC flows preserved | New disposable public objects inheriting anon grants |
 
-Chat image upload/finalize RPC'leri active relationship'ı kendi SECURITY DEFINER body'lerinde de kontrol eder. MVP-2B pending/rejected dietitian image-intent/finalize denemelerini özellikle çalıştırmalıdır; herhangi bir bypass görülürse production application durur ve aynı branch'te migration taslağı genişletilir.
+MVP-2B runtime testinde `verification_status = pending`, `is_verified = false` ve active relationship taşıyan bir dietitian'ın `create_chat_image_upload_intent(...)` çağrısı başarıyla intent üretti. Root cause, image create/finalize SECURITY DEFINER body'lerinin approval-aware helper yerine yalnız inline active relationship kontrolüne güvenmesiydi. Reconciliation her iki RPC'yi de mevcut `chat_has_active_relationship(...)` sınırına bağlar; client active-relationship yolu korunurken dietitian yolu approved + active olmak zorundadır. Finalize authorization, finalized/idempotent erken dönüşünden önce uygulanır. `abort_chat_image_upload(...)` yalnız çağıranın kendi non-finalized intent'ini temizleyen owner-scoped cleanup olduğundan aynı bypass pattern'i olarak sınıflandırılmamış ve değiştirilmemiştir. GraphQL platform sınıflandırması değişmemiştir.
+
+İlk MVP-2B future-function runtime testi, `IN SCHEMA public` ile yapılan PUBLIC revoke'un PostgreSQL global built-in `PUBLIC EXECUTE` varsayılanını kaldıramadığını ve önceki `DEFAULT-02` kontrolünün false PASS verdiğini gösterdi. Reconciliation bu nedenle future `postgres`-owned fonksiyonlar için global `ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` kullanır; `anon` doğrudan grant temizliği ile `authenticated`/`service_role` grantleri `public` şemasında role-specific kalır. Düzeltilen `DEFAULT-02`, global default ACL satırını ve public-schema eklerini ayrı ayrı `aclexplode` ile doğrular. Değişiklik yalnız migration sonrasında `postgres` tarafından oluşturulan fonksiyonları etkiler; mevcut fonksiyon ACL'lerini değiştirmez ve targeted explicit REVOKE/GRANT hardening zorunlu kalır.
 
 ## Web/Mobile impact matrix
 
@@ -161,7 +165,7 @@ Chat image upload/finalize RPC'leri active relationship'ı kendi SECURITY DEFINE
 | Meal completion | Dietitian meal reads; save RPC | Client completion RPC | Orta | Client own completion ve foreign deny |
 | Measurement grants/trigger ACL | Client detail measurement read/save RPC | Client weight update | Orta | Approved read + direct deny + trigger sync |
 | Anonymous grants | Pre-auth caller yok | Pre-auth caller yok | Düşük/orta: gizli pre-auth lookup olasılığı | Logged-out REST matrix; authenticated lookups |
-| GraphQL entrypoint deny | Kullanım yok; REST/RPC var | Kullanım yok; REST/RPC var | Düşük; tooling riski service_role preserve ile azaltıldı | GraphQL deny + REST smoke |
+| GraphQL platform surface | Kullanım yok; REST/RPC var | Kullanım yok; REST/RPC var | Platform-managed entrypoint açık kalabilir; application grants/RLS bypass kanıtı yok | Anon object/data deny + authenticated cross-tenant deny + REST smoke |
 | Email confirmation | Register/login/recovery | Signup/login/deep link | Yüksek; code hazır değil | Ayrı code-readiness task; bu migration'a dahil değil |
 
 ## Future application runbook gates
