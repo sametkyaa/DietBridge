@@ -51,6 +51,14 @@ const MEAL_PHOTO_LIFECYCLE_MIGRATION = fs.readFileSync(
   path.join(__dirname, '..', 'supabase', 'migrations', '20260810055845_mvp3_meal_photo_lifecycle_closure.sql'),
   'utf8',
 );
+const MEAL_PHOTO_UPLOAD_POLICY_CORRECTION = fs.readFileSync(
+  path.join(__dirname, '..', 'supabase', 'migrations', '20260810074910_mvp3_real_storage_upload_policy_correction.sql'),
+  'utf8',
+);
+const MEAL_PHOTO_STORAGE_HTTP_HARNESS = fs.readFileSync(
+  path.join(__dirname, '..', 'scripts', 'runDisposableMealPhotoStorageHttpHarness.mjs'),
+  'utf8',
+);
 const SNAPSHOT_MIGRATION = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20260723182501_persist_recipe_meal_snapshots.sql'), 'utf8');
 const RECIPE_MIGRATION = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20260723164416_create_dietitian_recipes.sql'), 'utf8');
 const PLANNED_RECIPE_IMAGE_ACCESS_MIGRATION = fs.readFileSync(
@@ -353,6 +361,41 @@ test('meal-photo lifecycle migration closes policy, queue, trigger, and worker p
   assert.match(sql, /complete_meal_photo_cleanup[\s\S]+not exists \(select 1 from public\.meals/i);
   assert.match(sql, /complete_meal_photo_cleanup[\s\S]+not exists \([\s\S]+from storage\.objects/i);
   assert.doesNotMatch(sql, /insert into storage\.buckets|update storage\.buckets/i);
+});
+
+test('meal-photo Storage correction keeps bucket constraints and narrows only INSERT RLS', () => {
+  const sql = MEAL_PHOTO_UPLOAD_POLICY_CORRECTION;
+  assert.match(sql, /Expected defective MVP-3 INSERT policy shape is absent; correction refused/i);
+  assert.match(sql, /file_size_limit = 5242880/i);
+  assert.match(sql, /array\['image\/jpeg', 'image\/png', 'image\/webp'\]/i);
+  assert.match(sql, /drop policy meal_photo_objects_insert_active_approved_dietitian on storage\.objects/i);
+  assert.match(sql, /create policy meal_photo_objects_insert_active_approved_dietitian[\s\S]+for insert to authenticated/i);
+  const createdPolicy = sql.match(/create policy meal_photo_objects_insert_active_approved_dietitian[\s\S]+?\n\);/i)?.[0] ?? '';
+  assert.match(createdPolicy, /\^meal-plans\//i);
+  assert.match(createdPolicy, /split_part\(name, '\/', 3\) = \(select auth\.uid\(\)\)::text/i);
+  assert.match(createdPolicy, /is_current_user_dietitian/i);
+  assert.match(createdPolicy, /dietitian_clients[\s\S]+status = 'active'/i);
+  assert.doesNotMatch(createdPolicy, /metadata|file_size_limit|allowed_mime_types/i);
+  assert.doesNotMatch(sql, /create policy[\s\S]{0,100}for (?:update|delete)/i);
+  assert.doesNotMatch(sql, /insert into storage\.buckets|update storage\.buckets|delete from storage\.buckets/i);
+  assert.match(sql, /notify pgrst, 'reload schema';[\s\S]+commit;/i);
+});
+
+test('real Storage HTTP harness permanently covers upload, actor, bucket, read, and cleanup matrix', () => {
+  const source = MEAL_PHOTO_STORAGE_HTTP_HARNESS;
+  assert.match(source, /APPROVED_\$\{extension\.toUpperCase\(\)\}_HTTP_UPLOAD/);
+  for (const label of [
+    'FOREIGN_UPLOAD_DENY', 'PENDING_UPLOAD_DENY', 'REJECTED_UPLOAD_DENY',
+    'UNLINKED_CLIENT_NAMESPACE_UPLOAD_DENY',
+    'MISSING_PROFILE_UPLOAD_DENY', 'ANON_UPLOAD_DENY', 'WRONG_PATH_UPLOAD_DENY',
+    'BUCKET_UNSUPPORTED_MIME_DENY', 'BUCKET_OVER_5_MIB_DENY',
+    'UPLOAD_NEW_PATH_UPSERT_FALSE_DUPLICATE_DENY', 'APPROVED_PRIVATE_READ',
+    'LINKED_CLIENT_PRIVATE_READ', 'FOREIGN_PRIVATE_READ_DENY', 'ANON_PRIVATE_READ_DENY',
+    'FOREIGN_CLIENT_PRIVATE_READ_DENY',
+    'REPLACEMENT_QUEUE_CREATED', 'CLEANUP_WORKER_CLAIM', 'CLEANUP_WORKER_COMPLETE',
+  ]) assert.match(source, new RegExp(label));
+  assert.match(source, /Refusing to run Storage mutation harness outside a loopback Supabase API/i);
+  assert.match(source, /upsert: false/i);
 });
 
 test('read rejects invalid recipe source combinations (fail-closed)', async () => {

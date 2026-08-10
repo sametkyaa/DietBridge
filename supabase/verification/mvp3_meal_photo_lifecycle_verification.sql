@@ -29,6 +29,19 @@ with checks as (
       and lower(coalesce(qual, '') || ' ' || coalesce(with_check, '')) like '%meal-photos%'
       and cmd in ('DELETE', 'UPDATE'))
   union all
+  select 'POLICY-03 real Storage INSERT contract',
+    exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'meal_photo_objects_insert_active_approved_dietitian'
+      and cmd = 'INSERT' and roles = array['authenticated']::name[]
+      and with_check ilike '%is_current_user_dietitian%'
+      and with_check ilike '%dietitian_clients%'
+      and with_check ilike '%^meal-plans/%'
+      and with_check ilike '%(jpe?g|png|webp)$%'
+      and with_check ilike '%split_part(name, ''/''::text, 3)%'
+      and with_check ilike '%auth.uid()%'
+      and with_check ilike '%split_part(%''/''::text, 2)%'
+      and with_check not ilike '%metadata%')
+  union all
   select 'QUEUE-01 RLS and indexes',
     to_regclass('public.meal_photo_cleanup_queue') is not null
     and (select relrowsecurity from pg_class where oid = 'public.meal_photo_cleanup_queue'::regclass)

@@ -37,14 +37,14 @@ const runMaterializeOnly = async (options = {}) => {
   return runDisposableSupabaseLocalReplay({ materializeOnly: true, ...options });
 };
 
-test('materializes the exact 30+7 migration chain in deterministic order', async (t) => {
+test('materializes the exact current migration chain in deterministic order', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
-  assert.deepEqual(result.manifest.expectedHistory, { canonical: 31, image: 7, total: 38 });
-  assert.equal(result.manifest.files.length, 38);
-  assert.equal(result.disposableHistory.repositoryMigrationCount, 38);
+  assert.deepEqual(result.manifest.expectedHistory, { canonical: 32, image: 7, total: 39 });
+  assert.equal(result.manifest.files.length, 39);
+  assert.equal(result.disposableHistory.repositoryMigrationCount, 39);
   assert.equal(result.disposableHistory.localPrerequisiteCount, 1);
-  assert.equal(result.disposableHistory.disposableMigrationCount, 39);
+  assert.equal(result.disposableHistory.disposableMigrationCount, 40);
   assert.deepEqual(
     result.manifest.files.map((file) => file.path),
     [...result.manifest.files.map((file) => file.path)].sort(),
@@ -101,7 +101,7 @@ test('local prerequisite SQL creates only exact legacy meal-photo policies and n
   assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /public\.(profiles|dietitian_clients)/i);
 });
 
-test('repository migration order remains unchanged inside the 38-entry disposable history', async (t) => {
+test('repository migration order remains unchanged inside the 39-entry disposable history', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
   const repositoryPaths = result.manifest.files.map((file) => file.path);

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 31,
+  "expectedCanonicalCount": 32,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2800,6 +2800,13 @@
       "phase": "canonical",
       "sourceSha256": "4e0f6e16b100e46c17b5f05bd45d14b425811d457314ae41f2f5c1888e560ab0",
       "materializedSha256": "4e0f6e16b100e46c17b5f05bd45d14b425811d457314ae41f2f5c1888e560ab0",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260810074910_mvp3_real_storage_upload_policy_correction.sql",
+      "phase": "canonical",
+      "sourceSha256": "64fa954081f542e9e7893461e5f51f5dab22f0390a8d0917ca48a48e47064dc9",
+      "materializedSha256": "64fa954081f542e9e7893461e5f51f5dab22f0390a8d0917ca48a48e47064dc9",
       "edits": []
     }
   ]
