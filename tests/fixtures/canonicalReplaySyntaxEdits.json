@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 30,
+  "expectedCanonicalCount": 31,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2793,6 +2793,13 @@
       "phase": "canonical",
       "sourceSha256": "37c4e62967a1cf680901534bfa6ff7852f87c0c3c80ff5b2449f288097e8eeb3",
       "materializedSha256": "37c4e62967a1cf680901534bfa6ff7852f87c0c3c80ff5b2449f288097e8eeb3",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260810055845_mvp3_meal_photo_lifecycle_closure.sql",
+      "phase": "canonical",
+      "sourceSha256": "4e0f6e16b100e46c17b5f05bd45d14b425811d457314ae41f2f5c1888e560ab0",
+      "materializedSha256": "4e0f6e16b100e46c17b5f05bd45d14b425811d457314ae41f2f5c1888e560ab0",
       "edits": []
     }
   ]

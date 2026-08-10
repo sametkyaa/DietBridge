@@ -47,6 +47,10 @@ const WEEK_DATES = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '202
 const CANONICAL_PHOTO_PATH = `meal-plans/${CLIENT_ID}/${DIETITIAN_ID}/${PHOTO_FILE_ID}.jpg`;
 const LEGACY_PHOTO_URL = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400';
 const RECIPE_IMAGE_PATH = `recipes/${DIETITIAN_ID}/${RECIPE_ID}/${PHOTO_FILE_ID}.webp`;
+const MEAL_PHOTO_LIFECYCLE_MIGRATION = fs.readFileSync(
+  path.join(__dirname, '..', 'supabase', 'migrations', '20260810055845_mvp3_meal_photo_lifecycle_closure.sql'),
+  'utf8',
+);
 const SNAPSHOT_MIGRATION = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20260723182501_persist_recipe_meal_snapshots.sql'), 'utf8');
 const RECIPE_MIGRATION = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20260723164416_create_dietitian_recipes.sql'), 'utf8');
 const PLANNED_RECIPE_IMAGE_ACCESS_MIGRATION = fs.readFileSync(
@@ -286,6 +290,69 @@ test('read reference accepts canonical path, legacy URL and rejects the rest', a
   assert.equal(photoService.isReadableMealPhotoReference('https://images.unsplash.com:443/photo-1'), true);
   assert.equal(photoService.isReadableMealPhotoReference('http://images.unsplash.com/photo-1'), false);
   assert.equal(photoService.isReadableMealPhotoReference('meal-plans/not-a-uuid/x/y.jpg'), false);
+});
+
+test('meal-photo cleanup infrastructure absence is visible and never invokes browser Storage delete', async () => {
+  supabaseStub.__setRpcHandler(async () => ({
+    data: null,
+    error: { code: 'PGRST202', message: 'function does not exist', status: 404 },
+  }));
+  supabaseStub.__setStorageHandler(() => ({
+    remove: async () => { throw new Error('browser cleanup delete must not run'); },
+  }));
+
+  const status = await photoService.processPendingMealPhotoCleanup();
+  assert.match(status.warning, /altyapısı kullanılamıyor/i);
+
+  const orphan = await photoService.cleanupFailedMealPhotoUploads([CANONICAL_PHOTO_PATH]);
+  assert.match(orphan.warning, /kuyruğuna alınamadı/i);
+});
+
+test('failed-save meal-photo enqueue is idempotent and reports durable pending cleanup', async () => {
+  const calls = [];
+  supabaseStub.__setRpcHandler(async (name, args) => {
+    calls.push({ name, args });
+    if (name === 'enqueue_my_unreferenced_meal_photo_cleanup') return { data: PHOTO_FILE_ID, error: null };
+    if (name === 'get_my_meal_photo_cleanup_status') return { data: 1, error: null };
+    return { data: null, error: { code: 'unexpected' } };
+  });
+
+  const result = await photoService.cleanupFailedMealPhotoUploads([
+    CANONICAL_PHOTO_PATH,
+    CANONICAL_PHOTO_PATH,
+    RECIPE_IMAGE_PATH,
+  ]);
+  assert.match(result.warning, /arka planda temizlenmeyi bekliyor/i);
+  assert.deepEqual(calls, [
+    { name: 'enqueue_my_unreferenced_meal_photo_cleanup', args: { p_object_path: CANONICAL_PHOTO_PATH } },
+    { name: 'get_my_meal_photo_cleanup_status', args: undefined },
+  ]);
+});
+
+test('meal-photo lifecycle migration closes policy, queue, trigger, and worker privilege contracts', () => {
+  const sql = MEAL_PHOTO_LIFECYCLE_MIGRATION;
+  assert.match(sql, /create table public\.meal_photo_cleanup_queue/i);
+  assert.match(sql, /meal_photo_cleanup_queue_path_check[\s\S]+\(jpe\?g\|png\|webp\)/i);
+  assert.match(sql, /v_path ~ '\^meal-plans\//i);
+  assert.match(sql, /Recipe-image and legacy URL references are deliberately outside this queue/i);
+  assert.match(sql, /create policy meal_photo_objects_insert_active_approved_dietitian[\s\S]+to authenticated/i);
+  assert.match(sql, /create policy meal_photo_objects_select_referenced_linked_actor[\s\S]+m\.photo_url = storage\.objects\.name/i);
+  assert.match(sql, /drop policy "Give users access to own folder 1o5iea3_0"/i);
+  assert.match(sql, /drop policy "Give users access to own folder 1o5iea3_1"/i);
+  assert.doesNotMatch(sql, /create policy[\s\S]{0,80}for delete\s+to authenticated/i);
+  assert.match(sql, /grant execute on function public\.enqueue_my_unreferenced_meal_photo_cleanup\(text\) to authenticated/i);
+  assert.match(sql, /enqueue_my_unreferenced_meal_photo_cleanup[\s\S]+p\.role = 'dietitian'::public\.user_role/i);
+  assert.match(sql, /enqueue_my_unreferenced_meal_photo_cleanup[\s\S]+o\.owner_id = v_actor_id::text/i);
+  const cleanupEnqueueDefinition = sql.match(/create function public\.enqueue_my_unreferenced_meal_photo_cleanup[\s\S]+?\n\$function\$;/i)?.[0] ?? '';
+  assert.doesNotMatch(cleanupEnqueueDefinition, /is_current_user_dietitian|dietitian_clients/i);
+  assert.match(sql, /grant execute on function public\.claim_meal_photo_cleanup_batch\(integer\) to service_role/i);
+  assert.match(sql, /grant execute on function public\.complete_meal_photo_cleanup\(uuid\) to service_role/i);
+  assert.doesNotMatch(sql, /grant execute on function public\.(?:claim_meal_photo_cleanup_batch|complete_meal_photo_cleanup)[^;]+to authenticated/i);
+  assert.match(sql, /claim_meal_photo_cleanup_batch[\s\S]+auth\.jwt\(\) ->> 'role'[\s\S]+is distinct from 'service_role'[\s\S]+42501/i);
+  assert.match(sql, /complete_meal_photo_cleanup[\s\S]+auth\.jwt\(\) ->> 'role'[\s\S]+is distinct from 'service_role'[\s\S]+42501/i);
+  assert.match(sql, /complete_meal_photo_cleanup[\s\S]+not exists \(select 1 from public\.meals/i);
+  assert.match(sql, /complete_meal_photo_cleanup[\s\S]+not exists \([\s\S]+from storage\.objects/i);
+  assert.doesNotMatch(sql, /insert into storage\.buckets|update storage\.buckets/i);
 });
 
 test('read rejects invalid recipe source combinations (fail-closed)', async () => {

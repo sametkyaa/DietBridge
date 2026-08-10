@@ -75,9 +75,55 @@ begin
 end
 $$;
 
+do $$
+declare
+  v_mime_types text[];
+begin
+  select array_agg(mime_type order by mime_type)
+    into v_mime_types
+    from storage.buckets as b,
+         unnest(b.allowed_mime_types) as mime_type
+   where b.id = 'meal-photos';
+
+  if not exists (select 1 from storage.buckets where id = 'meal-photos') then
+    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    values (
+      'meal-photos', 'meal-photos', false, 5242880,
+      array['image/jpeg', 'image/png', 'image/webp']::text[]
+    );
+  elsif not exists (
+    select 1 from storage.buckets
+     where id = 'meal-photos' and name = 'meal-photos' and public is false
+       and file_size_limit = 5242880 and cardinality(allowed_mime_types) = 3
+  ) or v_mime_types is distinct from array['image/jpeg', 'image/png', 'image/webp']::text[] then
+    raise exception 'Disposable meal-photos bucket does not match the exact prerequisite contract.';
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+     where schemaname = 'storage' and tablename = 'objects'
+       and policyname = 'Give users access to own folder 1o5iea3_0'
+  ) then
+    create policy "Give users access to own folder 1o5iea3_0"
+      on storage.objects for select to public
+      using (bucket_id = 'meal-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+     where schemaname = 'storage' and tablename = 'objects'
+       and policyname = 'Give users access to own folder 1o5iea3_1'
+  ) then
+    create policy "Give users access to own folder 1o5iea3_1"
+      on storage.objects for insert to public
+      with check (bucket_id = 'meal-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+  end if;
+end
+$$;
+
 commit;
 `;
-export const LOCAL_PREREQUISITE_SHA256 = 'd1fd43ec73bc21073c9169f7aa5f42e624c9f936f65f2f67ba2ec3aeeceaba3e';
+export const LOCAL_PREREQUISITE_SHA256 = 'e6741394959079305695116104c26027be19ba8c57af0584d646c96688388d5e';
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
@@ -100,11 +146,11 @@ const assertExternalTempPath = ({ repoRoot, tempRoot }) => {
 };
 
 const assertManifestMatchesSourceInventory = ({ repoRoot, runtimeManifest }) => {
-  if (runtimeManifest.expectedHistory?.canonical !== 30
+  if (runtimeManifest.expectedHistory?.canonical !== 31
       || runtimeManifest.expectedHistory?.image !== 7
-      || runtimeManifest.expectedHistory?.total !== 37
-      || runtimeManifest.files?.length !== 37) {
-    throw new Error('Unexpected disposable migration inventory; expected 30 canonical and 7 image migrations.');
+      || runtimeManifest.expectedHistory?.total !== 38
+      || runtimeManifest.files?.length !== 38) {
+    throw new Error('Unexpected disposable migration inventory; expected 31 canonical and 7 image migrations.');
   }
 
   const sourcePaths = readdirSync(join(repoRoot, 'supabase', 'migrations'), { withFileTypes: true })
@@ -160,7 +206,7 @@ const assertDisposableMigrationInventory = ({ repositoryPaths, tempRoot, localPr
   if (localIndex === -1 || avatarPolicyIndex !== localIndex + 1) {
     throw new Error('Local prerequisite must appear immediately before the avatar policy migration.');
   }
-  if (repositoryPaths.length !== 37 || disposablePaths.length !== 38) {
+  if (repositoryPaths.length !== 38 || disposablePaths.length !== 39) {
     throw new Error(`Unexpected repository/disposable counts: ${repositoryPaths.length}/${disposablePaths.length}`);
   }
   return {

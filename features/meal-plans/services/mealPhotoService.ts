@@ -165,15 +165,13 @@ export const getMealPhotoPreviewUrls = async (objectPaths: string[]): Promise<Ma
   )));
 };
 
-type CleanupRow = {
-  cleanup_id: unknown;
-  object_path: unknown;
-  attempt_count: unknown;
-};
-
 export interface MealPhotoCleanupResult {
   warning: string | null;
 }
+
+const CLEANUP_INFRASTRUCTURE_WARNING = 'Öğün görseli temizlik altyapısı kullanılamıyor; plan kaydı korundu ancak eski görseller otomatik temizlenemeyebilir.';
+const CLEANUP_PENDING_WARNING = 'Bazı eski öğün görselleri arka planda temizlenmeyi bekliyor; plan kaydı başarıyla korundu.';
+const FAILED_SAVE_CLEANUP_WARNING = 'Plan kaydedilemedi ve yeni görsel otomatik temizlik kuyruğuna alınamadı. Lütfen tekrar deneyin veya destek ekibine bildirin.';
 
 const isCleanupInfrastructureUnavailable = (error: unknown): boolean => {
   if (typeof error !== 'object' || error === null) return false;
@@ -184,63 +182,19 @@ const isCleanupInfrastructureUnavailable = (error: unknown): boolean => {
     || /could not find the function|function .* does not exist/i.test(message);
 };
 
-const getPendingCleanupRows = async (): Promise<Array<{ cleanupId: string; objectPath: string }>> => {
-  const { data, error } = await supabase.rpc('list_my_pending_meal_photo_cleanup');
-  if (error) {
-    if (isCleanupInfrastructureUnavailable(error)) return [];
-    throw new MealPhotoValidationError('MEAL_PHOTO_UPLOAD_FAILED');
-  }
-  if (!Array.isArray(data)) throw new MealPhotoValidationError('MEAL_PHOTO_UPLOAD_FAILED');
-
-  return (data as CleanupRow[]).flatMap((row) => {
-    if (!isValidUuid(row.cleanup_id) || !isCanonicalMealPhotoPath(row.object_path)) {
-      return [];
-    }
-    return [{ cleanupId: row.cleanup_id, objectPath: row.object_path }];
-  });
-};
-
 export const processPendingMealPhotoCleanup = async (): Promise<MealPhotoCleanupResult> => {
-  let pending: Array<{ cleanupId: string; objectPath: string }>;
-  try {
-    pending = await getPendingCleanupRows();
-  } catch (error) {
-    if (isCleanupInfrastructureUnavailable(error)) return { warning: null };
-    return {
-      warning: 'Eski öğün görsellerinin temizlik durumu doğrulanamadı; plan kaydı korundu ve temizlik yeniden denenecek.',
-    };
-  }
-  let failures = 0;
-
-  for (const item of pending) {
-    const { error: attemptError } = await supabase.rpc('record_my_meal_photo_cleanup_attempt', {
-      p_cleanup_id: item.cleanupId,
-    });
-    if (attemptError) {
-      failures += 1;
-      continue;
-    }
-
-    const { error: removeError } = await supabase.storage
-      .from(MEAL_PHOTO_BUCKET)
-      .remove([item.objectPath]);
-
-    if (removeError) {
-      failures += 1;
-      continue;
-    }
-
-    const { error: completeError } = await supabase.rpc('complete_my_meal_photo_cleanup', {
-      p_cleanup_id: item.cleanupId,
-    });
-    if (completeError) failures += 1;
+  const { data, error } = await supabase.rpc('get_my_meal_photo_cleanup_status');
+  if (error) {
+    return { warning: isCleanupInfrastructureUnavailable(error)
+      ? CLEANUP_INFRASTRUCTURE_WARNING
+      : 'Öğün görsellerinin temizlik durumu doğrulanamadı; plan kaydı korundu ve temizlik arka planda yeniden denenecek.' };
   }
 
-  return {
-    warning: failures > 0
-      ? 'Bazı eski öğün görselleri henüz temizlenemedi; plan kaydı korundu ve temizlik yeniden denenecek.'
-      : null,
-  };
+  return typeof data === 'number' && Number.isInteger(data) && data > 0
+    ? { warning: CLEANUP_PENDING_WARNING }
+    : typeof data === 'number' && Number.isInteger(data) && data === 0
+      ? { warning: null }
+      : { warning: CLEANUP_INFRASTRUCTURE_WARNING };
 };
 
 export const cleanupFailedMealPhotoUploads = async (objectPaths: string[]): Promise<MealPhotoCleanupResult> => {
@@ -251,15 +205,13 @@ export const cleanupFailedMealPhotoUploads = async (objectPaths: string[]): Prom
     const { error } = await supabase.rpc('enqueue_my_unreferenced_meal_photo_cleanup', {
       p_object_path: objectPath,
     });
-    if (error && !isCleanupInfrastructureUnavailable(error)) queueFailures += 1;
+    if (error) queueFailures += 1;
   }
+
+  if (queueFailures > 0) return { warning: FAILED_SAVE_CLEANUP_WARNING };
 
   const cleanup = await processPendingMealPhotoCleanup();
-  if (queueFailures > 0 || cleanup.warning) {
-    return {
-      warning: 'Plan kaydedilemedi. Yeni görsel için temizlik tamamlanamadı; güvenli yeniden deneme kaydı tutuldu.',
-    };
-  }
-
-  return cleanup;
+  return cleanup.warning
+    ? cleanup
+    : { warning: CLEANUP_PENDING_WARNING };
 };
