@@ -17,6 +17,8 @@
     "test:appointments:runtime": "node scripts/runDisposableAppointmentRuntimeHarness.mjs",
     "test:daily-tasks": "node scripts/runMealPlanContractTests.mjs --daily-tasks-only",
     "test:daily-tasks:runtime": "node scripts/runDisposableDailyTaskRuntimeHarness.mjs",
+    "test:analytics": "node scripts/runMealPlanContractTests.mjs --analytics-only",
+    "test:analytics:runtime": "node scripts/runDisposableAnalyticsRuntimeHarness.mjs",
     "test:storage-http": "node scripts/runDisposableMealPhotoStorageHttpHarness.mjs",
     "test:storage-production-shape": "node scripts/runMvp3StoragePolicyProductionShapeSimulation.mjs",
     "preview": "vite preview"

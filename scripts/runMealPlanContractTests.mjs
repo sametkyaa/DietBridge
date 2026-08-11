@@ -75,6 +75,10 @@ const SOURCES = [
   'features/dashboard/types/dailyTask.ts',
   'features/dashboard/utils/dailyTaskContract.ts',
   'features/dashboard/services/dailyTaskService.ts',
+  'features/analytics/types/analytics.ts',
+  'features/analytics/utils/analyticsContract.ts',
+  'features/analytics/services/analyticsService.ts',
+  'shared/utils/avatarUrl.ts',
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
   'features/chat/types/chatImage.ts',
@@ -104,6 +108,10 @@ const EXPECTED_OUTPUTS = [
   'features/dashboard/types/dailyTask.js',
   'features/dashboard/utils/dailyTaskContract.js',
   'features/dashboard/services/dailyTaskService.js',
+  'features/analytics/types/analytics.js',
+  'features/analytics/utils/analyticsContract.js',
+  'features/analytics/services/analyticsService.js',
+  'shared/utils/avatarUrl.js',
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
   'features/chat/types/chatImage.js',
@@ -229,11 +237,14 @@ const testFiles = [
   join(repoRoot, 'tests', 'measurementContracts.test.cjs'),
   join(repoRoot, 'tests', 'appointmentContracts.test.cjs'),
   join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs'),
+  join(repoRoot, 'tests', 'analyticsContracts.test.cjs'),
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
   : process.argv.includes('--daily-tasks-only')
     ? [join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs')]
+    : process.argv.includes('--analytics-only')
+      ? [join(repoRoot, 'tests', 'analyticsContracts.test.cjs')]
     : testFiles;
 
 const testRun = spawnSync(process.execPath, [

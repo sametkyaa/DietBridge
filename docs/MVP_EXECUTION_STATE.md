@@ -4,10 +4,10 @@ Current Gate:
 MVP-6 — Real Analytics
 
 Status:
-MVP-5 — COMPLETE; MVP-6 DISCOVERY IN PROGRESS
+MVP-6 — COMPLETE (2026-08-11)
 
 Last Verified Base Commit:
-`90c668f` (`docs: record MVP-4 production closure`)
+`3308ab6` (`feat: persist dashboard daily tasks`)
 
 MVP-4 Checkpoint:
 This document is included in the verified local MVP-4 checkpoint commit.
@@ -22,6 +22,64 @@ Completed Gates:
 - MVP-3 — COMPLETE (2026-08-11)
 - MVP-4 — COMPLETE (2026-08-11)
 - MVP-5 — COMPLETE (2026-08-11)
+- MVP-6 — COMPLETE (2026-08-11)
+
+MVP-6 Local Verdict:
+- The active `/analytics` route now reads real Supabase-backed analytics data; the legacy `CLIENTS` mock, fake loading delay, hardcoded KPI/chart/activity/risk content and inert AI/export actions are absent from the active chain.
+- Client selection is authenticated, active-relationship scoped, fail closed, deterministic and fully paginated. It reads only the selector fields `id`, `full_name` and `avatar_url`; health, medication, email and unrelated profile fields are not fetched.
+- Analytics source reads are restricted to the selected client; meal-plan reads also require the authenticated dietitian ID. A removed, foreign, pending, rejected, missing-profile, client-role or anonymous actor cannot reach the analytics source reads.
+- Date ranges use `Europe/Istanbul` civil dates with inclusive 7-day, 30-day, calendar three-month and all-time boundaries. Partial weekly buckets are clamped to the selected range.
+- Weight KPIs use the earliest and latest valid 20–500 kg measurements independently of the selected trend window, with profile fallbacks only where the metric contract permits them.
+- Water averages exclude missing/invalid days but retain real zero values; coverage and goal-eligible denominators remain visible. Meal adherence reports completed/planned meals and returns no percentage when no meal is planned.
+- Persisted water, calorie and macro values are bounded against the canonical product limits in both service mapping and pure aggregation; overflow-safe totals cannot emit `NaN` or `Infinity` into the UI.
+- Calories and macros are labelled only as planned nutrition. Missing values preserve incomplete coverage instead of being converted to zero or presented as consumed intake.
+- Weight, water and each real body-measurement field expose 0/1/N-safe trends plus accessible history tables. Loading, error, retry, idle and section-specific empty states remain distinct, and stale requests cannot overwrite a newer selection.
+- Active-client avatar values use the canonical private signed-URL resolver; raw private Storage paths are not rendered as image URLs.
+- Existing schema and RLS were sufficient; no migration was created or applied for MVP-6.
+
+MVP-6 Disposable Runtime Evidence:
+- Hash-verified replay PASS: 40 repository migrations plus one local-only prerequisite using pinned Supabase CLI `2.110.0`.
+- The real compiled analytics service passed Istanbul inclusive range, canonical earliest/latest valid weight, meal adherence, water null/zero, water goal, planned-nutrition coverage and fresh authenticated-session checks.
+- Approved own/foreign tenant isolation PASS. Pending and rejected dietitians were denied even with admin-created active relationships; missing-profile, client-role and anonymous actors were denied; removed relationships failed closed.
+- Temporary meals, meal plans, daily logs, measurements, client profiles, relationships, Auth users and actor-source rows = 0.
+- Per-run disposable temp directory, Docker containers, volumes and networks = 0.
+- Production access/mutation = none; customer data touched = none; production Auth users created = none.
+
+MVP-6 Quality Gates:
+- `npm run test:analytics` — 8/8 PASS, including huge-finite-value overflow regression coverage.
+- `npm run test:analytics:runtime` — PASS with 40-migration replay and exact fixture/Auth/temp/Docker residue zero.
+- `npm run typecheck` — PASS.
+- `npm run lint` — PASS with 0 errors and 26 pre-existing/non-critical warnings.
+- `npm test` — 207/207 PASS.
+- `npm run build` — PASS; existing >500 kB chunk warning remains non-critical.
+- `git diff --check` — PASS; only line-ending conversion warnings were reported.
+- Final independent closure review found one numeric-overflow P1; the code-only corrective loop added bounded/overflow-safe metrics and regression coverage. Corrective independent re-review — PASS with no remaining findings.
+
+MVP-6 Production Read-Only Smoke Evidence:
+- Human approval for the minimum production read-only analytics smoke was received on 2026-08-11; no production data mutation was authorized.
+- Production identity PASS: expected project ref, `dietbridge_Production`, `ACTIVE_HEALTHY`, linked repository project and authenticated Data API URL matched.
+- Existing developer/test dietitian identity PASS: authenticated session usable, role `dietitian`, verification `approved` and `is_verified = true`.
+- Exactly one ACTIVE relationship matched the approved test-domain filter; unrelated production identities were not enumerated and customer data was not accessed.
+- The actual compiled MVP-6 analytics service and independent canonical source SELECT path both reached production without mock/fallback substitution.
+- Europe/Istanbul 30-day range construction and source-query boundaries PASS.
+- Existing test client data was insufficient for weight baseline/latest/delta, water coverage, meal adherence and planned-nutrition source-vs-analytics acceptance. No wider customer/history search and no fixture creation was performed.
+- Representative production foreign-client check was not run because no second known-safe test identity was available; the disposable tenant actor matrix remains PASS.
+- Production database writes = 0. Normal managed Auth session activity was the only permitted authentication side effect.
+- Production migration/schema/RLS/Auth/Storage/Edge/secret/Vault/cron configuration changes = 0.
+- Credential values were not written to repository files, reports, screenshots or commits; the credentialless temporary smoke runner was removed.
+
+MVP-6 Minimum Production Fixture and Final Smoke Evidence:
+- Separate human approval for the minimum temporary developer/test-only production fixture and its complete cleanup was received on 2026-08-11.
+- Preflight reconfirmed the expected production project, approved/verified developer/test dietitian, exactly one ACTIVE test-domain client relationship, empty marker set, no valid canonical weight baseline collision and no fixture-date collisions.
+- Created exactly two synthetic measurements on two recent Europe/Istanbul civil dates: `80.0 kg` followed by `77.5 kg`; no unnecessary body measurements were added.
+- Created exactly one synthetic daily log with `2400 ml` water.
+- Created exactly one marked meal plan containing exactly two marked manual meals: one eaten and one not eaten. Planned totals were `1000 kcal`, `70 g` protein, `100 g` carbohydrates and `30 g` fat.
+- The actual compiled production analytics service matched independent source SELECT evidence: weight baseline/latest/delta `80.0 → 77.5 / -2.5 kg`, water coverage `1/30` with `2400 ml`, adherence `1/2 = 50%`, and all planned-nutrition totals PASS.
+- Europe/Istanbul range and fixture civil-date inclusion PASS; no UTC day shift, `NaN`, `Infinity`, overflow or mock/fallback output was observed.
+- Production foreign-client representative check remained `NOT-RUN-SAFE-IDENTITY-UNAVAILABLE`; no second account was created and the full disposable actor/tenant matrix remains PASS.
+- Cleanup deleted only the recorded fixture IDs. Final residue: temporary measurements = 0, daily logs = 0, meal plans = 0, meals = 0, Auth rows = 0, relationships = 0, Storage objects = 0, cleanup queue delta = 0.
+- Customer data was not accessed or modified. No migration, schema, RLS, Auth configuration, Storage configuration, Edge Function, secret, Vault or cron change occurred.
+- The credentialless fixture runner was removed after cleanup; credential values were not persisted or reported.
 
 MVP-4 Local Verdict:
 - No fake-success or local-only appointment persistence remains in the active Web chain.
@@ -126,21 +184,21 @@ npm Audit Triage (2026-08-11):
 - These findings are not MVP-4 P0/P1 or current data-integrity blockers; dependency updates remain a separate controlled task.
 
 Repository Branch:
-`codex/dashboard-daily-tasks`
+`codex/analytics`
 
 Working Tree:
-DIRTY only until the required verified MVP-5 checkpoint commit is created. No push, merge, rebase or PR has been performed.
+DIRTY with the reviewed MVP-6 local implementation and this execution-state update. No commit, push, merge, rebase or PR has been performed on this branch.
 
 Production Mutation Allowed:
 NO
 
 Current Blocker:
 - None for MVP-5; it is COMPLETE.
-- MVP-6 local discovery/implementation may proceed autonomously.
-- Any MVP-6 production mutation, Auth/Storage configuration mutation, destructive production action or public launch requires a new human approval.
+- None for MVP-6; it is COMPLETE.
+- MVP-7 is not authorized and has not been started.
 
 Next Action:
-Create the verified MVP-5 local checkpoint commit, then begin MVP-6 — Real Analytics using Work → Codex → independent review → corrective loop. Start with read-only active-chain, metric-contract and source-data discovery before the smallest local implementation slice.
+STOP after MVP-6. Wait for a separate explicit user instruction before any MVP-7 branch, subscription, plan, client-limit or payment work.
 
 Human Approval Required:
-NO for MVP-6 read-only discovery and local/repository/disposable work. YES before any new production mutation or public launch.
+YES before any new roadmap phase, production mutation or public launch. No further action is authorized by the completed MVP-6 approvals.
