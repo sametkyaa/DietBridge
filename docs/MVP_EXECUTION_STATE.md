@@ -1,10 +1,10 @@
 # DietBridge MVP Execution State
 
 Current Gate:
-MVP-4 — Appointment Reliability
+MVP-5 — Persistent Dashboard Daily Tasks
 
 Status:
-MVP-4 LOCAL VERIFIED — PRODUCTION SMOKE APPROVAL REQUIRED
+MVP-4 — COMPLETE; MVP-5 DISCOVERY IN PROGRESS
 
 Last Verified Base Commit:
 `33e17d2` (`fix: verify real meal photo Storage uploads`)
@@ -17,6 +17,7 @@ Completed Gates:
 - MVP-1 — PASS
 - MVP-2 — COMPLETE (2026-08-10)
 - MVP-3 — COMPLETE (2026-08-11)
+- MVP-4 — COMPLETE (2026-08-11)
 
 MVP-4 Local Verdict:
 - No fake-success or local-only appointment persistence remains in the active Web chain.
@@ -36,6 +37,22 @@ Disposable Runtime Evidence:
 - Temporary appointments = 0; temporary relationships = 0; cleanup queue residue = 0.
 - Per-run disposable Docker containers = 0; per-run temp directory residue = 0.
 - Production access/mutation = none; customer data touched = none; Auth users created in production = none.
+
+MVP-4 Production Smoke Evidence:
+- Checkpoint `0a3e748` and clean `codex/appointments` worktree reconfirmed before production access.
+- Production identity PASS: `dietbridge_Production` / `kagvxhyvxxypspdxcuxz` / `ACTIVE_HEALTHY`.
+- Migration parity PASS: 39/39; canonical appointment schema, RLS and table privileges PASS.
+- Existing developer/test dietitian identity PASS: role `dietitian`, verification `approved`, `is_verified = true`.
+- Existing same-domain test client relationship PASS: active before and unchanged after smoke.
+- Real authenticated `appointmentService.ts` create PASS with a production row ID and deterministic `MVP4_TEST_0a3e748` marker.
+- Canonical refresh and fresh authenticated session reload PASS after create.
+- Real update PASS on the same row ID; title/time persisted and `status = upcoming` was preserved.
+- Canonical refresh and fresh authenticated session reload PASS after update.
+- Representative foreign-client authenticated read returned zero rows; tenant isolation PASS.
+- Canonical service delete PASS; fresh authenticated session and direct read-only DB postflight both confirmed row absence.
+- Temporary marker appointments = 0; total appointments returned to baseline 0; unrelated appointment set unchanged.
+- Target active relationship unchanged; expected Auth identities intact; marker Storage objects and cleanup queue rows = 0.
+- No customer data, Auth configuration, Storage configuration, migration, RLS, Edge Function, secret, Vault, cron or dependency was changed.
 
 Quality Gates:
 - `npm run test:appointments` — 9/9 PASS.
@@ -59,17 +76,17 @@ Repository Branch:
 `codex/appointments`
 
 Working Tree:
-DIRTY — coherent verified MVP-4 checkpoint is ready for the authorized local commit. No push, merge, rebase or PR has been performed.
+CLEAN before this required execution-state update. No push, merge, rebase or PR has been performed.
 
 Production Mutation Allowed:
 NO
 
 Current Blocker:
-- Final production appointment CRUD/refresh/restart smoke would create and delete a temporary production appointment. That write requires explicit production approval.
-- Local/disposable evidence cannot substitute for the required production persistence evidence.
+- None for MVP-4. MVP-5 discovery and local implementation may proceed.
+- Any MVP-5 production migration, production fixture/smoke, Auth/Storage configuration mutation, destructive production action or public launch requires fresh human approval.
 
 Next Action:
-After explicit approval, use only the existing developer/test account and an existing active linked test client. Run the minimum production appointment create → refresh/restart → update → refresh/restart → delete flow, verify foreign/ownership behavior without touching customer rows, clean only the temporary appointment and confirm residue 0. Then record either `MVP-4 — COMPLETE` or the exact critical blocker. Do not start MVP-5 before this gate closes.
+Begin MVP-5 — Persistent Dashboard Daily Tasks using the normal Work → Codex → independent review → corrective loop. Start with read-only contract/schema/import-chain discovery, then prepare the smallest local migration/service/UI/test slice without production mutation.
 
 Human Approval Required:
-YES — only for the minimum temporary production appointment smoke and cleanup. No migration, policy, Storage, Auth-account, secret, worker, Vault, cron or bucket change is authorized or required.
+NO for MVP-5 read-only discovery and local implementation. YES before any production mutation or public launch.
