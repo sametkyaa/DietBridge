@@ -11,6 +11,7 @@ const {
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
+const { readCanonicalRepositoryFile } = require('../scripts/readCanonicalRepositoryFile.cjs');
 const { pathToFileURL } = require('node:url');
 
 const repoRoot = join(__dirname, '..');
@@ -117,7 +118,7 @@ test('reports the verified source and materialized hashes', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
   for (const file of result.manifest.files) {
-    const source = readFileSync(join(repoRoot, file.path));
+    const source = readCanonicalRepositoryFile(repoRoot, file.path);
     const materialized = readFileSync(join(result.tempRoot, file.path));
     assert.equal(sha256(source), file.sourceSha256, file.path);
     assert.equal(sha256(materialized), file.materializedSha256, file.path);

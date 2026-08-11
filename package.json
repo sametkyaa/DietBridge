@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "node scripts/runMealPlanContractTests.mjs",
+    "test:appointments": "node scripts/runMealPlanContractTests.mjs --appointments-only",
+    "test:appointments:runtime": "node scripts/runDisposableAppointmentRuntimeHarness.mjs",
     "test:storage-http": "node scripts/runDisposableMealPhotoStorageHttpHarness.mjs",
     "test:storage-production-shape": "node scripts/runMvp3StoragePolicyProductionShapeSimulation.mjs",
     "preview": "vite preview"

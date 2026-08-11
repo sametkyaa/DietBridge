@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { TASKS } from '../../../shared/constants';
 import DietitianAvatar from '../../../shared/components/DietitianAvatar';
 import { useAppointments } from '../../appointments/context/AppointmentContext';
+import { getLocalDateKey } from '../../appointments/utils/appointmentContract';
 import { fetchDietitianClients } from '../../clients/services/clientService';
 import { Client } from '../../../shared/types';
 
@@ -46,10 +47,15 @@ const DashboardPage = () => {
   const taskClientInputRef = useRef<HTMLDivElement>(null);
   
   // Fetch appointments from context
-  const { getAppointmentsByDate } = useAppointments();
+  const {
+    error: appointmentsError,
+    getAppointmentsByDate,
+    loading: appointmentsLoading,
+    refreshAppointments,
+  } = useAppointments();
   
   // Get today's appointments dynamically
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateKey();
   const todaysAppointments = getAppointmentsByDate(today);
 
   // Fetch Clients
@@ -401,7 +407,20 @@ const DashboardPage = () => {
               <h3 className="text-xl font-bold text-slate-800">Bugünkü Randevular</h3>
             </div>
             
-            {todaysAppointments.length > 0 ? (
+            {appointmentsLoading ? (
+              <div className="py-6 text-center text-sm text-slate-400">Randevular yükleniyor...</div>
+            ) : appointmentsError ? (
+              <div role="alert" className="py-6 text-center">
+                <p className="text-sm text-rose-600">Bugünkü randevular yüklenemedi.</p>
+                <button
+                  type="button"
+                  onClick={() => void refreshAppointments()}
+                  className="mt-2 text-sm font-bold text-primary hover:underline"
+                >
+                  Tekrar dene
+                </button>
+              </div>
+            ) : todaysAppointments.length > 0 ? (
               <div className="space-y-6 relative">
                 {/* Timeline Line */}
                 <div className="absolute left-[3.25rem] top-2 bottom-2 w-0.5 bg-slate-100"></div>

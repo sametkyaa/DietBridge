@@ -70,6 +70,8 @@ const SOURCES = [
   'features/recipes/services/recipeService.ts',
   'features/recipes/utils/filterRecipes.ts',
   'features/clients/utils/measurementContract.ts',
+  'features/appointments/utils/appointmentContract.ts',
+  'features/appointments/services/appointmentService.ts',
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
   'features/chat/types/chatImage.ts',
@@ -94,6 +96,8 @@ const EXPECTED_OUTPUTS = [
   'features/recipes/services/recipeService.js',
   'features/recipes/utils/filterRecipes.js',
   'features/clients/utils/measurementContract.js',
+  'features/appointments/utils/appointmentContract.js',
+  'features/appointments/services/appointmentService.js',
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
   'features/chat/types/chatImage.js',
@@ -206,8 +210,7 @@ fs.readFileSync = (file, ...args) => {
 };
 `, 'utf8');
 
-const testRun = spawnSync(process.execPath, [
-  '--test',
+const testFiles = [
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
@@ -218,6 +221,15 @@ const testRun = spawnSync(process.execPath, [
   join(repoRoot, 'tests', 'disposableReplayMaterializer.test.cjs'),
   join(repoRoot, 'tests', 'disposableSupabaseLocalReplay.test.cjs'),
   join(repoRoot, 'tests', 'measurementContracts.test.cjs'),
+  join(repoRoot, 'tests', 'appointmentContracts.test.cjs'),
+];
+const selectedTestFiles = process.argv.includes('--appointments-only')
+  ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
+  : testFiles;
+
+const testRun = spawnSync(process.execPath, [
+  '--test',
+  ...selectedTestFiles,
 ], {
   cwd: repoRoot,
   env: {

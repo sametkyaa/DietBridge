@@ -10,7 +10,7 @@ const {
   writeFileSync,
 } = require('node:fs');
 const { tmpdir } = require('node:os');
-const { dirname, join } = require('node:path');
+const { dirname, join, sep } = require('node:path');
 const test = require('node:test');
 const { pathToFileURL } = require('node:url');
 
@@ -40,6 +40,18 @@ test('materializer creates the exact current migration copies and an external ma
     const bytes = readFileSync(join(outputRoot, file.path));
     assert.equal(sha256(bytes), file.materializedSha256, file.path);
   }
+});
+
+test('canonical reader preserves LF-pinned hashes on stale and fresh checkouts', () => {
+  const { readCanonicalRepositoryFile } = require('../scripts/readCanonicalRepositoryFile.cjs');
+  const relativePath = join('supabase', 'migrations', '20260807115919_mvp_security_hardening_reconciliation.sql');
+  const rules = JSON.parse(readFileSync(rulesPath, 'utf8'));
+  const rule = rules.files.find(({ path }) => path.replaceAll('/', sep) === relativePath);
+  const working = readFileSync(join(repoRoot, relativePath));
+  const canonical = readCanonicalRepositoryFile(repoRoot, relativePath);
+  assert.equal(sha256(canonical), rule.sourceSha256);
+  const normalizedWorking = Buffer.from(working.toString('utf8').replaceAll('\r\n', '\n'), 'utf8');
+  assert.equal(sha256(normalizedWorking), rule.sourceSha256);
 });
 
 test('materializer fails closed on a source hash mismatch without creating output', async (t) => {

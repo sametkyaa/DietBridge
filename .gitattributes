@@ -2,6 +2,9 @@ supabase/migrations/20260730180636_chat_image_cleanup_scheduler.sql text eol=lf
 supabase/migrations/20260730180641_chat_image_rpc_activation.sql text eol=lf
 supabase/migrations/20260801090000_align_measurements_with_mobile.sql text eol=lf
 supabase/migrations/20260802090000_chat_active_relationship_hardening.sql text eol=lf
+supabase/migrations/20260807115919_mvp_security_hardening_reconciliation.sql text eol=lf
+supabase/migrations/20260810055845_mvp3_meal_photo_lifecycle_closure.sql text eol=lf
+supabase/migrations/20260810074910_mvp3_real_storage_upload_policy_correction.sql text eol=lf
 supabase/tests/disposable/*.sql text eol=lf
 tests/fixtures/*.json text eol=lf
 

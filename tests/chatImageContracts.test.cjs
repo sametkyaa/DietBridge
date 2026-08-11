@@ -3,6 +3,7 @@ const test = require('node:test');
 const fs = require('node:fs');
 const { createHash } = require('node:crypto');
 const path = require('node:path');
+const { readCanonicalRepositoryFile } = require('../scripts/readCanonicalRepositoryFile.cjs');
 
 const repoRoot = path.join(__dirname, '..');
 const migrationNames = [
@@ -46,7 +47,7 @@ test('historical migrations stay immutable while disposable syntax edits are exp
   assert.equal(rules.files.filter(({ phase }) => phase === 'image').length, 7);
   assert.equal(rules.files.filter(({ edits }) => edits.length > 0).length, 16);
   for (const rule of rules.files) {
-    const source = fs.readFileSync(path.join(repoRoot, rule.path));
+    const source = readCanonicalRepositoryFile(repoRoot, rule.path);
     assert.equal(createHash('sha256').update(source).digest('hex'), rule.sourceSha256, rule.path);
     for (const edit of rule.edits) assert.equal(edit.after, `${edit.before};`, rule.path);
   }

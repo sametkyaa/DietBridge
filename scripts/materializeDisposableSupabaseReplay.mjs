@@ -9,6 +9,9 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import canonicalFileReader from './readCanonicalRepositoryFile.cjs';
+
+const { readCanonicalRepositoryFile } = canonicalFileReader;
 
 const scriptPath = fileURLToPath(import.meta.url);
 const defaultRepoRoot = resolve(dirname(scriptPath), '..');
@@ -59,8 +62,20 @@ const materializeFile = (repoRoot, file) => {
   if (!sourcePath.startsWith(expectedRoot)) {
     throw new Error(`Resolved source path escapes migration directory: ${file.path}`);
   }
-  const sourceBytes = readFileSync(sourcePath);
-  const sourceHash = sha256(sourceBytes);
+  let sourceBytes = readCanonicalRepositoryFile(repoRoot, sourcePath);
+  let sourceHash = sha256(sourceBytes);
+  if (sourceHash !== file.sourceSha256) {
+    const sourceText = sourceBytes.toString('utf8');
+    const withoutCrlf = sourceText.replaceAll('\r\n', '');
+    if (!withoutCrlf.includes('\r')) {
+      const lfBytes = Buffer.from(sourceText.replaceAll('\r\n', '\n'), 'utf8');
+      const lfHash = sha256(lfBytes);
+      if (lfHash === file.sourceSha256) {
+        sourceBytes = lfBytes;
+        sourceHash = lfHash;
+      }
+    }
+  }
   if (sourceHash !== file.sourceSha256) {
     throw new Error(`Source hash mismatch for ${file.path}: expected ${file.sourceSha256}, got ${sourceHash}`);
   }
