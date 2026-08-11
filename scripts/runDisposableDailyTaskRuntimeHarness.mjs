@@ -11,11 +11,11 @@ import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalRe
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SUPABASE_VERSION = '2.110.0';
-const PASSWORD = 'Disposable-MVP4-Only-9b!';
-const projectId = `dietbridge-mvp4-${process.pid}-${randomUUID().slice(0, 8)}`;
+const PASSWORD = 'Disposable-MVP5-Only-9b!';
+const projectId = `dietbridge-mvp5-${process.pid}-${randomUUID().slice(0, 8)}`;
 const npxCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
 const actorIds = [];
-const appointmentIds = [];
+const taskIds = [];
 const relationshipIds = [];
 let disposable;
 let local;
@@ -26,10 +26,13 @@ let mainError;
 
 const cleanEnvironment = ({
   SUPABASE_ACCESS_TOKEN: _accessToken,
+  SUPABASE_TOKEN: _token,
   SUPABASE_DB_PASSWORD: _databasePassword,
   SUPABASE_SERVICE_ROLE_KEY: _serviceRole,
-  VITE_SUPABASE_URL: _remoteUrl,
-  VITE_SUPABASE_ANON_KEY: _remoteAnon,
+  SUPABASE_URL: _remoteUrl,
+  SUPABASE_ANON_KEY: _remoteAnon,
+  VITE_SUPABASE_URL: _remoteViteUrl,
+  VITE_SUPABASE_ANON_KEY: _remoteViteAnon,
   ...environment
 }) => ({ ...environment, TZ: 'Europe/Istanbul' });
 
@@ -72,7 +75,7 @@ const assertNoRows = (result, label) => {
   assert(rows.length === 0, label, `unexpected_rows=${rows.length}`);
 };
 
-const parseStatus = (text) => Object.fromEntries(text.split(/\r?\n/)
+const parseStatus = (value) => Object.fromEntries(value.split(/\r?\n/)
   .map((line) => line.match(/^([A-Z_]+)="(.*)"$/))
   .filter(Boolean)
   .map((match) => [match[1], match[2]]));
@@ -82,7 +85,7 @@ const anonymousClient = () => createClient(local.API_URL, local.ANON_KEY, {
 });
 
 const createActor = async (label, role) => {
-  const email = `mvp4-${label}-${randomUUID()}@example.invalid`;
+  const email = `mvp5-${label}-${randomUUID()}@example.invalid`;
   const result = await admin.auth.admin.createUser({
     email,
     password: PASSWORD,
@@ -115,7 +118,10 @@ const verifyDietitian = async (actor, verificationStatus) => {
     rejection_reason: verificationStatus === 'rejected' ? 'Disposable rejection' : null,
   }).eq('user_id', actor.id).select('user_id,verification_status,is_verified').single();
   const row = assertNoError(result, `${actor.label} verification fixture`);
-  assert(row.verification_status === verificationStatus, `${actor.label.toUpperCase()}_${verificationStatus.toUpperCase()}_FIXTURE`);
+  assert(
+    row.verification_status === verificationStatus,
+    `${actor.label.toUpperCase()}_${verificationStatus.toUpperCase()}_FIXTURE`,
+  );
 };
 
 const activateRelationship = async (dietitian, client) => {
@@ -133,24 +139,35 @@ const activateRelationship = async (dietitian, client) => {
   return active.id;
 };
 
-const appointmentPayload = (dietitianId, clientId, title) => ({
+const directTaskPayload = (dietitianId, clientId, title) => ({
   dietitian_id: dietitianId,
   client_id: clientId,
   title,
-  date: '2099-12-01',
-  time: '09:30',
-  duration: 45,
-  type: 'online',
-  status: 'upcoming',
+  description: 'Disposable runtime task',
+  due_date: '2099-12-01',
+  due_time: '09:30',
+  priority: 'medium',
+  status: 'pending',
+  completed_at: null,
 });
 
-const compileAppointmentService = () => {
-  const sourceRoot = join(disposable.tempRoot, 'appointment-service-source');
-  const buildRoot = join(disposable.tempRoot, 'appointment-service-build');
+const taskDraft = (overrides = {}) => ({
+  clientId: null,
+  title: 'Disposable general task',
+  description: 'Disposable runtime task',
+  dueDate: '2099-12-01',
+  dueTime: '09:30',
+  priority: 'medium',
+  ...overrides,
+});
+
+const compileDailyTaskService = () => {
+  const sourceRoot = join(disposable.tempRoot, 'daily-task-service-source');
+  const buildRoot = join(disposable.tempRoot, 'daily-task-service-build');
   const sources = [
-    'features/appointments/services/appointmentService.ts',
-    'features/appointments/utils/appointmentContract.ts',
-    'shared/types.ts',
+    'features/dashboard/services/dailyTaskService.ts',
+    'features/dashboard/types/dailyTask.ts',
+    'features/dashboard/utils/dailyTaskContract.ts',
   ];
   for (const source of sources) {
     const destination = join(sourceRoot, source);
@@ -183,7 +200,7 @@ export const supabase: any = new Proxy({}, {
   ], { cwd: repoRoot, encoding: 'utf8', timeout: 120_000 });
   const require = createRequire(import.meta.url);
   return {
-    service: require(join(buildRoot, 'features', 'appointments', 'services', 'appointmentService.js')),
+    service: require(join(buildRoot, 'features', 'dashboard', 'services', 'dailyTaskService.js')),
     actorProxy: require(join(buildRoot, 'lib', 'supabaseClient.js')),
   };
 };
@@ -217,6 +234,7 @@ try {
 
   local = parseStatus(cli(['status', '--output', 'env']));
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_GUARD', local.API_URL);
+  assert(/^postgresql:\/\/postgres:[^@]+@(?:127\.0\.0\.1|localhost):\d+\/postgres$/.test(local.DB_URL ?? ''), 'LOOPBACK_DB_GUARD');
   assert(Boolean(local.ANON_KEY && local.SERVICE_ROLE_KEY), 'LOCAL_KEYS_PRESENT');
   admin = createClient(local.API_URL, local.SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -235,7 +253,10 @@ try {
   const relationshipA = await activateRelationship(approvedA, clientA);
   await activateRelationship(approvedB, clientB);
   assertNoError(await admin.from('profiles').delete().eq('id', missing.id), 'missing profile fixture');
-  const missingRows = assertNoError(await admin.from('profiles').select('id').eq('id', missing.id), 'missing profile check');
+  const missingRows = assertNoError(
+    await admin.from('profiles').select('id').eq('id', missing.id),
+    'missing profile check',
+  );
   assert(missingRows.length === 0, 'MISSING_PROFILE_FIXTURE');
 
   const api = {
@@ -249,143 +270,254 @@ try {
     anonymous: anonymousClient(),
   };
 
-  const { service, actorProxy } = compileAppointmentService();
+  const { service, actorProxy } = compileDailyTaskService();
   actorProxy.setSupabaseClient(api.approvedA);
-  pass('REAL_APPOINTMENT_SERVICE_COMPILED');
+  pass('REAL_DAILY_TASK_SERVICE_COMPILED');
 
-  const appointmentA = await service.createAppointment({
-    clientId: clientA.id,
-    title: 'Disposable A',
-    date: '2099-12-01',
-    time: '09:30',
-    duration: 45,
-    type: 'Görüntülü Görüşme',
-  });
-  appointmentIds.push(appointmentA.id);
-  assert(appointmentA.status === 'upcoming', 'CREATE_DEFAULT_UPCOMING');
-  assert(appointmentA.date === '2099-12-01' && appointmentA.time === '09:30', 'SERVICE_DATE_TIME_ROUND_TRIP');
-  let result = await admin.from('appointments').select('date,time').eq('id', appointmentA.id).single();
-  const rawAppointment = assertNoError(result, 'raw date/time read');
-  assert(rawAppointment.date === '2099-12-01' && rawAppointment.time === '09:30:00', 'DATE_TIME_DB_ROUND_TRIP');
-
-  const freshA = await actorClient(approvedA);
-  result = await freshA.from('appointments').select('id,title,status,date,time').eq('id', appointmentA.id).single();
-  assert(assertNoError(result, 'fresh session read').id === appointmentA.id, 'FRESH_SESSION_CREATE_PERSISTED');
-
-  let serviceUpdate = await service.updateAppointment(appointmentA.id, {
-    clientId: clientA.id,
-    title: 'Disposable A updated',
-    date: '2099-12-01',
-    time: '09:30',
-    duration: 45,
-    type: 'Görüntülü Görüşme',
-  });
-  assert(serviceUpdate.status === 'upcoming', 'UPDATE_PRESERVES_UPCOMING_STATUS');
-  assertNoError(await admin.from('appointments').update({ status: 'completed' }).eq('id', appointmentA.id), 'completed fixture');
-  serviceUpdate = await service.updateAppointment(appointmentA.id, {
-    clientId: clientA.id,
-    title: 'Disposable A completed',
-    date: '2099-12-01',
-    time: '09:30',
-    duration: 60,
-    type: 'Görüntülü Görüşme',
-  });
-  const completedUpdate = serviceUpdate;
-  assert(completedUpdate.status === 'completed' && completedUpdate.duration === 60, 'UPDATE_PRESERVES_COMPLETED_STATUS');
-
-  const deletableAppointment = await service.createAppointment({
-    clientId: clientA.id,
-    title: 'Disposable delete check',
-    date: '2099-12-01',
-    time: '10:30',
-    duration: 30,
-    type: 'Telefon Görüşmesi',
-  });
-  appointmentIds.push(deletableAppointment.id);
-  await service.deleteAppointmentService(deletableAppointment.id);
-  pass('APPROVED_DELETE');
-  const freshAfterDelete = await actorClient(approvedA);
-  result = await freshAfterDelete.from('appointments').select('id').eq('id', deletableAppointment.id);
-  assert(assertNoError(result, 'fresh delete read').length === 0, 'FRESH_SESSION_DELETE_PERSISTED');
-
-  result = await api.clientA.from('appointments').select('id').eq('id', appointmentA.id);
-  assert(assertNoError(result, 'linked client read').length === 1, 'LINKED_CLIENT_OWN_READ');
-  result = await api.approvedB.from('appointments').select('id').eq('id', appointmentA.id);
-  assert(assertNoError(result, 'foreign read').length === 0, 'FOREIGN_DIETITIAN_READ_DENY');
-  result = await api.clientB.from('appointments').select('id').eq('id', appointmentA.id);
-  assert(assertNoError(result, 'foreign client read').length === 0, 'FOREIGN_CLIENT_READ_DENY');
-
-  assertNoRows(await api.approvedB.from('appointments').update({ title: 'foreign' }).eq('id', appointmentA.id).select('id'), 'FOREIGN_UPDATE_DENY');
-  assertNoRows(await api.approvedB.from('appointments').delete().eq('id', appointmentA.id).select('id'), 'FOREIGN_DELETE_DENY');
-  await assertServiceError(() => service.updateAppointment(randomUUID(), {
-    clientId: clientA.id,
-    title: 'missing',
-    date: '2099-12-01',
-    time: '11:30',
-    duration: 30,
-    type: 'Yüzyüze',
-  }), service.AppointmentServiceError, 'RANDOM_UUID_UPDATE_SERVICE_ERROR');
-  await assertServiceError(
-    () => service.deleteAppointmentService(randomUUID()),
-    service.AppointmentServiceError,
-    'RANDOM_UUID_DELETE_SERVICE_ERROR',
+  const generalTask = await service.createDailyTask(taskDraft());
+  taskIds.push(generalTask.id);
+  assert(
+    generalTask.clientId === null && generalTask.status === 'pending' && generalTask.completedAt === null,
+    'APPROVED_GENERAL_CREATE',
   );
-  assertNoRows(await api.approvedA.from('appointments').insert(
-    appointmentPayload(approvedA.id, clientB.id, 'Unrelated client'),
-  ).select('id'), 'UNRELATED_CLIENT_CREATE_DENY');
+
+  let linkedTask = await service.createDailyTask(taskDraft({
+    clientId: clientA.id,
+    title: 'Disposable linked task',
+    priority: 'high',
+  }));
+  taskIds.push(linkedTask.id);
+  assert(linkedTask.clientId === clientA.id, 'APPROVED_ACTIVE_CLIENT_CREATE');
+
+  let fetched = await service.fetchDailyTasks();
+  assert(
+    fetched.some(({ id }) => id === generalTask.id) && fetched.some(({ id }) => id === linkedTask.id),
+    'APPROVED_SERVICE_READ',
+  );
+
+  const freshApprovedA = await actorClient(approvedA);
+  actorProxy.setSupabaseClient(freshApprovedA);
+  fetched = await service.fetchDailyTasks();
+  assert(fetched.some(({ id }) => id === linkedTask.id), 'FRESH_SESSION_CREATE_PERSISTED');
+  actorProxy.setSupabaseClient(api.approvedA);
+
+  linkedTask = await service.updateDailyTask(linkedTask.id, taskDraft({
+    clientId: clientA.id,
+    title: 'Disposable linked task updated',
+    description: 'Updated through the real service',
+    dueTime: '10:45',
+    priority: 'low',
+  }));
+  assert(
+    linkedTask.title === 'Disposable linked task updated'
+      && linkedTask.dueTime === '10:45'
+      && linkedTask.priority === 'low'
+      && linkedTask.status === 'pending',
+    'APPROVED_SERVICE_UPDATE',
+  );
+
+  linkedTask = await service.setDailyTaskCompletion(linkedTask.id, true);
+  assert(linkedTask.status === 'completed' && Boolean(linkedTask.completedAt), 'COMPLETE_SETS_TIMESTAMP');
+  const originalCompletedAt = linkedTask.completedAt;
+  let result = await api.approvedA.from('daily_tasks')
+    .update({ completed_at: '2000-01-01T00:00:00.000Z' })
+    .eq('id', linkedTask.id)
+    .select('id,status,completed_at')
+    .single();
+  const preservedCompletion = assertNoError(result, 'completed timestamp preservation');
+  assert(
+    preservedCompletion.status === 'completed' && preservedCompletion.completed_at === originalCompletedAt,
+    'COMPLETED_TIMESTAMP_CANNOT_BE_FORGED',
+  );
+
+  linkedTask = await service.setDailyTaskCompletion(linkedTask.id, false);
+  assert(linkedTask.status === 'pending' && linkedTask.completedAt === null, 'REOPEN_CLEARS_TIMESTAMP');
+  result = await api.approvedA.from('daily_tasks')
+    .update({ completed_at: '2000-01-01T00:00:00.000Z' })
+    .eq('id', linkedTask.id)
+    .select('id,status,completed_at')
+    .single();
+  const pendingCompletion = assertNoError(result, 'pending timestamp normalization');
+  assert(
+    pendingCompletion.status === 'pending' && pendingCompletion.completed_at === null,
+    'PENDING_TIMESTAMP_REMAINS_NULL',
+  );
+
+  result = await api.approvedB.from('daily_tasks').select('id').eq('id', linkedTask.id);
+  assert(assertNoError(result, 'foreign approved read').length === 0, 'FOREIGN_DIETITIAN_READ_ZERO');
+  assertNoRows(
+    await api.approvedB.from('daily_tasks').update({ title: 'foreign update' })
+      .eq('id', linkedTask.id).select('id'),
+    'FOREIGN_DIETITIAN_UPDATE_ZERO',
+  );
+  assertNoRows(
+    await api.approvedB.from('daily_tasks').delete().eq('id', linkedTask.id).select('id'),
+    'FOREIGN_DIETITIAN_DELETE_ZERO',
+  );
+
+  await assertServiceError(
+    () => service.createDailyTask(taskDraft({ clientId: clientB.id, title: 'Foreign linked client' })),
+    service.DailyTaskServiceError,
+    'UNRELATED_CLIENT_SERVICE_CREATE_DENY',
+  );
+  assertNoRows(
+    await api.approvedA.from('daily_tasks')
+      .insert(directTaskPayload(approvedA.id, clientB.id, 'Foreign linked direct'))
+      .select('id'),
+    'UNRELATED_CLIENT_DIRECT_CREATE_DENY',
+  );
 
   for (const [label, actor, actorId] of [
-    ['CLIENT', api.clientA, clientA.id],
+    ['CLIENT_A', api.clientA, clientA.id],
+    ['CLIENT_B', api.clientB, clientB.id],
     ['PENDING', api.pending, pending.id],
     ['REJECTED', api.rejected, rejected.id],
     ['MISSING_PROFILE', api.missing, missing.id],
     ['ANONYMOUS', api.anonymous, approvedA.id],
   ]) {
-    const read = await actor.from('appointments').select('id').eq('id', appointmentA.id);
-    if (label === 'CLIENT') assert(assertNoError(read, `${label} read`).length === 1, 'CLIENT_READ_REMAINS_ALLOWED');
-    else if (read.error) pass(`${label}_READ_DENY`, `denied=${read.error.code ?? 'error'}`);
+    const read = await actor.from('daily_tasks').select('id').eq('id', linkedTask.id);
+    if (read.error) pass(`${label}_READ_DENY`, `denied=${read.error.code ?? 'error'}`);
     else assert(read.data.length === 0, `${label}_READ_DENY`);
-    assertNoRows(await actor.from('appointments').insert(
-      appointmentPayload(actorId, clientA.id, `${label} denied`),
-    ).select('id'), `${label}_CREATE_DENY`);
-    assertNoRows(await actor.from('appointments').update({ title: `${label} denied` }).eq('id', appointmentA.id).select('id'), `${label}_UPDATE_DENY`);
-    assertNoRows(await actor.from('appointments').delete().eq('id', appointmentA.id).select('id'), `${label}_DELETE_DENY`);
+    assertNoRows(
+      await actor.from('daily_tasks')
+        .insert(directTaskPayload(actorId, null, `${label} denied`))
+        .select('id'),
+      `${label}_CREATE_DENY`,
+    );
+    assertNoRows(
+      await actor.from('daily_tasks').update({ title: `${label} denied` })
+        .eq('id', linkedTask.id).select('id'),
+      `${label}_UPDATE_DENY`,
+    );
+    assertNoRows(
+      await actor.from('daily_tasks').delete().eq('id', linkedTask.id).select('id'),
+      `${label}_DELETE_DENY`,
+    );
   }
 
-  result = await admin.from('dietitian_clients').update({ status: 'removed' }).eq('id', relationshipA);
-  assertNoError(result, 'inactive relationship fixture');
-  for (const [label, actor] of [['DIETITIAN', api.approvedA], ['CLIENT', api.clientA]]) {
-    result = await actor.from('appointments').select('id').eq('id', appointmentA.id);
-    assert(assertNoError(result, `${label} inactive read`).length === 0, `${label}_INACTIVE_READ_DENY`);
-    assertNoRows(await actor.from('appointments').update({ title: 'inactive' }).eq('id', appointmentA.id).select('id'), `${label}_INACTIVE_UPDATE_DENY`);
-    assertNoRows(await actor.from('appointments').delete().eq('id', appointmentA.id).select('id'), `${label}_INACTIVE_DELETE_DENY`);
-  }
-  assertNoRows(await api.approvedA.from('appointments').insert(
-    appointmentPayload(approvedA.id, clientA.id, 'inactive create'),
-  ).select('id'), 'INACTIVE_CREATE_DENY');
+  const immutableBefore = assertNoError(
+    await admin.from('daily_tasks').select('id,dietitian_id,created_at').eq('id', linkedTask.id).single(),
+    'immutable baseline',
+  );
+  assertNoRows(
+    await api.approvedA.from('daily_tasks').update({ dietitian_id: approvedB.id })
+      .eq('id', linkedTask.id).select('id'),
+    'IMMUTABLE_OWNER_DENY',
+  );
+  assertNoRows(
+    await api.approvedA.from('daily_tasks').update({ id: randomUUID() })
+      .eq('id', linkedTask.id).select('id'),
+    'IMMUTABLE_ID_DENY',
+  );
+  assertNoRows(
+    await api.approvedA.from('daily_tasks').update({ created_at: '2000-01-01T00:00:00.000Z' })
+      .eq('id', linkedTask.id).select('id'),
+    'IMMUTABLE_CREATED_AT_DENY',
+  );
+  const immutableAfter = assertNoError(
+    await admin.from('daily_tasks').select('id,dietitian_id,created_at').eq('id', linkedTask.id).single(),
+    'immutable postflight',
+  );
+  assert(
+    JSON.stringify(immutableAfter) === JSON.stringify(immutableBefore),
+    'IMMUTABLE_FIELDS_UNCHANGED',
+  );
 
-  const istanbulDate = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date('2026-08-10T21:30:00.000Z'));
-  assert(istanbulDate === '2026-08-11', 'ISTANBUL_DATE_BOUNDARY');
-  process.stdout.write('APPOINTMENT_RUNTIME_MATRIX_PASS\n');
+  assertNoError(
+    await admin.from('dietitian_clients').update({ status: 'removed' }).eq('id', relationshipA),
+    'inactive relationship fixture',
+  );
+  actorProxy.setSupabaseClient(api.approvedA);
+  fetched = await service.fetchDailyTasks();
+  assert(fetched.some(({ id }) => id === linkedTask.id), 'REMOVED_RELATIONSHIP_TASK_REMAINS_READABLE');
+
+  linkedTask = await service.updateDailyTask(linkedTask.id, taskDraft({
+    clientId: clientA.id,
+    title: 'Managed after relationship removal',
+    description: null,
+    dueTime: null,
+    priority: 'medium',
+  }));
+  assert(linkedTask.clientId === clientA.id, 'REMOVED_RELATIONSHIP_EXISTING_LINK_MANAGEABLE');
+  linkedTask = await service.setDailyTaskCompletion(linkedTask.id, true);
+  assert(linkedTask.status === 'completed' && Boolean(linkedTask.completedAt), 'REMOVED_RELATIONSHIP_COMPLETE');
+  linkedTask = await service.setDailyTaskCompletion(linkedTask.id, false);
+  assert(linkedTask.status === 'pending' && linkedTask.completedAt === null, 'REMOVED_RELATIONSHIP_REOPEN');
+
+  linkedTask = await service.updateDailyTask(linkedTask.id, taskDraft({
+    clientId: null,
+    title: 'Unlinked after relationship removal',
+    description: null,
+    dueTime: null,
+    priority: 'medium',
+  }));
+  assert(linkedTask.clientId === null, 'REMOVED_RELATIONSHIP_UNLINK_ALLOWED');
+  await assertServiceError(
+    () => service.updateDailyTask(linkedTask.id, taskDraft({
+      clientId: clientA.id,
+      title: 'Relink denied',
+    })),
+    service.DailyTaskServiceError,
+    'REMOVED_RELATIONSHIP_RELINK_DENY',
+  );
+  await assertServiceError(
+    () => service.createDailyTask(taskDraft({
+      clientId: clientA.id,
+      title: 'Inactive create denied',
+    })),
+    service.DailyTaskServiceError,
+    'REMOVED_RELATIONSHIP_SERVICE_CREATE_DENY',
+  );
+  assertNoRows(
+    await api.approvedA.from('daily_tasks')
+      .insert(directTaskPayload(approvedA.id, clientA.id, 'Inactive direct create'))
+      .select('id'),
+    'REMOVED_RELATIONSHIP_DIRECT_CREATE_DENY',
+  );
+
+  await service.deleteDailyTask(linkedTask.id);
+  pass('APPROVED_LINKED_DELETE');
+  const freshAfterDelete = await actorClient(approvedA);
+  result = await freshAfterDelete.from('daily_tasks').select('id').eq('id', linkedTask.id);
+  assert(assertNoError(result, 'fresh linked delete read').length === 0, 'FRESH_SESSION_DELETE_PERSISTED');
+  await service.deleteDailyTask(generalTask.id);
+  pass('APPROVED_GENERAL_DELETE');
+
+  process.stdout.write('DAILY_TASK_RUNTIME_MATRIX_PASS\n');
 } catch (error) {
   mainError = error;
 } finally {
   if (admin) {
     try {
-      if (appointmentIds.length) await admin.from('appointments').delete().in('id', appointmentIds);
+      if (actorIds.length) await admin.from('daily_tasks').delete().in('dietitian_id', actorIds);
       if (relationshipIds.length) await admin.from('dietitian_clients').delete().in('id', relationshipIds);
-      for (const id of [...actorIds].reverse()) await admin.auth.admin.deleteUser(id);
-      const appointmentResidue = appointmentIds.length
-        ? assertNoError(await admin.from('appointments').select('id').in('id', appointmentIds), 'appointment residue check').length
+      const taskResidue = actorIds.length
+        ? assertNoError(
+            await admin.from('daily_tasks').select('id').in('dietitian_id', actorIds),
+            'task residue check',
+          ).length
         : 0;
       const relationshipResidue = relationshipIds.length
-        ? assertNoError(await admin.from('dietitian_clients').select('id').in('id', relationshipIds), 'relationship residue check').length
+        ? assertNoError(
+            await admin.from('dietitian_clients').select('id').in('id', relationshipIds),
+            'relationship residue check',
+          ).length
         : 0;
-      assert(appointmentResidue === 0, 'TEMPORARY_APPOINTMENTS_ZERO');
+      assert(taskResidue === 0, 'TEMPORARY_DAILY_TASKS_ZERO');
       assert(relationshipResidue === 0, 'TEMPORARY_RELATIONSHIPS_ZERO');
-      pass('CLEANUP_QUEUE_RESIDUE_ZERO', 'appointment harness creates no queue rows');
+      for (const id of [...actorIds].reverse()) await admin.auth.admin.deleteUser(id);
+      const authResidue = [];
+      let page = 1;
+      while (true) {
+        const listed = assertNoError(
+          await admin.auth.admin.listUsers({ page, perPage: 100 }),
+          'auth residue check',
+        );
+        authResidue.push(...listed.users.filter(({ id }) => actorIds.includes(id)));
+        if (listed.users.length < 100) break;
+        page += 1;
+      }
+      assert(authResidue.length === 0, 'TEMPORARY_AUTH_USERS_ZERO');
     } catch (cleanupError) {
       if (mainError) mainError.message += `; fixture cleanup failed: ${cleanupError.message}`;
       else mainError = cleanupError;

@@ -54,6 +54,16 @@ const readCanonicalRepositoryFile = (repoRoot, requestedPath) => {
 
   const blob = runGit(resolvedRoot, ['cat-file', 'blob', `HEAD:${gitPath}`]);
   if (blob.status !== 0) {
+    const indexBlob = runGit(resolvedRoot, ['cat-file', 'blob', `:${gitPath}`]);
+    if (indexBlob.status === 0) {
+      const normalizedWorkingBytes = normalizeWorkingText(workingBytes, gitPath);
+      if (!normalizedWorkingBytes.equals(indexBlob.stdout)) {
+        throw new Error(`Working tree content differs from canonical Git index blob for ${gitPath}`);
+      }
+      return indexBlob.stdout;
+    }
+    const tracked = runGit(resolvedRoot, ['ls-files', '--error-unmatch', '--', gitPath]);
+    if (tracked.status !== 0) return normalizeWorkingText(workingBytes, gitPath);
     throw new Error(`Canonical Git blob is unavailable for ${gitPath}`);
   }
 

@@ -13,24 +13,48 @@ import {
   Sparkles,
   X,
   Plus,
-  User
+  User,
+  AlertCircle,
+  Edit2,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { TASKS } from '../../../shared/constants';
 import DietitianAvatar from '../../../shared/components/DietitianAvatar';
 import { useAppointments } from '../../appointments/context/AppointmentContext';
 import { getLocalDateKey } from '../../appointments/utils/appointmentContract';
 import { fetchDietitianClients } from '../../clients/services/clientService';
 import { Client } from '../../../shared/types';
+import { useDailyTasks } from '../hooks/useDailyTasks';
+import type { DailyTask, DailyTaskDraft, DailyTaskGroups } from '../types/dailyTask';
+import { getIstanbulDateKey, getPendingDailyTaskGroup } from '../utils/dailyTaskContract';
+
+type TaskFilter = keyof DailyTaskGroups;
+
+const emptyTaskDraft = (): DailyTaskDraft => ({
+  clientId: null,
+  title: '',
+  description: null,
+  dueDate: getIstanbulDateKey(),
+  dueTime: null,
+  priority: 'medium',
+});
+
+const TASK_FILTERS: Array<{ key: TaskFilter; label: string }> = [
+  { key: 'overdue', label: 'Geciken' },
+  { key: 'today', label: 'Bugün' },
+  { key: 'upcoming', label: 'Yaklaşan' },
+  { key: 'completed', label: 'Tamamlanan' },
+];
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  // Local state to handle task completion interaction
-  const [dashboardTasks, setDashboardTasks] = useState(TASKS);
-  
   // Clients State
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
+  const [clientLoadError, setClientLoadError] = useState(false);
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,11 +64,29 @@ const DashboardPage = () => {
   // Task Management State
   const [isTaskMenuOpen, setIsTaskMenuOpen] = useState(false);
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
-  const [newTaskForm, setNewTaskForm] = useState({ title: '', clientName: '', timeInfo: '' });
-  
-  // Client Autocomplete State for Task Modal
-  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
-  const taskClientInputRef = useRef<HTMLDivElement>(null);
+  const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
+  const [taskFilter, setTaskFilter] = useState<TaskFilter>('today');
+  const [taskDraft, setTaskDraft] = useState<DailyTaskDraft>(emptyTaskDraft);
+  const taskDialogRef = useRef<HTMLDivElement>(null);
+  const taskTitleInputRef = useRef<HTMLInputElement>(null);
+  const taskMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const taskDialogOpenerRef = useRef<HTMLElement | null>(null);
+  const pendingTaskActionRef = useRef<string | null>(null);
+
+  const {
+    viewState: taskViewState,
+    groups: taskGroups,
+    mutationError: taskMutationError,
+    pendingAction: pendingTaskAction,
+    refreshDailyTasks,
+    createTask,
+    updateTask,
+    completeTask,
+    reopenTask,
+    deleteTask,
+    clearMutationError,
+  } = useDailyTasks();
+  pendingTaskActionRef.current = pendingTaskAction;
   
   // Fetch appointments from context
   const {
@@ -66,6 +108,7 @@ const DashboardPage = () => {
         setClients(data);
       } catch (error) {
         console.error('Failed to fetch clients:', error);
+        setClientLoadError(true);
       } finally {
         setLoadingClients(false);
       }
@@ -73,37 +116,46 @@ const DashboardPage = () => {
     loadClients();
   }, []);
 
-  const handleCompleteTask = (id: string) => {
-    setDashboardTasks(prev => {
-      const updatedTasks = prev.map(task => 
-        task.id === id ? { ...task, isCompleted: true } : task
-      );
-      // Sort tasks: Incomplete (false) first, Completed (true) last
-      return [...updatedTasks].sort((a, b) => Number(a.isCompleted) - Number(b.isCompleted));
-    });
+  const openCreateTaskModal = () => {
+    taskDialogOpenerRef.current = taskMenuButtonRef.current;
+    clearMutationError();
+    setEditingTask(null);
+    setTaskDraft(emptyTaskDraft());
+    setIsAddTaskModalOpen(true);
   };
 
-  const handleAddTask = (e: React.FormEvent) => {
+  const openEditTaskModal = (task: DailyTask) => {
+    taskDialogOpenerRef.current = document.activeElement as HTMLElement | null;
+    clearMutationError();
+    setEditingTask(task);
+    setTaskDraft({
+      clientId: task.clientId,
+      title: task.title,
+      description: task.description,
+      dueDate: task.dueDate,
+      dueTime: task.dueTime,
+      priority: task.priority,
+    });
+    setIsAddTaskModalOpen(true);
+  };
+
+  const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTaskForm.title) return;
-
-    // Find if the typed name matches a real client to get avatar
-    const matchedClient = clients.find(c => c.name.toLowerCase() === newTaskForm.clientName.toLowerCase());
-
-    const newTask = {
-      id: `custom-${Date.now()}`,
-      title: newTaskForm.title,
-      clientName: newTaskForm.clientName || 'Genel Görev',
-      // Use real avatar if matched, otherwise generate one
-      clientAvatar: matchedClient?.avatar || `https://ui-avatars.com/api/?name=${newTaskForm.clientName || 'Diyetisyen'}&background=random&color=fff`,
-      timeInfo: newTaskForm.timeInfo || 'Bugün',
-      isCompleted: false,
-    };
-
-    setDashboardTasks(prev => [newTask, ...prev]);
+    const result = editingTask
+      ? await updateTask(editingTask.id, taskDraft)
+      : await createTask(taskDraft);
+    if (!result.success) return;
+    const nextFilter = editingTask?.status === 'completed'
+      ? 'completed'
+      : getPendingDailyTaskGroup(taskDraft.dueDate, taskDraft.dueTime);
     setIsAddTaskModalOpen(false);
-    setNewTaskForm({ title: '', clientName: '', timeInfo: '' });
-    setIsTaskMenuOpen(false);
+    setEditingTask(null);
+    setTaskFilter(nextFilter);
+  };
+
+  const handleDeleteTask = async (task: DailyTask) => {
+    if (!window.confirm(`“${task.title}” görevi silinsin mi?`)) return;
+    await deleteTask(task.id);
   };
 
   // Filter clients for main search
@@ -111,11 +163,8 @@ const DashboardPage = () => {
     ? clients.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : [];
 
-  // Filter clients for task modal (Active clients + search match)
-  const taskClientMatches = clients.filter(c => 
-    c.status === 'Aktif' && 
-    c.name.toLowerCase().includes(newTaskForm.clientName.toLowerCase())
-  );
+  const activeTaskClients = clients.filter((client) => client.status === 'Aktif');
+  const visibleTasks = taskGroups[taskFilter];
 
   // Close search dropdowns when clicking outside
   useEffect(() => {
@@ -124,14 +173,42 @@ const DashboardPage = () => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsSearchOpen(false);
       }
-      // Task Client Input
-      if (taskClientInputRef.current && !taskClientInputRef.current.contains(event.target as Node)) {
-        setShowClientSuggestions(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isAddTaskModalOpen) return;
+    taskTitleInputRef.current?.focus();
+
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (pendingTaskActionRef.current === null) setIsAddTaskModalOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !taskDialogRef.current) return;
+      const focusable: HTMLElement[] = Array.from(taskDialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleDialogKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleDialogKeyDown);
+      taskDialogOpenerRef.current?.focus();
+    };
+  }, [isAddTaskModalOpen]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -221,13 +298,18 @@ const DashboardPage = () => {
         {/* Left Column */}
         <div className="col-span-12 lg:col-span-8 space-y-8">
           
-          {/* Today's Tasks */}
+          {/* Persistent Daily Tasks */}
           <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-slate-800">Bugünün Görevleri</h3>
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">Günlük Görevler</h3>
+                <p className="mt-1 text-xs text-slate-500">Kalıcı iş listenizi yönetin.</p>
+              </div>
               <div className="relative">
                 <button 
+                  ref={taskMenuButtonRef}
                   onClick={() => setIsTaskMenuOpen(!isTaskMenuOpen)}
+                  aria-label="Görev menüsünü aç"
                   className="text-slate-400 hover:text-primary transition-colors p-1 rounded-full hover:bg-slate-50"
                 >
                   <MoreHorizontal className="w-6 h-6" />
@@ -240,7 +322,7 @@ const DashboardPage = () => {
                     <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 z-20 py-1 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
                       <button
                         onClick={() => {
-                          setIsAddTaskModalOpen(true);
+                          openCreateTaskModal();
                           setIsTaskMenuOpen(false);
                         }}
                         className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 text-slate-600 font-medium flex items-center gap-2 transition-colors"
@@ -252,34 +334,88 @@ const DashboardPage = () => {
                 )}
               </div>
             </div>
-            
-            <div className="space-y-4">
-              {dashboardTasks.map((task) => (
-                <div key={task.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors">
-                  <div className="flex items-center gap-4">
-                    <img src={task.clientAvatar} alt={task.clientName} className="w-12 h-12 rounded-full object-cover" />
-                    <div>
-                      <p className={`font-semibold ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</p>
-                      <p className="text-sm text-slate-500">
-                        {task.clientName} · <span className={!task.isCompleted && task.timeInfo.includes('kaldı') ? 'text-orange-500 font-medium' : ''}>{task.timeInfo}</span>
+
+            <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist" aria-label="Görev görünümü">
+              {TASK_FILTERS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={taskFilter === key}
+                  onClick={() => setTaskFilter(key)}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
+                    taskFilter === key
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {label} ({taskGroups[key].length})
+                </button>
+              ))}
+            </div>
+
+            {taskMutationError && (
+              <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {taskMutationError}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {taskViewState.status === 'loading' ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
+                  <Loader2 className="h-5 w-5 animate-spin" /> Görevler yükleniyor...
+                </div>
+              ) : taskViewState.status === 'error' ? (
+                <div role="alert" className="py-8 text-center">
+                  <p className="text-sm font-medium text-rose-600">{taskViewState.message}</p>
+                  <button type="button" onClick={() => void refreshDailyTasks()} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-primary">
+                    <RefreshCw className="h-4 w-4" /> Tekrar dene
+                  </button>
+                </div>
+              ) : visibleTasks.length === 0 ? (
+                <div className="py-8 text-center text-sm text-slate-400">
+                  Bu görünümde görev bulunmuyor.
+                </div>
+              ) : visibleTasks.map((task) => (
+                <div key={task.id} className="flex flex-col gap-3 rounded-xl border border-slate-100 p-3 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-4">
+                    {task.clientAvatar ? (
+                      <img src={task.clientAvatar} alt="" className="h-11 w-11 rounded-full object-cover" />
+                    ) : (
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                        <User className="h-5 w-5" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className={`truncate font-semibold ${task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {task.clientName || 'Genel görev'} · {new Date(`${task.dueDate}T00:00:00`).toLocaleDateString('tr-TR')}
+                        {task.dueTime ? ` ${task.dueTime}` : ''}
                       </p>
+                      <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        task.priority === 'high' ? 'bg-rose-50 text-rose-600' : task.priority === 'low' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'
+                      }`}>
+                        {task.priority === 'high' ? 'Yüksek' : task.priority === 'low' ? 'Düşük' : 'Orta'} öncelik
+                      </span>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => handleCompleteTask(task.id)}
-                    disabled={task.isCompleted}
-                    className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all shadow-sm ${
-                      task.isCompleted 
-                        ? 'bg-emerald-100 text-emerald-700 cursor-default flex items-center gap-2' 
-                        : 'bg-orange-50 text-orange-600 hover:bg-orange-100 hover:scale-105 active:scale-95 border border-orange-100'
-                    }`}
-                  >
-                    {task.isCompleted ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" /> Tamamlandı
-                      </>
-                    ) : 'Bekliyor'}
-                  </button>
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void (task.status === 'completed' ? reopenTask(task.id) : completeTask(task.id))}
+                      disabled={pendingTaskAction !== null}
+                      className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                    >
+                      {pendingTaskAction === `complete:${task.id}` || pendingTaskAction === `reopen:${task.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : task.status === 'completed' ? <RotateCcw className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                      {task.status === 'completed' ? 'Tekrar aç' : 'Tamamla'}
+                    </button>
+                    <button type="button" onClick={() => openEditTaskModal(task)} disabled={pendingTaskAction !== null} aria-label={`${task.title} görevini düzenle`} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-primary disabled:opacity-50">
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                    <button type="button" onClick={() => void handleDeleteTask(task)} disabled={pendingTaskAction !== null} aria-label={`${task.title} görevini sil`} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50">
+                      {pendingTaskAction === `delete:${task.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -512,93 +648,100 @@ const DashboardPage = () => {
       {/* Add Task Modal */}
       {isAddTaskModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div ref={taskDialogRef} role="dialog" aria-modal="true" aria-labelledby="daily-task-dialog-title" className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-               <h2 className="text-xl font-bold text-slate-800">Yeni Görev Ekle</h2>
-               <button onClick={() => setIsAddTaskModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500">
+               <h2 id="daily-task-dialog-title" className="text-xl font-bold text-slate-800">{editingTask ? 'Görevi Düzenle' : 'Yeni Görev Ekle'}</h2>
+               <button type="button" aria-label="Görev penceresini kapat" onClick={() => setIsAddTaskModalOpen(false)} disabled={pendingTaskAction !== null} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 disabled:opacity-50">
                   <X className="w-5 h-5" />
                </button>
             </div>
             
-            <form onSubmit={handleAddTask} className="p-6 space-y-5">
+            <form onSubmit={handleTaskSubmit} className="p-6 space-y-5">
+               {taskMutationError && (
+                 <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {taskMutationError}
+                 </div>
+               )}
                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Görev Başlığı</label>
+                  <label htmlFor="daily-task-title" className="text-sm font-bold text-slate-700">Görev Başlığı</label>
                   <input 
+                    id="daily-task-title"
+                    ref={taskTitleInputRef}
                     type="text"
                     required
+                    maxLength={160}
                     placeholder="Örn: Haftalık raporu hazırla..."
-                    value={newTaskForm.title}
-                    onChange={(e) => setNewTaskForm({...newTaskForm, title: e.target.value})}
+                    value={taskDraft.title}
+                    onChange={(e) => setTaskDraft({ ...taskDraft, title: e.target.value })}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
                   />
-               </div>
-
-               {/* Client Selection Dropdown / Input Hybrid */}
-               <div className="space-y-1.5 relative" ref={taskClientInputRef}>
-                  <label className="text-sm font-bold text-slate-700">İlgili Danışan (Opsiyonel)</label>
-                  <div className="relative">
-                    <input 
-                      type="text"
-                      placeholder="Danışan adı yazın veya seçin..."
-                      value={newTaskForm.clientName}
-                      onChange={(e) => {
-                        setNewTaskForm({...newTaskForm, clientName: e.target.value});
-                        setShowClientSuggestions(true);
-                      }}
-                      onFocus={() => setShowClientSuggestions(true)}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                    />
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  </div>
-
-                  {/* Autocomplete Dropdown */}
-                  {showClientSuggestions && taskClientMatches.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-20 max-h-48 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-                      {taskClientMatches.map(client => (
-                        <button
-                          key={client.id}
-                          type="button"
-                          onClick={() => {
-                            setNewTaskForm({...newTaskForm, clientName: client.name});
-                            setShowClientSuggestions(false);
-                          }}
-                          className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
-                        >
-                          <img src={client.avatar} alt={client.name} className="w-6 h-6 rounded-full object-cover" />
-                          <div className="flex-1">
-                             <p className="text-sm font-medium text-slate-700">{client.name}</p>
-                             <p className="text-[10px] text-slate-400">{client.goal}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                </div>
 
                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Zaman / Bitiş</label>
-                  <input 
-                    type="text"
-                    placeholder="Örn: Bugün 14:00"
-                    value={newTaskForm.timeInfo}
-                    onChange={(e) => setNewTaskForm({...newTaskForm, timeInfo: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                  <label htmlFor="daily-task-description" className="text-sm font-bold text-slate-700">Açıklama (Opsiyonel)</label>
+                  <textarea
+                    id="daily-task-description"
+                    rows={3}
+                    maxLength={2000}
+                    value={taskDraft.description || ''}
+                    onChange={(e) => setTaskDraft({ ...taskDraft, description: e.target.value || null })}
+                    className="w-full resize-none px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
                   />
+               </div>
+
+               <div className="space-y-1.5">
+                  <label htmlFor="daily-task-client" className="text-sm font-bold text-slate-700">İlgili Danışan (Opsiyonel)</label>
+                  <select
+                    id="daily-task-client"
+                    value={taskDraft.clientId || ''}
+                    onChange={(e) => setTaskDraft({ ...taskDraft, clientId: e.target.value || null })}
+                    disabled={loadingClients || clientLoadError}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm disabled:opacity-60"
+                  >
+                    <option value="">Genel görev</option>
+                    {activeTaskClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                  </select>
+                  {loadingClients && <p className="text-xs text-slate-500">Aktif danışanlar yükleniyor...</p>}
+                  {clientLoadError && <p role="alert" className="text-xs text-rose-600">Danışanlar yüklenemedi; yalnız genel görev kaydedilebilir.</p>}
+               </div>
+
+               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                 <div className="space-y-1.5">
+                   <label htmlFor="daily-task-date" className="text-sm font-bold text-slate-700">Bitiş Tarihi</label>
+                   <input id="daily-task-date" type="date" required value={taskDraft.dueDate} onChange={(e) => setTaskDraft({ ...taskDraft, dueDate: e.target.value })} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />
+                 </div>
+                 <div className="space-y-1.5">
+                   <label htmlFor="daily-task-time" className="text-sm font-bold text-slate-700">Saat (Opsiyonel)</label>
+                   <input id="daily-task-time" type="time" value={taskDraft.dueTime || ''} onChange={(e) => setTaskDraft({ ...taskDraft, dueTime: e.target.value || null })} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />
+                 </div>
+               </div>
+
+               <div className="space-y-1.5">
+                  <label htmlFor="daily-task-priority" className="text-sm font-bold text-slate-700">Öncelik</label>
+                  <select id="daily-task-priority" value={taskDraft.priority} onChange={(e) => setTaskDraft({ ...taskDraft, priority: e.target.value as DailyTaskDraft['priority'] })} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm">
+                    <option value="low">Düşük</option>
+                    <option value="medium">Orta</option>
+                    <option value="high">Yüksek</option>
+                  </select>
                </div>
 
                <div className="pt-2 flex gap-3">
                   <button 
                     type="button" 
                     onClick={() => setIsAddTaskModalOpen(false)}
-                    className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors text-sm"
+                    disabled={pendingTaskAction !== null}
+                    className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors text-sm disabled:opacity-50"
                   >
                      İptal
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors text-sm"
+                    disabled={pendingTaskAction !== null}
+                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors text-sm disabled:opacity-60"
                   >
-                     Ekle
+                     {pendingTaskAction === 'create' || pendingTaskAction?.startsWith('update:') ? (
+                       <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Kaydediliyor</span>
+                     ) : editingTask ? 'Güncelle' : 'Ekle'}
                   </button>
                </div>
             </form>

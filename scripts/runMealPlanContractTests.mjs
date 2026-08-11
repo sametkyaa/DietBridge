@@ -72,6 +72,9 @@ const SOURCES = [
   'features/clients/utils/measurementContract.ts',
   'features/appointments/utils/appointmentContract.ts',
   'features/appointments/services/appointmentService.ts',
+  'features/dashboard/types/dailyTask.ts',
+  'features/dashboard/utils/dailyTaskContract.ts',
+  'features/dashboard/services/dailyTaskService.ts',
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
   'features/chat/types/chatImage.ts',
@@ -98,6 +101,9 @@ const EXPECTED_OUTPUTS = [
   'features/clients/utils/measurementContract.js',
   'features/appointments/utils/appointmentContract.js',
   'features/appointments/services/appointmentService.js',
+  'features/dashboard/types/dailyTask.js',
+  'features/dashboard/utils/dailyTaskContract.js',
+  'features/dashboard/services/dailyTaskService.js',
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
   'features/chat/types/chatImage.js',
@@ -222,10 +228,13 @@ const testFiles = [
   join(repoRoot, 'tests', 'disposableSupabaseLocalReplay.test.cjs'),
   join(repoRoot, 'tests', 'measurementContracts.test.cjs'),
   join(repoRoot, 'tests', 'appointmentContracts.test.cjs'),
+  join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs'),
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
-  : testFiles;
+  : process.argv.includes('--daily-tasks-only')
+    ? [join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs')]
+    : testFiles;
 
 const testRun = spawnSync(process.execPath, [
   '--test',

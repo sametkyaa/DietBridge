@@ -5,6 +5,7 @@ supabase/migrations/20260802090000_chat_active_relationship_hardening.sql text e
 supabase/migrations/20260807115919_mvp_security_hardening_reconciliation.sql text eol=lf
 supabase/migrations/20260810055845_mvp3_meal_photo_lifecycle_closure.sql text eol=lf
 supabase/migrations/20260810074910_mvp3_real_storage_upload_policy_correction.sql text eol=lf
+supabase/migrations/20260811103909_create_persistent_dashboard_daily_tasks.sql text eol=lf
 supabase/tests/disposable/*.sql text eol=lf
 tests/fixtures/*.json text eol=lf
 

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 32,
+  "expectedCanonicalCount": 33,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2807,6 +2807,13 @@
       "phase": "canonical",
       "sourceSha256": "64fa954081f542e9e7893461e5f51f5dab22f0390a8d0917ca48a48e47064dc9",
       "materializedSha256": "64fa954081f542e9e7893461e5f51f5dab22f0390a8d0917ca48a48e47064dc9",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260811103909_create_persistent_dashboard_daily_tasks.sql",
+      "phase": "canonical",
+      "sourceSha256": "32160e12b6485890cb184156dfbb087393c09bd120eb8991e77869046bdf967f",
+      "materializedSha256": "32160e12b6485890cb184156dfbb087393c09bd120eb8991e77869046bdf967f",
       "edits": []
     }
   ]

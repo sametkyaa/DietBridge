@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const {
   cpSync,
@@ -28,8 +29,8 @@ test('materializer creates the exact current migration copies and an external ma
   const { materializeDisposableReplay } = await import(scriptUrl);
   const runtime = materializeDisposableReplay({ repoRoot, outputRoot });
 
-  assert.deepEqual(runtime.expectedHistory, { canonical: 32, image: 7, total: 39 });
-  assert.equal(runtime.files.length, 39);
+  assert.deepEqual(runtime.expectedHistory, { canonical: 33, image: 7, total: 40 });
+  assert.equal(runtime.files.length, 40);
   assert.equal(runtime.files.filter(({ exactEditsApplied }) => exactEditsApplied > 0).length, 16);
   assert.equal(runtime.files.filter(
     ({ sourceSha256, materializedSha256 }) => sourceSha256 !== materializedSha256,
@@ -52,6 +53,30 @@ test('canonical reader preserves LF-pinned hashes on stale and fresh checkouts',
   assert.equal(sha256(canonical), rule.sourceSha256);
   const normalizedWorking = Buffer.from(working.toString('utf8').replaceAll('\r\n', '\n'), 'utf8');
   assert.equal(sha256(normalizedWorking), rule.sourceSha256);
+});
+
+test('canonical reader accepts a staged LF-pinned new file and rejects unstaged content drift', (t) => {
+  const { readCanonicalRepositoryFile } = require('../scripts/readCanonicalRepositoryFile.cjs');
+  const tempRoot = makeTemp('dietbridge-canonical-index-');
+  const relativePath = join('supabase', 'migrations', 'new_migration.sql');
+  const absolutePath = join(tempRoot, relativePath);
+  t.after(() => rmSync(tempRoot, { recursive: true, force: true }));
+  mkdirSync(dirname(absolutePath), { recursive: true });
+  writeFileSync(join(tempRoot, '.gitattributes'), 'supabase/migrations/*.sql text eol=lf\n');
+  execFileSync('git', ['init'], { cwd: tempRoot, windowsHide: true });
+  execFileSync('git', ['add', '.gitattributes'], { cwd: tempRoot, windowsHide: true });
+  execFileSync('git', ['-c', 'user.name=Codex Test', '-c', 'user.email=codex@example.invalid', 'commit', '-m', 'fixture'], {
+    cwd: tempRoot,
+    windowsHide: true,
+  });
+  writeFileSync(absolutePath, 'select 1;\r\n');
+  execFileSync('git', ['add', relativePath], { cwd: tempRoot, windowsHide: true });
+  assert.equal(readCanonicalRepositoryFile(tempRoot, relativePath).toString('utf8'), 'select 1;\n');
+  writeFileSync(absolutePath, 'select 2;\r\n');
+  assert.throws(
+    () => readCanonicalRepositoryFile(tempRoot, relativePath),
+    /differs from canonical Git index blob/,
+  );
 });
 
 test('materializer fails closed on a source hash mismatch without creating output', async (t) => {
