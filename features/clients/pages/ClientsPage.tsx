@@ -486,6 +486,9 @@ const ClientsPage = () => {
         case 'already_active':
           setAddFeedback({ type: 'info', message: 'Bu danışan zaten aktif danışanlarınız arasında.' });
           break;
+        case 'limit_reached':
+          setAddFeedback({ type: 'error', message: 'Danışan limitinize ulaştınız. Yeni danışan eklemek için planınızı yükseltin veya mevcut bir danışan bağlantısını kaldırın.' });
+          break;
         case 'unavailable':
           setAddFeedback({ type: 'error', message: 'Bu e-posta ile bağlantı isteği gönderilemedi. Danışanın DietBridge mobil uygulamasında kayıtlı olduğundan ve bağlantı için uygun olduğundan emin olun.' });
           break;

@@ -1004,6 +1004,7 @@ export type ClientConnectionRequestStatus =
   | 'requested'
   | 'already_pending'
   | 'already_active'
+  | 'limit_reached'
   | 'unavailable';
 
 export type AddClientResult =
@@ -1024,6 +1025,7 @@ export const parseClientConnectionRequestStatus = (
     case 'requested':
     case 'already_pending':
     case 'already_active':
+    case 'limit_reached':
     case 'unavailable':
       return value;
     default:

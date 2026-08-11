@@ -78,6 +78,8 @@ const SOURCES = [
   'features/analytics/types/analytics.ts',
   'features/analytics/utils/analyticsContract.ts',
   'features/analytics/services/analyticsService.ts',
+  'features/subscriptions/types/subscription.ts',
+  'features/subscriptions/services/subscriptionService.ts',
   'shared/utils/avatarUrl.ts',
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
@@ -111,6 +113,8 @@ const EXPECTED_OUTPUTS = [
   'features/analytics/types/analytics.js',
   'features/analytics/utils/analyticsContract.js',
   'features/analytics/services/analyticsService.js',
+  'features/subscriptions/types/subscription.js',
+  'features/subscriptions/services/subscriptionService.js',
   'shared/utils/avatarUrl.js',
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
@@ -238,6 +242,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'appointmentContracts.test.cjs'),
   join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs'),
   join(repoRoot, 'tests', 'analyticsContracts.test.cjs'),
+  join(repoRoot, 'tests', 'subscriptionContracts.test.cjs'),
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
@@ -245,6 +250,8 @@ const selectedTestFiles = process.argv.includes('--appointments-only')
     ? [join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs')]
     : process.argv.includes('--analytics-only')
       ? [join(repoRoot, 'tests', 'analyticsContracts.test.cjs')]
+      : process.argv.includes('--subscriptions-only')
+        ? [join(repoRoot, 'tests', 'subscriptionContracts.test.cjs')]
     : testFiles;
 
 const testRun = spawnSync(process.execPath, [

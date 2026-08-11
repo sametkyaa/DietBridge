@@ -1,10 +1,10 @@
 # DietBridge MVP Execution State
 
 Current Gate:
-MVP-6 — Real Analytics
+MVP-7 — Subscription / Plans / Client Limits
 
 Status:
-MVP-6 — COMPLETE (2026-08-11)
+MVP-7 — LOCAL CLOSURE VERIFIED (2026-08-12) — HUMAN APPROVAL REQUIRED FOR PRODUCTION
 
 Last Verified Base Commit:
 `3308ab6` (`feat: persist dashboard daily tasks`)
@@ -23,6 +23,43 @@ Completed Gates:
 - MVP-4 — COMPLETE (2026-08-11)
 - MVP-5 — COMPLETE (2026-08-11)
 - MVP-6 — COMPLETE (2026-08-11)
+- MVP-7 — LOCAL CLOSURE VERIFIED (2026-08-12); production apply pending approval
+
+MVP-7 Local Verdict:
+- Canonical, provider-neutral subscription/plan state plus server-side dietitian client-limit enforcement. No payment provider was selected or integrated; checkout/webhook/provider work is classified as separate post-MVP scope per MVP-7.3.
+- New forward-only migration `20260812090000_mvp7_subscription_plans_and_client_limits.sql` (additive only): `subscription_plans` catalog (free=10, pro=50, premium=200), `dietitian_subscriptions` (one row per dietitian, provider-neutral), SECURITY DEFINER entitlement/usage helpers, a fail-closed capacity trigger on `dietitian_clients`, a friendly `limit_reached` signal from `request_client_connection_by_email`, and a read-only `get_dietitian_subscription_overview` RPC.
+- Plan limits are authoritative and deterministic in one catalog; no magic limit numbers are scattered across UI components.
+- Effective entitlement is fail closed: no subscription row defaults to the active free plan (10); a subscription whose status is not active/trialing returns 0; an unknown or inactive plan returns 0.
+- Canonical consumed capacity = relationships in (`active`,`pending`). Enforcement covers the RPC insert path and rejected/removed -> pending reactivation. Client accept (`pending` -> `active`) does not increase used capacity and is never blocked.
+- Race safety: both the capacity trigger and the RPC take a per-dietitian `pg_advisory_xact_lock` so concurrent capacity-consuming writes cannot both bypass the limit.
+- The browser has no write path to `subscription_plans` or `dietitian_subscriptions`; RLS grants authenticated SELECT only, and the overview RPC is denied to anon. A pending/rejected dietitian is denied the overview RPC because the shared `is_current_user_dietitian()` gate requires approved+verified, matching the auth model that keeps them out of the protected app.
+- UI: the Settings billing tab mock (hardcoded "Pro Plan", "₺499/ay", card 4242, 2023 renewal date) was removed and replaced by a real `SubscriptionPanel` that reads authoritative plan/usage/limit ("used / limit danışan") with distinct loading/error/retry states. The Clients add-client flow surfaces a clear `limit_reached` message. No fake upgrade success and no fake subscription state.
+
+MVP-7 Disposable Runtime Evidence:
+- `npm run test:subscriptions:runtime` PASS against a real disposable Postgres/PostgREST/Auth stack (pinned Supabase CLI `2.110.0`, 41 repository migrations + 1 local prerequisite).
+- Server-side enforcement matrix PASS: canonical plan limits; limit=0 (canceled sub) denies even a direct service-role insert; no-subscription defaults to free=10; below/at/above-limit RPC (`requested`/`requested`/`limit_reached`); above-limit direct service-role insert denied by the trigger; usage reconciles at the limit; client accept at the limit allowed; upgrade frees capacity; downgrade blocks new adds without deleting existing; reactivation at the limit refused.
+- Tenant isolation PASS: dietitian B cannot read A's subscription row; B's overview is independent of A's usage; anonymous cannot read the plan catalog or call the overview RPC; pending dietitian denied the overview RPC (fail closed).
+- Residue PASS: temporary relationships/subscriptions/test plan/Auth users = 0; disposable temp and Docker residue = 0.
+
+MVP-7 Quality Gates:
+- `npm run test:subscriptions` — 15/15 PASS (service mapping + SQL enforcement contract + UI-replacement assertions).
+- `npm test` — 222/222 PASS (previous 207 + 15 subscription).
+- `npm run typecheck` — PASS.
+- `npm run lint` — 0 errors, 26 pre-existing/non-critical warnings.
+- `npm run build` — PASS; existing >500 kB chunk warning remains non-critical.
+- `git diff --check` — PASS (only LF/CRLF conversion warnings).
+- Disposable replay guardrails and the canonical `tests/fixtures/canonicalReplaySyntaxEdits.json` inventory were extended additively for the one new migration (34 canonical / 7 image / 41 total). No historical migration or hash allowlist entry was edited.
+
+MVP-7 Production Gate:
+- `MVP-7 LOCAL CLOSURE VERIFIED — HUMAN APPROVAL REQUIRED FOR PRODUCTION`.
+- Proposed production change: apply exactly one forward-only migration `20260812090000_mvp7_subscription_plans_and_client_limits.sql` (SHA-256 `74d368fe15959ca130eb504f8730722f8d9bdf0458586ed7f7faa734fa40e10b`).
+- Schema impact: two new tables (`subscription_plans`, `dietitian_subscriptions`), one index, three new functions, one new BEFORE trigger on `dietitian_clients`, and a redefinition of the existing `request_client_connection_by_email` RPC (adds capacity check; preserves prior return values plus a new `limit_reached`).
+- RLS impact: RLS enabled on both new tables; authenticated SELECT-only; no anon access; no browser write path.
+- Additive only: no existing table/column is dropped or rewritten; no data backfill; no Auth/Storage/secret/Vault/cron change.
+- Backup/restore: take a fresh production logical backup/restore point before apply (matching prior MVP practice), since the Free plan has no managed PITR.
+- Exact production smoke (developer/test accounts only, after approval): confirm catalog rows (free/pro/premium), `get_dietitian_subscription_overview` returns authoritative usage for the test dietitian, and a capacity-blocked add returns `limit_reached`; then remove any temporary fixture.
+- Rollback/corrective: the migration is additive; corrective forward-only migration can drop the new trigger/functions/tables if required. No historical migration is mutated.
+- No production access or mutation has been performed for MVP-7.
 
 MVP-6 Local Verdict:
 - The active `/analytics` route now reads real Supabase-backed analytics data; the legacy `CLIENTS` mock, fake loading delay, hardcoded KPI/chart/activity/risk content and inert AI/export actions are absent from the active chain.
@@ -184,21 +221,21 @@ npm Audit Triage (2026-08-11):
 - These findings are not MVP-4 P0/P1 or current data-integrity blockers; dependency updates remain a separate controlled task.
 
 Repository Branch:
-`codex/analytics`
+`codex/subscriptions`
 
 Working Tree:
-DIRTY with the reviewed MVP-6 local implementation and this execution-state update. No commit, push, merge, rebase or PR has been performed on this branch.
+DIRTY with the reviewed MVP-7 subscription/client-limit implementation and this execution-state update, on top of the committed MVP-6 checkpoint. The MVP-7 migration and `.gitattributes` entry are staged so the canonical replay reader can hash them; nothing has been committed, pushed, merged or rebased for MVP-7 yet.
 
 Production Mutation Allowed:
 NO
 
 Current Blocker:
-- None for MVP-5; it is COMPLETE.
 - None for MVP-6; it is COMPLETE.
-- MVP-7 is not authorized and has not been started.
+- MVP-7 local closure is verified; its only open item is the production apply/smoke gate, which requires explicit human approval.
+- Per the active supervisor program, MVP-8 (Dashboard Closure) proceeds autonomously; MVP-7 production apply is deferred to a human-approval boundary and does not block MVP-8 local work.
 
 Next Action:
-STOP after MVP-6. Wait for a separate explicit user instruction before any MVP-7 branch, subscription, plan, client-limit or payment work.
+Continue MVP-8 (Dashboard Closure) autonomously on its own branch. Hold the MVP-7 production migration/smoke for explicit human approval.
 
 Human Approval Required:
-YES before any new roadmap phase, production mutation or public launch. No further action is authorized by the completed MVP-6 approvals.
+YES before applying the MVP-7 production migration or running any production smoke/writes. Local/disposable MVP-8 work is authorized.

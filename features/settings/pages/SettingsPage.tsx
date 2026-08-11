@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { USER_AVATAR } from '../../../shared/constants';
 import { useAuth } from '../../auth/context/AuthContext';
+import SubscriptionPanel from '../../subscriptions/components/SubscriptionPanel';
 
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('security');
@@ -283,41 +284,7 @@ const SettingsPage = () => {
           {activeTab === 'billing' && (
              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 md:p-8 animate-in fade-in slide-in-from-right-4 duration-300">
                 <h2 className="text-xl font-bold text-slate-800 mb-6 pb-4 border-b border-slate-100">Plan ve Ödeme</h2>
-                
-                <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-8 text-white mb-8 relative overflow-hidden">
-                   <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500 rounded-full blur-[80px] opacity-20 -mr-16 -mt-16 pointer-events-none"></div>
-                   
-                   <div className="flex justify-between items-start relative z-10">
-                      <div>
-                         <p className="text-slate-400 font-medium text-sm mb-1 uppercase tracking-wider">Mevcut Plan</p>
-                         <h3 className="text-3xl font-bold">Pro Plan</h3>
-                         <p className="text-emerald-400 text-sm mt-2 font-medium">Aktif • Sonraki yenileme: 15 Kasım 2023</p>
-                      </div>
-                      <div className="text-right">
-                         <p className="text-4xl font-bold">₺499<span className="text-lg text-slate-400 font-normal">/ay</span></p>
-                      </div>
-                   </div>
-
-                   <div className="mt-8 flex gap-3">
-                      <button className="px-5 py-2.5 bg-white text-slate-900 font-bold rounded-xl hover:bg-slate-100 transition-colors">Planı Yükselt</button>
-                      <button className="px-5 py-2.5 bg-transparent border border-slate-600 text-white font-bold rounded-xl hover:bg-white/10 transition-colors">Fatura Geçmişi</button>
-                   </div>
-                </div>
-
-                <h3 className="font-bold text-slate-800 mb-4">Ödeme Yöntemi</h3>
-                <div className="flex items-center gap-4 p-4 border border-slate-200 rounded-xl">
-                   <div className="w-12 h-8 bg-slate-100 rounded flex items-center justify-center">
-                      <div className="flex gap-1">
-                         <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
-                         <div className="w-3 h-3 rounded-full bg-yellow-500/80 -ml-1.5"></div>
-                      </div>
-                   </div>
-                   <div className="flex-1">
-                      <p className="font-bold text-slate-700 text-sm">•••• •••• •••• 4242</p>
-                      <p className="text-xs text-slate-500">Sona erme: 12/25</p>
-                   </div>
-                   <button className="text-sm font-bold text-primary hover:underline">Düzenle</button>
-                </div>
+                <SubscriptionPanel />
              </div>
           )}
 
