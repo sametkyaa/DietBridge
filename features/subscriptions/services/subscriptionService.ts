@@ -47,8 +47,8 @@ export const mapSubscriptionOverviewRow = (
       : used >= effectiveLimit;
 
   return {
-    planId: row.plan_id ?? 'free',
-    planName: row.plan_name ?? row.plan_id ?? 'Ücretsiz',
+    planId: row.plan_id ?? 'unknown',
+    planName: row.plan_name ?? row.plan_id ?? 'Plan bilgisi yok',
     status: row.subscription_status ?? 'active',
     planLimit: toNullableInt(row.plan_limit),
     effectiveLimit,

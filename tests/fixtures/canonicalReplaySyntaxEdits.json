@@ -2819,8 +2819,8 @@
     {
       "path": "supabase/migrations/20260812090000_mvp7_subscription_plans_and_client_limits.sql",
       "phase": "canonical",
-      "sourceSha256": "74d368fe15959ca130eb504f8730722f8d9bdf0458586ed7f7faa734fa40e10b",
-      "materializedSha256": "74d368fe15959ca130eb504f8730722f8d9bdf0458586ed7f7faa734fa40e10b",
+      "sourceSha256": "598561599a709ef7795aaa871be2f07cbf94cfef60b25769e1c5e2f3b4d2010c",
+      "materializedSha256": "598561599a709ef7795aaa871be2f07cbf94cfef60b25769e1c5e2f3b4d2010c",
       "edits": []
     }
   ]

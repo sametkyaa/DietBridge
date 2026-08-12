@@ -27,29 +27,29 @@ const MIGRATION = read(
 
 test('subscription mapper normalizes an authoritative RPC row', () => {
   const overview = service.mapSubscriptionOverviewRow({
-    plan_id: 'pro',
-    plan_name: 'Pro',
+    plan_id: 'plus',
+    plan_name: 'Plus',
     subscription_status: 'active',
-    plan_limit: 50,
-    effective_limit: 50,
+    plan_limit: 30,
+    effective_limit: 30,
     active_count: 8,
     pending_count: 2,
     used: 10,
-    remaining: 40,
+    remaining: 20,
     limit_reached: false,
   });
-  assert.equal(overview.planId, 'pro');
-  assert.equal(overview.planName, 'Pro');
-  assert.equal(overview.effectiveLimit, 50);
+  assert.equal(overview.planId, 'plus');
+  assert.equal(overview.planName, 'Plus');
+  assert.equal(overview.effectiveLimit, 30);
   assert.equal(overview.used, 10);
-  assert.equal(overview.remaining, 40);
+  assert.equal(overview.remaining, 20);
   assert.equal(overview.limitReached, false);
 });
 
 test('subscription mapper is fail-closed for a fabricated over-limit row', () => {
   const overview = service.mapSubscriptionOverviewRow({
-    plan_id: 'free',
-    plan_name: 'Ücretsiz',
+    plan_id: 'core',
+    plan_name: 'Core',
     subscription_status: 'active',
     plan_limit: 10,
     effective_limit: 10,
@@ -65,8 +65,8 @@ test('subscription mapper is fail-closed for a fabricated over-limit row', () =>
 
 test('subscription mapper clamps negatives and non-finite values', () => {
   const overview = service.mapSubscriptionOverviewRow({
-    plan_id: 'free',
-    plan_name: 'Ücretsiz',
+    plan_id: 'core',
+    plan_name: 'Core',
     subscription_status: 'active',
     plan_limit: 10,
     effective_limit: 10,
@@ -95,15 +95,15 @@ test('fetchSubscriptionOverview reads the first row of a table-returning RPC', a
     assert.equal(name, 'get_dietitian_subscription_overview');
     return {
       data: [{
-        plan_id: 'premium',
-        plan_name: 'Premium',
+        plan_id: 'scale',
+        plan_name: 'Scale',
         subscription_status: 'trialing',
-        plan_limit: 200,
-        effective_limit: 200,
+        plan_limit: 50,
+        effective_limit: 50,
         active_count: 1,
         pending_count: 0,
         used: 1,
-        remaining: 199,
+        remaining: 49,
         limit_reached: false,
       }],
       error: null,
@@ -111,8 +111,8 @@ test('fetchSubscriptionOverview reads the first row of a table-returning RPC', a
   });
   const result = await service.fetchSubscriptionOverview();
   assert.equal(result.status, 'success');
-  assert.equal(result.overview.planId, 'premium');
-  assert.equal(result.overview.remaining, 199);
+  assert.equal(result.overview.planId, 'scale');
+  assert.equal(result.overview.remaining, 49);
 });
 
 test('fetchSubscriptionOverview fails closed on empty payload', async () => {
@@ -125,9 +125,25 @@ test('fetchSubscriptionOverview fails closed on empty payload', async () => {
 
 test('migration defines the canonical plan catalog with authoritative limits', () => {
   assert.match(MIGRATION, /create table if not exists public\.subscription_plans/);
-  assert.match(MIGRATION, /\('free',\s*'Ucretsiz',\s*10/);
-  assert.match(MIGRATION, /\('pro',\s*'Pro',\s*50/);
-  assert.match(MIGRATION, /\('premium',\s*'Premium',\s*200/);
+  assert.match(MIGRATION, /\('core',\s*'Core',\s*10/);
+  assert.match(MIGRATION, /\('plus',\s*'Plus',\s*30/);
+  assert.match(MIGRATION, /\('scale',\s*'Scale',\s*50/);
+  assert.doesNotMatch(MIGRATION, /\('free'|\('pro'|\('premium'/);
+});
+
+test('migration represents Scale above-50 capacity with a bounded account override', () => {
+  assert.match(MIGRATION, /client_limit_override integer/);
+  assert.match(MIGRATION, /client_limit_override is null or client_limit_override >= 0/);
+  assert.match(MIGRATION, /return coalesce\(v_override, v_limit\);/);
+  assert.match(MIGRATION, /client_limit integer not null/);
+  assert.doesNotMatch(MIGRATION, /client_limit\s+text/i);
+});
+
+test('migration preserves existing dietitian access with Core backfill and fallback', () => {
+  assert.match(MIGRATION, /insert into public\.dietitian_subscriptions \(dietitian_id, plan_id, status\)/);
+  assert.match(MIGRATION, /select dp\.user_id, 'core', 'active'/);
+  assert.match(MIGRATION, /where sp\.id = 'core'/);
+  assert.match(MIGRATION, /where not exists \([\s\S]*?dietitian_subscriptions/);
 });
 
 test('migration enforces client capacity with a fail-closed trigger', () => {

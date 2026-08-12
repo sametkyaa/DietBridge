@@ -1,7 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { createClient } from '@supabase/supabase-js';
@@ -20,6 +26,7 @@ import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalRe
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SUPABASE_VERSION = '2.110.0';
 const PASSWORD = 'Disposable-MVP7-Only-7c!';
+const MVP7_MIGRATION_FILE = '20260812090000_mvp7_subscription_plans_and_client_limits.sql';
 const projectId = `dietbridge-mvp7-${process.pid}-${randomUUID().slice(0, 8)}`;
 const npxCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
 const actorIds = [];
@@ -121,10 +128,15 @@ const verifyDietitian = async (actor, status) => {
   }).eq('user_id', actor.id).select('user_id').single(), `${actor.label} verification fixture`);
 };
 
-const setPlan = async (dietitian, planId, subStatus = 'active') => {
-  assertNoError(await admin.from('dietitian_subscriptions').upsert({
-    dietitian_id: dietitian.id, plan_id: planId, status: subStatus,
-  }).select('dietitian_id').single(), `${dietitian.label} plan ${planId}/${subStatus}`);
+const setPlan = async (dietitian, planId, subStatus = 'active', clientLimitOverride) => {
+  const payload = {
+    dietitian_id: dietitian.id,
+    plan_id: planId,
+    status: subStatus,
+    client_limit_override: clientLimitOverride ?? null,
+  };
+  assertNoError(await admin.from('dietitian_subscriptions').upsert(payload)
+    .select('dietitian_id').single(), `${dietitian.label} plan ${planId}/${subStatus}`);
 };
 
 const seedRelationship = async (dietitian, client, status = 'active') => {
@@ -162,12 +174,16 @@ try {
   assert(/^project_id\s*=\s*"[^"]+"/m.test(configText), 'DISPOSABLE_CONFIG_PROJECT_ID_PRESENT');
   writeFileSync(disposable.configPath, configText.replace(/^project_id\s*=\s*"[^"]+"/m, `project_id = "${projectId}"`), 'utf8');
 
+  const mvp7MigrationPath = join(disposable.tempRoot, 'supabase', 'migrations', MVP7_MIGRATION_FILE);
+  const deferredMvp7MigrationPath = `${mvp7MigrationPath}.deferred`;
+  assert(existsSync(mvp7MigrationPath), 'MVP7_MIGRATION_PRESENT_IN_DISPOSABLE_REPLAY');
+
   stackStartAttempted = true;
+  renameSync(mvp7MigrationPath, deferredMvp7MigrationPath);
   cli(['start']);
   stackStarted = true;
   pass('DISPOSABLE_LOCAL_STACK_STARTED', `project=${projectId}`);
   cli(['db', 'reset', '--local', '--no-seed']);
-  pass('DISPOSABLE_MIGRATION_REPLAY');
 
   local = parseStatus(cli(['status', '--output', 'env']));
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_GUARD', local.API_URL);
@@ -176,9 +192,42 @@ try {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
+  // Create one legacy dietitian before MVP-7 is applied. The migration must
+  // backfill this pre-existing profile with Core/active so the new gate cannot
+  // accidentally strand an existing user at a zero limit.
+  const legacyDiet = await createActor('legacy-dietitian', 'dietitian');
+  await verifyDietitian(legacyDiet, 'approved');
+  renameSync(deferredMvp7MigrationPath, mvp7MigrationPath);
+  cli(['migration', 'up', '--local']);
+  pass('DISPOSABLE_MIGRATION_REPLAY');
+  const legacySubscription = assertNoError(
+    await admin.from('dietitian_subscriptions')
+      .select('dietitian_id,plan_id,status,client_limit_override')
+      .eq('dietitian_id', legacyDiet.id)
+      .single(),
+    'legacy subscription backfill read',
+  );
+  assert(
+    legacySubscription.plan_id === 'core'
+      && legacySubscription.status === 'active'
+      && legacySubscription.client_limit_override === null,
+    'EXISTING_DIETITIAN_BACKFILLED_TO_CORE',
+    JSON.stringify(legacySubscription),
+  );
+
   const plans = assertNoError(await admin.from('subscription_plans').select('id,client_limit,is_active').order('sort_order'), 'plan catalog read');
   const planLimit = Object.fromEntries(plans.map((p) => [p.id, p.client_limit]));
-  assert(planLimit.free === 10 && planLimit.pro === 50 && planLimit.premium === 200, 'CANONICAL_PLAN_LIMITS', JSON.stringify(planLimit));
+  assert(
+    plans.length === 3
+      && planLimit.core === 10
+      && planLimit.plus === 30
+      && planLimit.scale === 50
+      && !('free' in planLimit)
+      && !('pro' in planLimit)
+      && !('premium' in planLimit),
+    'CANONICAL_PLAN_LIMITS',
+    JSON.stringify(planLimit),
+  );
 
   const dietA = await createActor('dietitian-a', 'dietitian');
   const dietB = await createActor('dietitian-b', 'dietitian');
@@ -188,70 +237,149 @@ try {
   await verifyDietitian(pendingDiet, 'pending');
 
   const clients = [];
-  for (let i = 0; i < 6; i += 1) clients.push(await createActor(`client-${i}`, 'client'));
+  for (let i = 0; i < 78; i += 1) clients.push(await createActor(`client-${i}`, 'client'));
 
   const apiA = await actorClient(dietA);
   const apiB = await actorClient(dietB);
   const anon = anonymousClient();
 
   // limit = 0: a not-entitled subscription blocks everything.
-  await setPlan(dietA, 'pro', 'canceled');
+  await setPlan(dietA, 'core', 'canceled');
   const zeroLimitOverview = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'zero-limit overview');
   assert(zeroLimitOverview[0].effective_limit === 0 && zeroLimitOverview[0].limit_reached === true, 'CANCELED_SUB_ZERO_LIMIT');
   const zeroSeed = await seedRelationship(dietA, clients[0], 'active');
   assert(Boolean(zeroSeed.error), 'ZERO_LIMIT_DIRECT_INSERT_DENIED', zeroSeed.error?.message ?? 'no error');
 
-  // free plan default (no subscription row) enforces 10.
-  await admin.from('dietitian_subscriptions').delete().eq('dietitian_id', dietA.id);
-  const defaultOverview = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'default overview');
-  assert(defaultOverview[0].plan_id === 'free' && defaultOverview[0].effective_limit === 10, 'NO_SUB_DEFAULTS_TO_FREE');
+  // Core = 10: below-limit, exactly-at-limit, and over-limit paths all use the
+  // real commercial tier rather than a synthetic test plan.
+  await setPlan(dietA, 'core', 'active');
+  const coreOverview = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'Core overview');
+  assert(
+    coreOverview[0].plan_id === 'core'
+      && coreOverview[0].plan_limit === 10
+      && coreOverview[0].effective_limit === 10,
+    'CORE_LIMIT_IS_10',
+    JSON.stringify(coreOverview[0]),
+  );
+  for (let i = 0; i < 10; i += 1) {
+    const result = assertNoError(
+      await apiA.rpc('request_client_connection_by_email', { p_email: clients[i].email }),
+      `Core request ${i + 1}`,
+    );
+    assert(result === 'requested', i === 0 ? 'CORE_BELOW_LIMIT_REQUEST_OK' : `CORE_REQUEST_${i + 1}_OK`, result);
+    await trackRel(dietA, clients[i], `track Core rel ${i + 1}`);
+  }
+  const coreAtLimit = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'Core at-limit overview');
+  assert(
+    coreAtLimit[0].used === 10
+      && coreAtLimit[0].remaining === 0
+      && coreAtLimit[0].limit_reached === true,
+    'CORE_AT_LIMIT_RECONCILES',
+    JSON.stringify(coreAtLimit[0]),
+  );
+  const coreAboveLimit = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[10].email }), 'Core above-limit request');
+  assert(coreAboveLimit === 'limit_reached', 'CORE_ABOVE_LIMIT_RPC_REFUSED', coreAboveLimit);
+  const coreDirectOverLimit = await seedRelationship(dietA, clients[10], 'active');
+  assert(Boolean(coreDirectOverLimit.error), 'CORE_ABOVE_LIMIT_DIRECT_INSERT_DENIED', coreDirectOverLimit.error?.message ?? 'no error');
 
-  // Small custom plan to make boundary testing cheap.
-  assertNoError(await admin.from('subscription_plans').insert({ id: 'test_tiny', name: 'Tiny', client_limit: 2, is_active: true, sort_order: 99 }).select('id').single(), 'tiny plan fixture');
-  await setPlan(dietA, 'test_tiny', 'active');
-
-  const r1 = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[0].email }), 'request 1');
-  assert(r1 === 'requested', 'BELOW_LIMIT_REQUEST_OK', r1);
-  await trackRel(dietA, clients[0], 'track rel1');
-  const r2 = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[1].email }), 'request 2');
-  assert(r2 === 'requested', 'AT_LIMIT_SECOND_REQUEST_OK', r2);
-  await trackRel(dietA, clients[1], 'track rel2');
-  const r3 = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[2].email }), 'request 3');
-  assert(r3 === 'limit_reached', 'ABOVE_LIMIT_RPC_REFUSED', r3);
-  const directOverLimit = await seedRelationship(dietA, clients[2], 'active');
-  assert(Boolean(directOverLimit.error), 'ABOVE_LIMIT_DIRECT_INSERT_DENIED', directOverLimit.error?.message ?? 'no error');
-
-  const filledOverview = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'filled overview');
-  assert(filledOverview[0].used === 2 && filledOverview[0].remaining === 0 && filledOverview[0].limit_reached === true, 'USAGE_RECONCILES_AT_LIMIT', JSON.stringify(filledOverview[0]));
-
-  // client accept (pending -> active) is not blocked even at the limit.
-  const rel0 = assertNoError(await admin.from('dietitian_clients').select('id').eq('dietitian_id', dietA.id).eq('client_id', clients[0].id).single(), 'find rel to activate');
+  // pending -> active acceptance does not consume another slot and remains
+  // allowed at the exact capacity boundary.
+  const rel0 = assertNoError(await admin.from('dietitian_clients').select('id').eq('dietitian_id', dietA.id).eq('client_id', clients[0].id).single(), 'find Core relation to activate');
   const clientAApi = await actorClient(clients[0]);
   const accepted = await clientAApi.from('dietitian_clients').update({ status: 'active' }).eq('id', rel0.id).select('id,status').maybeSingle();
-  assert(!accepted.error && accepted.data?.status === 'active', 'CLIENT_ACCEPT_AT_LIMIT_ALLOWED', accepted.error?.message ?? '');
+  assert(!accepted.error && accepted.data?.status === 'active', 'CLIENT_ACCEPT_AT_CORE_LIMIT_ALLOWED', accepted.error?.message ?? '');
 
-  // plan change up frees capacity.
-  await setPlan(dietA, 'pro', 'active');
-  const r4 = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[2].email }), 'request 4 after upgrade');
-  assert(r4 === 'requested', 'UPGRADE_ALLOWS_NEW_CLIENT', r4);
-  await trackRel(dietA, clients[2], 'track rel4');
+  // Upgrade Core -> Plus frees capacity. Fill Plus to its exact limit of 30,
+  // then assert the 31st relationship is refused.
+  await setPlan(dietA, 'plus', 'active');
+  const plusUpgradeOverview = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'Plus upgrade overview');
+  assert(plusUpgradeOverview[0].effective_limit === 30 && plusUpgradeOverview[0].used === 10, 'CORE_TO_PLUS_UPGRADE', JSON.stringify(plusUpgradeOverview[0]));
+  for (let i = 10; i < 30; i += 1) {
+    const result = assertNoError(
+      await apiA.rpc('request_client_connection_by_email', { p_email: clients[i].email }),
+      `Plus request ${i + 1}`,
+    );
+    assert(result === 'requested', `PLUS_REQUEST_${i + 1}_OK`, result);
+    await trackRel(dietA, clients[i], `track Plus rel ${i + 1}`);
+  }
+  const plusAtLimit = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'Plus at-limit overview');
+  assert(plusAtLimit[0].used === 30 && plusAtLimit[0].remaining === 0 && plusAtLimit[0].limit_reached === true, 'PLUS_AT_LIMIT_RECONCILES', JSON.stringify(plusAtLimit[0]));
+  const plusAboveLimit = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[30].email }), 'Plus above-limit request');
+  assert(plusAboveLimit === 'limit_reached', 'PLUS_ABOVE_LIMIT_RPC_REFUSED', plusAboveLimit);
 
-  // plan change down blocks new adds without deleting existing.
-  await setPlan(dietA, 'test_tiny', 'active');
-  const r5 = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[3].email }), 'request 5 after downgrade');
-  assert(r5 === 'limit_reached', 'DOWNGRADE_BLOCKS_NEW_CLIENT', r5);
+  // Upgrade Plus -> Scale and exercise the bounded 50-client base tier.
+  await setPlan(dietA, 'scale', 'active');
+  const scaleUpgradeOverview = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'Scale upgrade overview');
+  assert(scaleUpgradeOverview[0].effective_limit === 50 && scaleUpgradeOverview[0].plan_limit === 50, 'PLUS_TO_SCALE_UPGRADE', JSON.stringify(scaleUpgradeOverview[0]));
+  for (let i = 30; i < 50; i += 1) {
+    const result = assertNoError(
+      await apiA.rpc('request_client_connection_by_email', { p_email: clients[i].email }),
+      `Scale request ${i + 1}`,
+    );
+    assert(result === 'requested', `SCALE_REQUEST_${i + 1}_OK`, result);
+    await trackRel(dietA, clients[i], `track Scale rel ${i + 1}`);
+  }
+  const scaleAtLimit = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'Scale at-limit overview');
+  assert(scaleAtLimit[0].used === 50 && scaleAtLimit[0].remaining === 0 && scaleAtLimit[0].limit_reached === true, 'SCALE_AT_50_LIMIT_RECONCILES', JSON.stringify(scaleAtLimit[0]));
+  const scaleAboveLimit = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[50].email }), 'Scale above-limit request');
+  assert(scaleAboveLimit === 'limit_reached', 'SCALE_ABOVE_50_RPC_REFUSED', scaleAboveLimit);
+  const scaleDirectOverLimit = await seedRelationship(dietA, clients[50], 'active');
+  assert(Boolean(scaleDirectOverLimit.error), 'SCALE_ABOVE_50_DIRECT_INSERT_DENIED', scaleDirectOverLimit.error?.message ?? 'no error');
 
-  // reactivation of a removed relationship is capacity-checked.
-  assertNoError(await admin.from('dietitian_clients').update({ status: 'removed' }).eq('id', rel0.id).select('id').single(), 'remove for reactivation test');
-  await setPlan(dietA, 'test_tiny', 'active');
-  const reactivate = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[0].email }), 'reactivation at limit');
-  assert(reactivate === 'limit_reached', 'REACTIVATION_AT_LIMIT_REFUSED', reactivate);
+  // Scale is not unlimited: a future per-account override of 75 is explicit,
+  // bounded and visible as effective_limit while plan_limit remains 50.
+  await setPlan(dietA, 'scale', 'active', 75);
+  const scaleOverrideOverview = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'Scale override overview');
+  assert(scaleOverrideOverview[0].plan_limit === 50 && scaleOverrideOverview[0].effective_limit === 75, 'SCALE_OVERRIDE_75_IS_EFFECTIVE', JSON.stringify(scaleOverrideOverview[0]));
+  for (let i = 50; i < 75; i += 1) {
+    const result = assertNoError(
+      await apiA.rpc('request_client_connection_by_email', { p_email: clients[i].email }),
+      `Scale override request ${i + 1}`,
+    );
+    assert(result === 'requested', `SCALE_OVERRIDE_REQUEST_${i + 1}_OK`, result);
+    await trackRel(dietA, clients[i], `track Scale override rel ${i + 1}`);
+  }
+  const scaleOverrideAtLimit = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'Scale override at-limit overview');
+  assert(scaleOverrideAtLimit[0].used === 75 && scaleOverrideAtLimit[0].remaining === 0 && scaleOverrideAtLimit[0].limit_reached === true, 'SCALE_OVERRIDE_AT_75_RECONCILES', JSON.stringify(scaleOverrideAtLimit[0]));
+  const scaleOverrideAboveLimit = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[75].email }), 'Scale override above-limit request');
+  assert(scaleOverrideAboveLimit === 'limit_reached', 'SCALE_OVERRIDE_ABOVE_75_RPC_REFUSED', scaleOverrideAboveLimit);
+
+  // Downgrade preserves existing relationships but blocks new capacity.
+  await setPlan(dietA, 'plus', 'active');
+  const downgradeOverview = assertNoError(await apiA.rpc('get_dietitian_subscription_overview'), 'downgrade overview');
+  assert(downgradeOverview[0].effective_limit === 30 && downgradeOverview[0].used === 75, 'DOWNGRADE_PRESERVES_EXISTING_USAGE', JSON.stringify(downgradeOverview[0]));
+  const downgradeBlocked = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[75].email }), 'downgrade blocked request');
+  assert(downgradeBlocked === 'limit_reached', 'DOWNGRADE_BLOCKS_NEW_CLIENT', downgradeBlocked);
+
+  // Remove 45 relationships from the overfull downgraded account, leaving
+  // exactly Plus capacity in use. Reactivating one removed relationship must
+  // still be refused at the boundary.
+  const removedForReactivation = assertNoError(
+    await admin.from('dietitian_clients')
+      .update({ status: 'removed' })
+      .eq('dietitian_id', dietA.id)
+      .in('client_id', clients.slice(0, 45).map(({ id }) => id))
+      .select('id'),
+    'remove relations for reactivation test',
+  );
+  assert(removedForReactivation.length === 45, 'REACTIVATION_FIXTURE_AT_PLUS_LIMIT', `removed=${removedForReactivation.length}`);
+  const plusReactivateAtLimit = assertNoError(await apiA.rpc('request_client_connection_by_email', { p_email: clients[0].email }), 'Plus reactivation at-limit request');
+  assert(plusReactivateAtLimit === 'limit_reached', 'REACTIVATION_AT_PLUS_LIMIT_REFUSED', plusReactivateAtLimit);
 
   // tenant isolation.
   const foreignSub = assertNoError(await apiB.from('dietitian_subscriptions').select('dietitian_id').eq('dietitian_id', dietA.id), 'foreign subscription read');
   assert(foreignSub.length === 0, 'FOREIGN_SUBSCRIPTION_NOT_READABLE');
   const bOverview = assertNoError(await apiB.rpc('get_dietitian_subscription_overview'), 'B overview');
-  assert(bOverview[0].used === 0 && bOverview[0].plan_id === 'free', 'TENANT_B_USAGE_INDEPENDENT', JSON.stringify(bOverview[0]));
+  assert(bOverview[0].used === 0 && bOverview[0].plan_id === 'core' && bOverview[0].effective_limit === 10, 'MISSING_ROW_DEFAULTS_TO_CORE_WITHOUT_LOCKOUT', JSON.stringify(bOverview[0]));
+  const missingRowRequest = assertNoError(await apiB.rpc('request_client_connection_by_email', { p_email: clients[76].email }), 'missing-row add request');
+  assert(missingRowRequest === 'requested', 'MISSING_ROW_CAN_ADD_CLIENT', missingRowRequest);
+  await trackRel(dietB, clients[76], 'track missing-row relation');
+  const legacyApi = await actorClient(legacyDiet);
+  const legacyOverview = assertNoError(await legacyApi.rpc('get_dietitian_subscription_overview'), 'legacy backfilled overview');
+  assert(legacyOverview[0].plan_id === 'core' && legacyOverview[0].effective_limit === 10, 'BACKFILLED_DIETITIAN_CAN_USE_CORE', JSON.stringify(legacyOverview[0]));
+  const legacyRequest = assertNoError(await legacyApi.rpc('request_client_connection_by_email', { p_email: clients[77].email }), 'backfilled add request');
+  assert(legacyRequest === 'requested', 'BACKFILLED_DIETITIAN_CAN_ADD_CLIENT', legacyRequest);
+  await trackRel(legacyDiet, clients[77], 'track backfilled relation');
   const anonPlans = await anon.from('subscription_plans').select('id');
   assert((anonPlans.data ?? []).length === 0, 'ANON_PLAN_CATALOG_DENIED');
   const anonOverview = await anon.rpc('get_dietitian_subscription_overview');

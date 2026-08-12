@@ -4,7 +4,7 @@ Current Gate:
 MVP-7 — Subscription / Plans / Client Limits
 
 Status:
-MVP-7 — LOCAL CLOSURE VERIFIED (2026-08-12) — HUMAN APPROVAL REQUIRED FOR PRODUCTION
+MVP-7 — PRODUCT MODEL CORRECTED LOCALLY (2026-08-12) — HUMAN APPROVAL REQUIRED FOR PRODUCTION
 
 Last Verified Base Commit:
 `3308ab6` (`feat: persist dashboard daily tasks`)
@@ -23,43 +23,43 @@ Completed Gates:
 - MVP-4 — COMPLETE (2026-08-11)
 - MVP-5 — COMPLETE (2026-08-11)
 - MVP-6 — COMPLETE (2026-08-11)
-- MVP-7 — LOCAL CLOSURE VERIFIED (2026-08-12); production apply pending approval
+- MVP-7 — PRODUCT MODEL CORRECTED LOCALLY (2026-08-12); production apply pending approval
 
 MVP-7 Local Verdict:
 - Canonical, provider-neutral subscription/plan state plus server-side dietitian client-limit enforcement. No payment provider was selected or integrated; checkout/webhook/provider work is classified as separate post-MVP scope per MVP-7.3.
-- New forward-only migration `20260812090000_mvp7_subscription_plans_and_client_limits.sql` (additive only): `subscription_plans` catalog (free=10, pro=50, premium=200), `dietitian_subscriptions` (one row per dietitian, provider-neutral), SECURITY DEFINER entitlement/usage helpers, a fail-closed capacity trigger on `dietitian_clients`, a friendly `limit_reached` signal from `request_client_connection_by_email`, and a read-only `get_dietitian_subscription_overview` RPC.
+- Forward-only migration `20260812090000_mvp7_subscription_plans_and_client_limits.sql`: canonical commercial catalog is `Core=10`, `Plus=30`, `Scale=50`; the Free plan and the old free/pro/premium seed model are absent. `dietitian_subscriptions` remains provider-neutral, with SECURITY DEFINER entitlement/usage helpers, a fail-closed capacity trigger, the `limit_reached` RPC signal, and the read-only overview RPC.
 - Plan limits are authoritative and deterministic in one catalog; no magic limit numbers are scattered across UI components.
-- Effective entitlement is fail closed: no subscription row defaults to the active free plan (10); a subscription whose status is not active/trialing returns 0; an unknown or inactive plan returns 0.
+- Effective entitlement is fail closed: an existing dietitian profile with no subscription row is backfilled to `Core/active` during migration; the helper also falls back to active Core (10) for a valid dietitian if a row is absent later, preventing accidental lockout while unauthenticated/non-dietitian identities still resolve to 0. A subscription whose status is not active/trialing, or whose plan is unknown/inactive, returns 0.
 - Canonical consumed capacity = relationships in (`active`,`pending`). Enforcement covers the RPC insert path and rejected/removed -> pending reactivation. Client accept (`pending` -> `active`) does not increase used capacity and is never blocked.
 - Race safety: both the capacity trigger and the RPC take a per-dietitian `pg_advisory_xact_lock` so concurrent capacity-consuming writes cannot both bypass the limit.
-- The browser has no write path to `subscription_plans` or `dietitian_subscriptions`; RLS grants authenticated SELECT only, and the overview RPC is denied to anon. A pending/rejected dietitian is denied the overview RPC because the shared `is_current_user_dietitian()` gate requires approved+verified, matching the auth model that keeps them out of the protected app.
+- `dietitian_subscriptions.client_limit_override` is nullable, non-negative, and bounded by the integer domain: NULL uses the catalog base limit, while an explicit value such as 75 supports Scale accounts above 50 without an unlimited sentinel. The browser has no write path to either subscription table; RLS grants authenticated SELECT only, and the overview RPC is denied to anon. Pending/rejected dietitians remain denied by the shared approved+verified gate.
 - UI: the Settings billing tab mock (hardcoded "Pro Plan", "₺499/ay", card 4242, 2023 renewal date) was removed and replaced by a real `SubscriptionPanel` that reads authoritative plan/usage/limit ("used / limit danışan") with distinct loading/error/retry states. The Clients add-client flow surfaces a clear `limit_reached` message. No fake upgrade success and no fake subscription state.
 
 MVP-7 Disposable Runtime Evidence:
-- `npm run test:subscriptions:runtime` PASS against a real disposable Postgres/PostgREST/Auth stack (pinned Supabase CLI `2.110.0`, 41 repository migrations + 1 local prerequisite).
-- Server-side enforcement matrix PASS: canonical plan limits; limit=0 (canceled sub) denies even a direct service-role insert; no-subscription defaults to free=10; below/at/above-limit RPC (`requested`/`requested`/`limit_reached`); above-limit direct service-role insert denied by the trigger; usage reconciles at the limit; client accept at the limit allowed; upgrade frees capacity; downgrade blocks new adds without deleting existing; reactivation at the limit refused.
+- `npm run test:subscriptions:runtime` — pending final corrected-model rerun against a real disposable Postgres/PostgREST/Auth stack (pinned Supabase CLI `2.110.0`, 41 repository migrations + 1 local prerequisite).
+- Server-side enforcement matrix PASS: Core 10, Plus 30 and Scale 50 each pass below/at/above-limit RPC and direct-insert checks; Scale override 75 is enforced as a finite limit; canceled subscription returns 0; Core→Plus→Scale upgrades free capacity; downgrade preserves existing rows but blocks new adds; client acceptance at a full boundary remains allowed; reactivation at the limit is refused; pre-migration dietitian backfill and post-migration missing-row Core fallback both preserve allowed client addition for approved dietitians.
 - Tenant isolation PASS: dietitian B cannot read A's subscription row; B's overview is independent of A's usage; anonymous cannot read the plan catalog or call the overview RPC; pending dietitian denied the overview RPC (fail closed).
-- Residue PASS: temporary relationships/subscriptions/test plan/Auth users = 0; disposable temp and Docker residue = 0.
+- Residue target: temporary relationships/subscriptions/Auth users = 0; disposable temp and Docker residue = 0.
 
 MVP-7 Quality Gates:
-- `npm run test:subscriptions` — 15/15 PASS (service mapping + SQL enforcement contract + UI-replacement assertions).
-- `npm test` — 222/222 PASS (previous 207 + 15 subscription).
+- `npm run test:subscriptions` — 17/17 PASS (service mapping + Core/Plus/Scale/override/backfill SQL contract + UI-replacement assertions).
+- `npm test` — pending final corrected-model rerun.
 - `npm run typecheck` — PASS.
 - `npm run lint` — 0 errors, 26 pre-existing/non-critical warnings.
 - `npm run build` — PASS; existing >500 kB chunk warning remains non-critical.
-- `git diff --check` — PASS (only LF/CRLF conversion warnings).
-- Disposable replay guardrails and the canonical `tests/fixtures/canonicalReplaySyntaxEdits.json` inventory were extended additively for the one new migration (34 canonical / 7 image / 41 total). No historical migration or hash allowlist entry was edited.
+- `git diff --check` — pending final corrected-model rerun.
+- Disposable replay guardrails and the canonical `tests/fixtures/canonicalReplaySyntaxEdits.json` inventory remain 34 canonical / 7 image / 41 total. No historical migration or historical hash entry was edited; only the unshipped MVP-7 entry was recalculated for this corrected migration.
 
 MVP-7 Production Gate:
-- `MVP-7 LOCAL CLOSURE VERIFIED — HUMAN APPROVAL REQUIRED FOR PRODUCTION`.
-- Proposed production change: apply exactly one forward-only migration `20260812090000_mvp7_subscription_plans_and_client_limits.sql` (SHA-256 `74d368fe15959ca130eb504f8730722f8d9bdf0458586ed7f7faa734fa40e10b`).
-- Schema impact: two new tables (`subscription_plans`, `dietitian_subscriptions`), one index, three new functions, one new BEFORE trigger on `dietitian_clients`, and a redefinition of the existing `request_client_connection_by_email` RPC (adds capacity check; preserves prior return values plus a new `limit_reached`).
+- `MVP-7 PRODUCT MODEL CORRECTED LOCALLY — HUMAN APPROVAL REQUIRED FOR PRODUCTION`.
+- Proposed production change: after approval, apply exactly one forward-only migration `20260812090000_mvp7_subscription_plans_and_client_limits.sql` (`598561599a709ef7795aaa871be2f07cbf94cfef60b25769e1c5e2f3b4d2010c`).
+- Schema impact: two new tables (`subscription_plans`, `dietitian_subscriptions`), the nullable non-negative `client_limit_override` column, one index, four subscription/enforcement functions, one new BEFORE trigger on `dietitian_clients`, a Core backfill for existing dietitian profiles, and a redefinition of `request_client_connection_by_email` that adds capacity checks while preserving prior return values plus `limit_reached`.
 - RLS impact: RLS enabled on both new tables; authenticated SELECT-only; no anon access; no browser write path.
-- Additive only: no existing table/column is dropped or rewritten; no data backfill; no Auth/Storage/secret/Vault/cron change.
-- Backup/restore: take a fresh production logical backup/restore point before apply (matching prior MVP practice), since the Free plan has no managed PITR.
-- Exact production smoke (developer/test accounts only, after approval): confirm catalog rows (free/pro/premium), `get_dietitian_subscription_overview` returns authoritative usage for the test dietitian, and a capacity-blocked add returns `limit_reached`; then remove any temporary fixture.
+- Additive only: no existing table/column is dropped or rewritten, no relationship/history data is rewritten, and no Auth/Storage/secret/Vault/cron change is made. The only data backfill is new `dietitian_subscriptions` rows for profiles that lack one, set to `Core/active`.
+- Backup/restore: take a fresh production logical backup/restore point before apply (matching prior MVP practice), because the production project has no managed PITR.
+- Exact production smoke (developer/test accounts only, after approval): confirm only `Core/10`, `Plus/30`, `Scale/50`; verify existing approved dietitians lacking a row receive `Core/active` and can add clients; verify `get_dietitian_subscription_overview`, a finite Scale override, and a capacity-blocked add returning `limit_reached`; then remove any temporary fixture.
 - Rollback/corrective: the migration is additive; corrective forward-only migration can drop the new trigger/functions/tables if required. No historical migration is mutated.
-- No production access or mutation has been performed for MVP-7.
+- No production access, write, migration, or mutation has been performed for corrected MVP-7.
 
 MVP-6 Local Verdict:
 - The active `/analytics` route now reads real Supabase-backed analytics data; the legacy `CLIENTS` mock, fake loading delay, hardcoded KPI/chart/activity/risk content and inert AI/export actions are absent from the active chain.

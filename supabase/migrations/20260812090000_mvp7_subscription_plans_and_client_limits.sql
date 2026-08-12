@@ -10,8 +10,10 @@
 --   * a friendly capacity signal from request_client_connection_by_email
 --   * public.get_dietitian_subscription_overview() read RPC for the UI
 --
--- This migration creates no Auth user, performs no data backfill of
--- relationships, and rewrites no existing table or historical data.
+-- This migration creates no Auth user and performs no data backfill of
+-- relationships or historical records. It does intentionally backfill the
+-- new subscription table for existing dietitian profiles with the lowest
+-- commercial tier so the new enforcement cannot strand existing users.
 -- Every change is inside one transaction; any postcondition failure rolls back.
 
 begin;
@@ -47,13 +49,14 @@ create table if not exists public.subscription_plans (
 alter table public.subscription_plans owner to postgres;
 
 -- Canonical MVP plan definitions. Re-asserted on every replay so the catalog
--- stays the single source of truth. Product may later adjust these values
--- (or add rows) without touching enforcement code.
+-- stays the single source of truth. Scale is a bounded 50-client base tier;
+-- per-account overrides below support future limits above 50 without an
+-- unlimited sentinel.
 insert into public.subscription_plans (id, name, client_limit, is_active, sort_order)
 values
-  ('free',    'Ucretsiz', 10,  true, 10),
-  ('pro',     'Pro',      50,  true, 20),
-  ('premium', 'Premium',  200, true, 30)
+  ('core',  'Core',  10, true, 10),
+  ('plus',  'Plus',  30, true, 20),
+  ('scale', 'Scale', 50, true, 30)
 on conflict (id) do update
   set name = excluded.name,
       client_limit = excluded.client_limit,
@@ -70,17 +73,57 @@ create table if not exists public.dietitian_subscriptions (
   dietitian_id uuid primary key references public.profiles(id) on delete cascade,
   plan_id text not null references public.subscription_plans(id),
   status text not null default 'active',
+  -- NULL means the plan's catalog limit. A non-NULL value is a bounded,
+  -- account-specific limit and may be greater than the Scale base of 50.
+  client_limit_override integer,
   current_period_end timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint dietitian_subscriptions_status_check
-    check (status = any (array['active', 'trialing', 'past_due', 'canceled', 'inactive']))
+    check (status = any (array['active', 'trialing', 'past_due', 'canceled', 'inactive'])),
+  constraint dietitian_subscriptions_client_limit_override_nonneg
+    check (client_limit_override is null or client_limit_override >= 0)
 );
 
 alter table public.dietitian_subscriptions owner to postgres;
 
+-- Keep replay behavior safe if a disposable database already contains the
+-- first local draft of this table. The production migration is unshipped, so
+-- no historical production row is rewritten here.
+alter table public.dietitian_subscriptions
+  add column if not exists client_limit_override integer;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.dietitian_subscriptions'::regclass
+      and conname = 'dietitian_subscriptions_client_limit_override_nonneg'
+  ) then
+    alter table public.dietitian_subscriptions
+      add constraint dietitian_subscriptions_client_limit_override_nonneg
+      check (client_limit_override is null or client_limit_override >= 0);
+  end if;
+end
+$$;
+
 create index if not exists idx_dietitian_subscriptions_plan
   on public.dietitian_subscriptions (plan_id);
+
+-- Existing dietitians receive the lowest bounded commercial entitlement. This
+-- is the compatibility backfill that prevents a newly introduced subscription
+-- table from turning existing client-add flows into an accidental zero-limit
+-- state. It does not create Auth users or alter relationships.
+insert into public.dietitian_subscriptions (dietitian_id, plan_id, status)
+select dp.user_id, 'core', 'active'
+from public.dietitian_profiles as dp
+where not exists (
+  select 1
+  from public.dietitian_subscriptions as ds
+  where ds.dietitian_id = dp.user_id
+)
+on conflict (dietitian_id) do nothing;
 
 -- ---------------------------------------------------------------------------
 -- 3. RLS. Catalog is read-only reference data for authenticated users.
@@ -124,6 +167,7 @@ as $function$
 declare
   v_status text;
   v_plan_id text;
+  v_override integer;
   v_limit integer;
   v_plan_active boolean;
   v_default_limit integer;
@@ -132,19 +176,29 @@ begin
     return 0;
   end if;
 
-  select ds.status, ds.plan_id
-    into v_status, v_plan_id
+  select ds.status, ds.plan_id, ds.client_limit_override
+    into v_status, v_plan_id, v_override
   from public.dietitian_subscriptions as ds
   where ds.dietitian_id = p_dietitian;
 
   if not found then
-    -- Canonical default for a dietitian with no explicit subscription row:
-    -- the active free plan. This is a deterministic default, not an
-    -- unlimited bypass.
+    -- A missing row is treated as the lowest commercial tier, not as zero or
+    -- unlimited. Existing profiles are backfilled above; this fallback also
+    -- keeps future/edge accounts from being stranded between transactions.
+    if not exists (
+      select 1
+      from public.profiles as p
+      join public.dietitian_profiles as dp on dp.user_id = p.id
+      where p.id = p_dietitian
+        and p.role = 'dietitian'::public.user_role
+    ) then
+      return 0;
+    end if;
+
     select sp.client_limit
       into v_default_limit
     from public.subscription_plans as sp
-    where sp.id = 'free'
+    where sp.id = 'core'
       and sp.is_active = true;
     return coalesce(v_default_limit, 0);
   end if;
@@ -163,7 +217,7 @@ begin
     return 0;
   end if;
 
-  return v_limit;
+  return coalesce(v_override, v_limit);
 end;
 $function$;
 
@@ -351,8 +405,9 @@ grant execute on function public.request_client_connection_by_email(text) to aut
 
 -- ---------------------------------------------------------------------------
 -- 7. Authoritative subscription overview for the dietitian UI. Returns the
---    current plan, status, limit, usage and effective entitlement so the
---    front end never has to guess ("8 / 10 danisan").
+--    current plan, status, catalog base limit, override-aware effective limit,
+--    usage and remaining capacity so the front end never has to guess
+--    ("8 / 10 danisan").
 -- ---------------------------------------------------------------------------
 create or replace function public.get_dietitian_subscription_overview()
 returns table (
@@ -378,6 +433,7 @@ declare
   v_plan_id text;
   v_plan_name text;
   v_plan_limit integer;
+  v_override integer;
   v_effective integer;
   v_active integer;
   v_pending integer;
@@ -387,14 +443,15 @@ begin
     raise exception 'Diyetisyen yetkisi gerekli.' using errcode = '42501';
   end if;
 
-  select ds.status, ds.plan_id
-    into v_status, v_plan_id
+  select ds.status, ds.plan_id, ds.client_limit_override
+    into v_status, v_plan_id, v_override
   from public.dietitian_subscriptions as ds
   where ds.dietitian_id = v_dietitian_id;
 
   if not found then
     v_status := 'active';
-    v_plan_id := 'free';
+    v_plan_id := 'core';
+    v_override := null;
   end if;
 
   select sp.name, sp.client_limit
@@ -444,8 +501,45 @@ begin
     raise exception 'Abonelik tablolari postcondition dogrulamasi basarisiz.';
   end if;
 
-  if (select count(*) from public.subscription_plans where id in ('free', 'pro', 'premium')) <> 3 then
+  if (select count(*) from public.subscription_plans) <> 3
+     or not exists (
+       select 1
+       from public.subscription_plans
+       where id = 'core' and name = 'Core' and client_limit = 10
+         and is_active = true and sort_order = 10
+     )
+     or not exists (
+       select 1
+       from public.subscription_plans
+       where id = 'plus' and name = 'Plus' and client_limit = 30
+         and is_active = true and sort_order = 20
+     )
+     or not exists (
+       select 1
+       from public.subscription_plans
+       where id = 'scale' and name = 'Scale' and client_limit = 50
+         and is_active = true and sort_order = 30
+     ) then
     raise exception 'Kanonik plan katalogu postcondition dogrulamasi basarisiz.';
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'dietitian_subscriptions'
+      and column_name = 'client_limit_override'
+  ) then
+    raise exception 'Hesap bazli limit override kolonu postcondition dogrulamasi basarisiz.';
+  end if;
+
+  if exists (
+    select 1
+    from public.dietitian_profiles as dp
+    left join public.dietitian_subscriptions as ds on ds.dietitian_id = dp.user_id
+    where ds.dietitian_id is null
+  ) then
+    raise exception 'Mevcut diyetisyenlerin abonelik satiri backfill postcondition dogrulamasi basarisiz.';
   end if;
 
   if not exists (
