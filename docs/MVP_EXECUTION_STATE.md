@@ -36,23 +36,23 @@ MVP-7 Local Verdict:
 - UI: the Settings billing tab mock (hardcoded "Pro Plan", "₺499/ay", card 4242, 2023 renewal date) was removed and replaced by a real `SubscriptionPanel` that reads authoritative plan/usage/limit ("used / limit danışan") with distinct loading/error/retry states. The Clients add-client flow surfaces a clear `limit_reached` message. No fake upgrade success and no fake subscription state.
 
 MVP-7 Disposable Runtime Evidence:
-- `npm run test:subscriptions:runtime` — pending final corrected-model rerun against a real disposable Postgres/PostgREST/Auth stack (pinned Supabase CLI `2.110.0`, 41 repository migrations + 1 local prerequisite).
+- `npm run test:subscriptions:runtime` — PASS against a real disposable Postgres/PostgREST/Auth stack (pinned Supabase CLI `2.110.0`, 41 repository migrations + 1 local prerequisite); final run included direct active-insert backstop and zero residue.
 - Server-side enforcement matrix PASS: Core 10, Plus 30 and Scale 50 each pass below/at/above-limit RPC and direct-insert checks; Scale override 75 is enforced as a finite limit; canceled subscription returns 0; Core→Plus→Scale upgrades free capacity; downgrade preserves existing rows but blocks new adds; client acceptance at a full boundary remains allowed; reactivation at the limit is refused; pre-migration dietitian backfill and post-migration missing-row Core fallback both preserve allowed client addition for approved dietitians.
 - Tenant isolation PASS: dietitian B cannot read A's subscription row; B's overview is independent of A's usage; anonymous cannot read the plan catalog or call the overview RPC; pending dietitian denied the overview RPC (fail closed).
-- Residue target: temporary relationships/subscriptions/Auth users = 0; disposable temp and Docker residue = 0.
+- Residue PASS: temporary relationships/subscriptions/Auth users = 0; disposable temp and Docker residue = 0.
 
 MVP-7 Quality Gates:
-- `npm run test:subscriptions` — 17/17 PASS (service mapping + Core/Plus/Scale/override/backfill SQL contract + UI-replacement assertions).
-- `npm test` — pending final corrected-model rerun.
+- `npm run test:subscriptions` — 18/18 PASS (service mapping + Core/Plus/Scale/override/backfill/RLS/direct-active-insert SQL contracts + UI-replacement assertions).
+- `npm test` — 225/225 PASS.
 - `npm run typecheck` — PASS.
 - `npm run lint` — 0 errors, 26 pre-existing/non-critical warnings.
 - `npm run build` — PASS; existing >500 kB chunk warning remains non-critical.
-- `git diff --check` — pending final corrected-model rerun.
+- `git diff --check` — PASS.
 - Disposable replay guardrails and the canonical `tests/fixtures/canonicalReplaySyntaxEdits.json` inventory remain 34 canonical / 7 image / 41 total. No historical migration or historical hash entry was edited; only the unshipped MVP-7 entry was recalculated for this corrected migration.
 
 MVP-7 Production Gate:
 - `MVP-7 PRODUCT MODEL CORRECTED LOCALLY — HUMAN APPROVAL REQUIRED FOR PRODUCTION`.
-- Proposed production change: after approval, apply exactly one forward-only migration `20260812090000_mvp7_subscription_plans_and_client_limits.sql` (`598561599a709ef7795aaa871be2f07cbf94cfef60b25769e1c5e2f3b4d2010c`).
+- Proposed production change: after approval, apply exactly one forward-only migration `20260812090000_mvp7_subscription_plans_and_client_limits.sql` (`ebbedc2d8aa5f684dab5961840c0ba94295da33e60b60d3af5b9663557434794`).
 - Schema impact: two new tables (`subscription_plans`, `dietitian_subscriptions`), the nullable non-negative `client_limit_override` column, one index, four subscription/enforcement functions, one new BEFORE trigger on `dietitian_clients`, a Core backfill for existing dietitian profiles, and a redefinition of `request_client_connection_by_email` that adds capacity checks while preserving prior return values plus `limit_reached`.
 - RLS impact: RLS enabled on both new tables; authenticated SELECT-only; no anon access; no browser write path.
 - Additive only: no existing table/column is dropped or rewritten, no relationship/history data is rewritten, and no Auth/Storage/secret/Vault/cron change is made. The only data backfill is new `dietitian_subscriptions` rows for profiles that lack one, set to `Core/active`.
@@ -224,18 +224,18 @@ Repository Branch:
 `codex/subscriptions`
 
 Working Tree:
-DIRTY with the reviewed MVP-7 subscription/client-limit implementation and this execution-state update, on top of the committed MVP-6 checkpoint. The MVP-7 migration and `.gitattributes` entry are staged so the canonical replay reader can hash them; nothing has been committed, pushed, merged or rebased for MVP-7 yet.
+CLEAN on `codex/subscriptions` after local commits `228792a`, `bddbd8d`, and `7a2ce68`. Nothing has been pushed, merged, rebased, or applied to production.
 
 Production Mutation Allowed:
 NO
 
 Current Blocker:
 - None for MVP-6; it is COMPLETE.
-- MVP-7 local closure is verified; its only open item is the production apply/smoke gate, which requires explicit human approval.
-- Per the active supervisor program, MVP-8 (Dashboard Closure) proceeds autonomously; MVP-7 production apply is deferred to a human-approval boundary and does not block MVP-8 local work.
+- MVP-7 corrected local closure is verified; only the production apply/smoke gate remains, requiring explicit human approval.
+- Per the user instruction, STOP after MVP-7. Do not start MVP-8 in this task.
 
 Next Action:
-Continue MVP-8 (Dashboard Closure) autonomously on its own branch. Hold the MVP-7 production migration/smoke for explicit human approval.
+STOP after MVP-7. Hold production apply/smoke for explicit human approval; do not start MVP-8.
 
 Human Approval Required:
-YES before applying the MVP-7 production migration or running any production smoke/writes. Local/disposable MVP-8 work is authorized.
+YES before applying the MVP-7 production migration or running any production smoke/writes. Local/disposable MVP-8 work is intentionally not started in this task.
