@@ -21,7 +21,6 @@ import Recipes from './pages/Recipes';
 import RecipeDetails from './pages/RecipeDetails'; 
 import Analytics from './pages/Analytics'; 
 import MealPlans from './pages/MealPlans'; 
-import Notes from './pages/Notes'; 
 import DietitianProfilePage from './features/dietitians/pages/DietitianProfilePage';
 import EditProfilePage from './features/dietitians/pages/EditProfilePage';
 
@@ -49,7 +48,6 @@ const App = () => {
                 <Route path="/messages" element={<Messages />} />
                 <Route path="/recipes" element={<Recipes />} />
                 <Route path="/recipes/:id" element={<RecipeDetails />} />
-                <Route path="/notes" element={<Notes />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/profile" element={<DietitianProfilePage />} />
                 <Route path="/profile/edit" element={<EditProfilePage />} />

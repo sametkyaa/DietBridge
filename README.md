@@ -27,7 +27,6 @@ Copy-Item .env.example .env
 ```text
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
-VITE_ENABLE_MOCK_DATA
 ```
 
 İlk lockfile oluşturma veya bağımlılıkların bilinçli olarak değiştirilmesi sırasında `npm install`; mevcut lockfile ile tekrarlanabilir kurulum için `npm ci` kullanılır.

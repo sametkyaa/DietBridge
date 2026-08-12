@@ -7,7 +7,6 @@ import {
   UtensilsCrossed,
   BookOpen,
   MessageSquare,
-  FileEdit,
   Settings,
   Calendar
 } from 'lucide-react';
@@ -22,7 +21,6 @@ const Sidebar = () => {
     { icon: UtensilsCrossed, label: 'Beslenme Planları', path: '/meal-plans' },
     { icon: BookOpen, label: 'Tarifler', path: '/recipes' },
     { icon: MessageSquare, label: 'Mesajlar', path: '/messages' },
-    { icon: FileEdit, label: 'Notlar', path: '/notes' },
     { icon: Settings, label: 'Ayarlar', path: '/settings' },
   ];
 

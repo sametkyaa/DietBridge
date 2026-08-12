@@ -1,10 +1,10 @@
 # DietBridge MVP Execution State
 
 Current Gate:
-MVP-8 — Dashboard Closure
+MVP-9 — Mock / Local Cleanup
 
 Status:
-MVP-8 — COMPLETE (2026-08-12) — real-data operational dashboard closure and independent security review PASS
+MVP-9 — COMPLETE (2026-08-12) — production-reachable mock cleanup and independent security review PASS; MVP-10 may begin
 
 Last Verified Base Commit:
 `1517bd6` (`feat: close MVP-7 subscriptions and client limits`)
@@ -25,6 +25,31 @@ Completed Gates:
 - MVP-6 — COMPLETE (2026-08-11)
 - MVP-7 — COMPLETE (2026-08-12); production migration and controlled provisioning PASS
 - MVP-8 — COMPLETE (2026-08-12); operational dashboard closure and local/runtime/security gates PASS
+- MVP-9 — COMPLETE (2026-08-12); mock/local cleanup, full Web gates and independent diff review PASS
+
+MVP-9 Mock / Local Cleanup:
+- Dedicated branch: `codex/mvp9-mock-cleanup`; base checkpoint `8dea423` (`feat: close MVP-8 dashboard closure`).
+- The active `/notes` route and Sidebar entry were removed because `pages/Notes.tsx` was a local-only seeded/in-memory mock with no persistence. The legacy file remains conservatively present but is no longer production-reachable.
+- Legacy hardcoded client/task/appointment/recipe fixtures were removed from active `shared/constants.ts`. Root legacy copies, historical migrations, tests, scripts, and disposable harnesses were not deleted.
+- `/recipes/:id` now reads the authenticated dietitian-owned canonical `recipes` row, validates the UUID/response, signs only canonical private image paths, and exposes explicit loading/error/not-found states. No legacy catalog fallback remains.
+- Settings now exposes profile navigation, sign-out, and the authoritative subscription overview only. Simulated save/toggles and fake connected integrations were removed.
+- The unused `VITE_ENABLE_MOCK_DATA` flag was removed from the active environment example, type declarations and runtime env object. Supabase env requirements remain fail-closed; chat image flag remains opt-in.
+- Meal-plan `localStorage` remains only a dietitian-scoped last-client UI preference. Fresh active-client data is authoritative; stale/foreign IDs are discarded and plan data remains canonical Supabase state.
+- Audit inventory: `docs/MVP9_MOCK_CLEANUP_AUDIT.md`.
+
+MVP-9 Quality Gates:
+- `npm test` — PASS, 236/236.
+- `npm run typecheck` — PASS.
+- `npm run lint` — PASS, 0 errors / 21 warnings (warnings are existing/legacy lint hygiene; no new error).
+- `npm run build` — PASS; existing >500 kB chunk warning remains non-blocking.
+- `git diff --check` — PASS.
+- Credential-marker scan — PASS, no matches.
+- Independent Codex Security diff review — PASS, 0 reportable findings, 0 P0/P1; 9/9 worklist rows closed and 2 plausible candidates suppressed after validation/attack-path analysis. Scan `bfefbc1a-274c-442b-a029-37c0a1627747`; report: `%TEMP%\\codex-security-scans-3NhOtf\\DietBridge-Web-MVP4\\8dea423504fda8768eac742242a1c1e313a7a37f_20260812T105925Z_egs9kmje\\report.md`.
+- Security scan measured usage: 312,640 total tokens; 26,136,422 input; 25,869,056 cached input; 45,274 output.
+
+MVP-9 Production Boundary:
+- No production database/Auth/Storage/RLS write or migration was performed. No historical migration or hash allowlist was modified.
+- MVP-9 is local-only and ready for its verified checkpoint commit. Next gate is MVP-10 Web/Mobile Shared Contract Closure; do not begin MVP-11 or release/CI work.
 
 MVP-8 Dashboard Closure:
 - The active `/` route now answers “Bugün ne yapmalıyım?” from existing owner-scoped client, appointment and persistent daily-task data. The dashboard does not invent analytics or nutrition values.

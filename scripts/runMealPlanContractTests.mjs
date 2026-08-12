@@ -246,6 +246,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'dashboardClosureContracts.test.cjs'),
   join(repoRoot, 'tests', 'analyticsContracts.test.cjs'),
   join(repoRoot, 'tests', 'subscriptionContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mvp9MockCleanupContracts.test.cjs'),
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]

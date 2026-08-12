@@ -52,6 +52,7 @@ export type RecipeValidationCode =
   | 'INVALID_RECIPE_MACROS'
   | 'INVALID_RECIPE_IMAGE'
   | 'RECIPE_IMAGE_UPLOAD_FAILED'
+  | 'RECIPE_NOT_FOUND'
   | 'INVALID_RECIPE_RESPONSE';
 
 export class RecipeValidationError extends Error {
@@ -200,11 +201,32 @@ const getRecipeImagePreviews = async (imagePaths: Array<string | null>): Promise
   return new Map(results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []));
 };
 
+const RECIPE_SELECT = 'id, dietitian_id, name, description, meal_type, calories, protein, carbs, fat, image_path, created_at, updated_at';
+
+export const fetchRecipe = async (recipeId: string): Promise<Recipe> => {
+  if (!isValidUuid(recipeId)) {
+    throw new RecipeValidationError('INVALID_RECIPE_ID', 'recipe_id');
+  }
+  const dietitianId = await assertAuthenticatedDietitianId();
+  const { data, error } = await supabase
+    .from('recipes')
+    .select(RECIPE_SELECT)
+    .eq('id', recipeId)
+    .eq('dietitian_id', dietitianId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new RecipeValidationError('RECIPE_NOT_FOUND', 'recipe_id');
+  const imagePreview = isCanonicalRecipeImagePath(data.image_path)
+    ? await getRecipeImagePreview(data.image_path).catch(() => null)
+    : null;
+  return mapRecipeRow(data as RecipeRow, dietitianId, imagePreview);
+};
+
 export const fetchRecipes = async (): Promise<Recipe[]> => {
   const dietitianId = await assertAuthenticatedDietitianId();
   const { data, error } = await supabase
     .from('recipes')
-    .select('id, dietitian_id, name, description, meal_type, calories, protein, carbs, fat, image_path, created_at, updated_at')
+    .select(RECIPE_SELECT)
     .eq('dietitian_id', dietitianId)
     .order('created_at', { ascending: false });
   if (error || !Array.isArray(data)) {
@@ -256,7 +278,7 @@ export const createRecipe = async (input: RecipeInput, imageFile?: File | null):
     const { data, error } = await supabase
       .from('recipes')
       .insert(toRecipePayload(dietitianId, normalized, imagePath, recipeId))
-      .select('id, dietitian_id, name, description, meal_type, calories, protein, carbs, fat, image_path, created_at, updated_at')
+      .select(RECIPE_SELECT)
       .single();
     if (error || !data) throw error ?? new RecipeValidationError('INVALID_RECIPE_RESPONSE', 'recipes');
     const imagePreview = imagePath ? await getRecipeImagePreview(imagePath).catch(() => null) : null;
@@ -288,7 +310,7 @@ export const updateRecipe = async (recipeId: string, input: RecipeInput, imageFi
     .update(toRecipePayload(dietitianId, normalized, imagePath))
     .eq('id', recipeId)
     .eq('dietitian_id', dietitianId)
-    .select('id, dietitian_id, name, description, meal_type, calories, protein, carbs, fat, image_path, created_at, updated_at')
+    .select(RECIPE_SELECT)
     .single();
   if (error || !data) {
     if (imagePath) await supabase.storage.from(RECIPE_IMAGE_BUCKET).remove([imagePath]);
@@ -321,6 +343,7 @@ export const deleteRecipe = async (recipeId: string): Promise<void> => {
 export const getRecipeUserMessage = (error: unknown): string => {
   if (error instanceof RecipeValidationError) {
     if (error.code === 'AUTH_REQUIRED') return 'Oturum doğrulanamadı. Lütfen yeniden giriş yapın.';
+    if (error.code === 'RECIPE_NOT_FOUND') return 'Tarif bulunamadı veya bu tarife erişim yetkiniz yok.';
     if (error.code === 'INVALID_RECIPE_NAME') return 'Tarif adı boş olamaz ve en fazla 160 karakter olmalıdır.';
     if (error.code === 'INVALID_RECIPE_DESCRIPTION') return 'Tarif açıklaması en fazla 2000 karakter olabilir.';
     if (error.code === 'INVALID_RECIPE_MEAL_TYPE') return 'Geçerli bir öğün tipi seçin.';
