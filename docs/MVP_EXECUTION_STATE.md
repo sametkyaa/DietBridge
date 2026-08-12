@@ -7,7 +7,7 @@ Status:
 MVP-10 — COMPLETE (2026-08-12) — Web/Mobile shared contract closure, disposable runtime matrix, full quality gates and independent security reviews PASS; STOPPED BEFORE MVP-11
 
 Last Verified Base Commit:
-`1517bd6` (`feat: close MVP-7 subscriptions and client limits`)
+`8917777` (`feat: close MVP-10 shared contract closure`)
 
 MVP-4 Checkpoint:
 This document is included in the verified local MVP-4 checkpoint commit.
@@ -70,7 +70,7 @@ MVP-10 Quality Gates:
 
 MVP-10 Boundary / Stop:
 - MVP-10 implementation and all new harnesses were local/disposable only. No production database/Auth/Storage/RLS write, migration, smoke fixture, secret/Vault/cron mutation, push or merge was performed.
-- Verified local MVP-10 checkpoint commits are created on the Web and disposable Mobile closure branches; exact SHAs are recorded in the final handoff after commit.
+- Verified local MVP-10 checkpoint commits: Web `8917777` (`feat: close MVP-10 shared contract closure`); disposable Mobile `0c3471f` (`feat(mobile): close MVP-10 shared contract closure`). Neither branch was pushed or merged.
 - MVP-10 is complete. Do not start MVP-11, CI/GitHub Actions, release-candidate work, deployment/public launch or post-MVP features without a new explicit user instruction.
 
 MVP-8 Dashboard Closure:
