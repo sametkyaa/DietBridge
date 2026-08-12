@@ -1,13 +1,13 @@
 # DietBridge MVP Execution State
 
 Current Gate:
-MVP-7 — Subscription / Plans / Client Limits
+MVP-8 — Dashboard Closure
 
 Status:
-MVP-7 — COMPLETE (2026-08-12) — exact production migration, controlled Core provisioning, and safe smoke PASS
+MVP-8 — COMPLETE (2026-08-12) — real-data operational dashboard closure and independent security review PASS
 
 Last Verified Base Commit:
-`3308ab6` (`feat: persist dashboard daily tasks`)
+`1517bd6` (`feat: close MVP-7 subscriptions and client limits`)
 
 MVP-4 Checkpoint:
 This document is included in the verified local MVP-4 checkpoint commit.
@@ -24,6 +24,26 @@ Completed Gates:
 - MVP-5 — COMPLETE (2026-08-11)
 - MVP-6 — COMPLETE (2026-08-11)
 - MVP-7 — COMPLETE (2026-08-12); production migration and controlled provisioning PASS
+- MVP-8 — COMPLETE (2026-08-12); operational dashboard closure and local/runtime/security gates PASS
+
+MVP-8 Dashboard Closure:
+- The active `/` route now answers “Bugün ne yapmalıyım?” from existing owner-scoped client, appointment and persistent daily-task data. The dashboard does not invent analytics or nutrition values.
+- `features/dashboard/utils/dashboardContract.ts` is the pure canonical summary layer: active/pending client counts, non-cancelled today's appointment count, overdue task count and today's task count. Focus messaging prioritizes overdue tasks, then today's tasks, then appointments.
+- Dashboard loading, error and success states remain distinct. Client load failure clears stale client data; appointment/task failures show a safe incomplete summary and retry paths rather than fabricated counts.
+- Quick actions target existing `/appointments`, `/clients`, `/meal-plans` and `/messages` routes. Overdue/today task actions focus the persistent task section and the empty state offers the existing task creation flow.
+- The static weekly `%82`, `2.1 Lt`, `1850 kcal` and hardcoded AI summary cards were removed from the operational dashboard. Analytics remains a separate real-data route and was not rewritten.
+- No schema, migration, RLS, Auth, Storage or production-data change was created for MVP-8.
+
+MVP-8 Quality Gates:
+- `npm test` — PASS, 231/231.
+- `npm run typecheck` — PASS.
+- `npm run lint` — PASS, 0 errors and 26 existing warnings.
+- `npm run build` — PASS; output 912.32 kB JS bundle and existing >500 kB chunk warning remain non-critical.
+- `npm run test:appointments:runtime` — PASS; loopback disposable actor/tenant matrix and zero appointment/relationship/subscription/temp/Docker residue.
+- `npm run test:daily-tasks:runtime` — PASS; loopback disposable actor/tenant matrix, explicit disposable Core bootstrap, and zero task/relationship/subscription/Auth/temp/Docker residue.
+- `git diff --check` — PASS.
+- Independent Codex Security diff review — PASS, 0 reportable findings, 6/6 reviewed surfaces closed; report scan `84d1b4d9-eb92-4c3e-b0e9-8f7f4a52cbd8`.
+- Measured security scan usage: 680,525 total tokens; 37,871,143 input, 139,558 output, 37,330,176 cached input.
 
 MVP-7 Local Verdict:
 - Canonical, provider-neutral subscription/plan state plus server-side dietitian client-limit enforcement. No payment provider was selected or integrated; checkout/webhook/provider work is classified as separate post-MVP scope per MVP-7.3.
@@ -83,6 +103,10 @@ MVP-7 Production Gate:
 - Exact production smoke PASS within approved limits; no customer data or unsafe fixture mutation was used.
 - Rollback/corrective: the migration is additive; corrective forward-only migration can drop the new trigger/functions/tables if required. No historical migration is mutated.
 - Production writes were limited to the approved exact migration and the single approved persistent Core subscription row. No unrelated production mutation occurred.
+
+MVP-8 Local/Production Boundary:
+- MVP-8 implementation and all new runtime checks were local/disposable only. No production write, migration, Auth mutation, Storage mutation, RLS change or remote Supabase RPC was performed after the approved MVP-7 metadata repair.
+- The disposable appointment and daily-task harnesses provision Core only after loopback URL, `dietitian` role, explicit disposable marker, `@example.invalid` identity, profile and approved verification checks pass. Production/customer identities are not eligible for this path.
 
 MVP-6 Local Verdict:
 - The active `/analytics` route now reads real Supabase-backed analytics data; the legacy `CLIENTS` mock, fake loading delay, hardcoded KPI/chart/activity/risk content and inert AI/export actions are absent from the active chain.
@@ -244,19 +268,19 @@ npm Audit Triage (2026-08-11):
 - These findings are not MVP-4 P0/P1 or current data-integrity blockers; dependency updates remain a separate controlled task.
 
 Repository Branch:
-`codex/subscriptions`
+`codex/mvp8-dashboard-closure`
 
 Working Tree:
-Contains the uncommitted MVP-7 correction files on `codex/subscriptions`; nothing has been pushed, merged, rebased, or committed by this closure task. A disposable verification snapshot was used for the final full-suite gates and was not retained.
+MVP-7 checkpoint `1517bd6` is the verified base for this branch. MVP-8 changes are ready for the local checkpoint commit; nothing has been pushed, merged, rebased or force-updated. Disposable verification stacks and test fixtures were cleaned.
 
 Production Mutation Allowed:
 APPROVED SCOPE EXECUTED; no further production mutation authorized by this task.
 
 Current Blocker:
-- None for MVP-7. Production schema/content and migration history are synchronized after the explicitly approved metadata-only repair.
+- None. MVP-7 production schema/content and migration history are synchronized after the explicitly approved metadata-only repair; MVP-8 local closure gates are PASS.
 
 Next Action:
-Create the verified local MVP-7 checkpoint commit, verify a clean tree, then begin MVP-8 Dashboard Closure. Do not push or merge.
+Create the verified local MVP-8 checkpoint commit, verify a clean tree, then hold at MVP-8. Do not push or merge, and do not begin MVP-9 in this task.
 
 Human Approval Required:
 The attached MVP-7 production apply + controlled Core provisioning approval and the subsequent explicit metadata-only migration-history repair approval were consumed within their exact scopes. No further production mutation is authorized here.

@@ -1,16 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { 
   CheckCircle2, 
   MoreHorizontal, 
-  Bell, 
   Search, 
-  TrendingUp, 
-  Droplets, 
-  Flame, 
   ChevronRight, 
-  ArrowUpRight, 
   Calendar, 
-  Sparkles,
+  ClipboardList,
+  MessageCircle,
   X,
   Plus,
   User,
@@ -30,6 +26,7 @@ import { Client } from '../../../shared/types';
 import { useDailyTasks } from '../hooks/useDailyTasks';
 import type { DailyTask, DailyTaskDraft, DailyTaskGroups } from '../types/dailyTask';
 import { getIstanbulDateKey, getPendingDailyTaskGroup } from '../utils/dailyTaskContract';
+import { getDashboardFocusMessage, summarizeDashboard } from '../utils/dashboardContract';
 
 type TaskFilter = keyof DailyTaskGroups;
 
@@ -98,23 +95,28 @@ const DashboardPage = () => {
   
   // Get today's appointments dynamically
   const today = getLocalDateKey();
-  const todaysAppointments = getAppointmentsByDate(today);
+  const todaysAppointments = getAppointmentsByDate(today)
+    .filter((appointment) => appointment.status !== 'cancelled');
 
   // Fetch Clients
-  useEffect(() => {
-    const loadClients = async () => {
-      try {
-        const data = await fetchDietitianClients();
-        setClients(data);
-      } catch (error) {
-        console.error('Failed to fetch clients:', error);
-        setClientLoadError(true);
-      } finally {
-        setLoadingClients(false);
-      }
-    };
-    loadClients();
+  const loadClients = useCallback(async () => {
+    setLoadingClients(true);
+    setClientLoadError(false);
+    try {
+      const data = await fetchDietitianClients();
+      setClients(data);
+    } catch (error) {
+      console.error('Failed to fetch clients:', error);
+      setClients([]);
+      setClientLoadError(true);
+    } finally {
+      setLoadingClients(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadClients();
+  }, [loadClients]);
 
   const openCreateTaskModal = () => {
     taskDialogOpenerRef.current = taskMenuButtonRef.current;
@@ -165,6 +167,24 @@ const DashboardPage = () => {
 
   const activeTaskClients = clients.filter((client) => client.status === 'Aktif');
   const visibleTasks = taskGroups[taskFilter];
+  const dashboardSummary = summarizeDashboard({
+    clients,
+    todayAppointments: todaysAppointments,
+    tasks: taskGroups,
+  });
+  const clientSummaryReady = !loadingClients && !clientLoadError;
+  const appointmentsSummaryReady = !appointmentsLoading && !appointmentsError;
+  const tasksSummaryReady = taskViewState.status === 'success';
+  const dashboardFocusMessage = clientLoadError || appointmentsError || taskViewState.status === 'error'
+    ? 'Bugünün özeti şu anda tamamlanamadı. Verileri tekrar deneyin.'
+    : !clientSummaryReady || !appointmentsSummaryReady || !tasksSummaryReady
+      ? 'Bugünün özeti yükleniyor...'
+      : getDashboardFocusMessage(dashboardSummary);
+
+  const focusTasks = (filter: 'overdue' | 'today') => {
+    setTaskFilter(filter);
+    document.getElementById('daily-tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   // Close search dropdowns when clicking outside
   useEffect(() => {
@@ -280,10 +300,6 @@ const DashboardPage = () => {
             )}
           </div>
 
-          <button className="relative p-2.5 rounded-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-          </button>
           <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
             <DietitianAvatar
               alt="Profil"
@@ -293,13 +309,63 @@ const DashboardPage = () => {
         </div>
       </header>
 
+      {/* Operational summary */}
+      <section aria-labelledby="dashboard-summary-title" className="mb-8 space-y-4">
+        <div className="flex flex-col gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-primary">Bugünün odağı</p>
+            <h2 id="dashboard-summary-title" className="mt-1 text-lg font-bold text-slate-800">{dashboardFocusMessage}</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {dashboardSummary.overdueTaskCount > 0 && (
+              <button type="button" onClick={() => focusTasks('overdue')} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-rose-600 shadow-sm ring-1 ring-rose-100 hover:bg-rose-50">
+                Geciken görevleri aç
+              </button>
+            )}
+            {dashboardSummary.todayTaskCount > 0 && (
+              <button type="button" onClick={() => focusTasks('today')} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-primary shadow-sm ring-1 ring-primary/15 hover:bg-primary/5">
+                Bugünkü görevleri aç
+              </button>
+            )}
+            {dashboardSummary.overdueTaskCount === 0 && dashboardSummary.todayTaskCount === 0 && (
+              <button type="button" onClick={openCreateTaskModal} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-primary-dark">
+                Görev ekle
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <button type="button" onClick={() => navigate('/clients')} className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/5">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Aktif danışan</p>
+            <p className="mt-2 text-2xl font-bold text-slate-800">{clientSummaryReady ? dashboardSummary.activeClientCount : '—'}</p>
+            <p className="mt-1 text-xs text-slate-500">{clientLoadError ? 'Veri yüklenemedi' : clientSummaryReady ? `${dashboardSummary.pendingClientCount} onay bekliyor` : 'Yükleniyor...'}</p>
+          </button>
+          <button type="button" onClick={() => navigate('/appointments')} className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/5">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Bugünkü randevu</p>
+            <p className="mt-2 text-2xl font-bold text-slate-800">{appointmentsSummaryReady ? dashboardSummary.todayAppointmentCount : '—'}</p>
+            <p className="mt-1 text-xs text-slate-500">{appointmentsError ? 'Veri yüklenemedi' : appointmentsSummaryReady ? 'Randevu takvimini aç' : 'Yükleniyor...'}</p>
+          </button>
+          <button type="button" onClick={() => focusTasks('overdue')} className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-rose-200 hover:bg-rose-50">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Geciken görev</p>
+            <p className="mt-2 text-2xl font-bold text-slate-800">{tasksSummaryReady ? dashboardSummary.overdueTaskCount : '—'}</p>
+            <p className="mt-1 text-xs text-slate-500">{taskViewState.status === 'error' ? 'Veri yüklenemedi' : tasksSummaryReady ? 'Öncelikli iş listesi' : 'Yükleniyor...'}</p>
+          </button>
+          <button type="button" onClick={() => focusTasks('today')} className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/5">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Bugünün görevi</p>
+            <p className="mt-2 text-2xl font-bold text-slate-800">{tasksSummaryReady ? dashboardSummary.todayTaskCount : '—'}</p>
+            <p className="mt-1 text-xs text-slate-500">{taskViewState.status === 'error' ? 'Veri yüklenemedi' : tasksSummaryReady ? 'Bugünkü iş listesi' : 'Yükleniyor...'}</p>
+          </button>
+        </div>
+      </section>
+
       {/* Main Grid */}
       <div className="grid grid-cols-12 gap-8">
         {/* Left Column */}
         <div className="col-span-12 lg:col-span-8 space-y-8">
           
           {/* Persistent Daily Tasks */}
-          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <section id="daily-tasks" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">Günlük Görevler</h3>
@@ -421,115 +487,33 @@ const DashboardPage = () => {
             </div>
           </section>
 
-          {/* Weekly Analysis Redesigned */}
-          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
-            <div className="flex justify-between items-center mb-6 relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-50 rounded-lg">
-                   <TrendingUp className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                   <h3 className="text-lg font-bold text-slate-800">Haftalık Analiz</h3>
-                   <p className="text-xs text-slate-500 font-medium">Genel performans özeti</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => navigate('/analytics')}
-                className="text-xs font-bold text-slate-400 hover:text-primary transition-colors flex items-center gap-1"
-              >
-                 Detaylar <ChevronRight className="w-4 h-4" />
+          {/* Quick actions */}
+          <section aria-labelledby="quick-actions-title" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div className="mb-5">
+              <h3 id="quick-actions-title" className="text-xl font-bold text-slate-800">Hızlı işlemler</h3>
+              <p className="mt-1 text-xs text-slate-500">Bugünkü iş akışınıza doğrudan geçin.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <button type="button" onClick={() => navigate('/appointments')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
+                <Calendar className="h-5 w-5 text-primary" aria-hidden="true" />
+                <span className="flex-1 text-sm font-bold text-slate-700">Randevu ekle / düzenle</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
               </button>
-            </div>
-            
-            <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 relative z-10">
-              {/* Left Column: Score & Trend */}
-              <div className="flex-1 flex flex-col justify-between min-w-[200px]">
-                 <div>
-                   <div className="flex items-end gap-3 mb-1">
-                      <span className="text-4xl font-bold text-slate-800 tracking-tight">%82</span>
-                      <span className="mb-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-600 text-[10px] font-bold flex items-center gap-1">
-                        <ArrowUpRight className="w-3 h-3" /> %4 Artış
-                      </span>
-                   </div>
-                   <p className="text-xs text-slate-400 font-medium">Haftalık Uyum Skoru</p>
-                 </div>
-
-                 {/* Custom Sparkline Chart */}
-                 <div className="h-16 w-full mt-4 relative group">
-                    <svg viewBox="0 0 120 40" className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                       {/* Gradient Def */}
-                       <defs>
-                         <linearGradient id="sparklineGradient" x1="0" x2="0" y1="0" y2="1">
-                           <stop offset="0%" stopColor="#10B981" stopOpacity="0.2" />
-                           <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-                         </linearGradient>
-                       </defs>
-                       {/* Area */}
-                       <path d="M0 30 Q 20 35, 40 20 T 80 15 T 120 5 L 120 40 L 0 40 Z" fill="url(#sparklineGradient)" stroke="none" />
-                       {/* Line */}
-                       <path d="M0 30 Q 20 35, 40 20 T 80 15 T 120 5" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                       {/* Points on hover (simulated) */}
-                       <circle cx="120" cy="5" r="3" fill="#10B981" stroke="white" strokeWidth="2" />
-                    </svg>
-                    <div className="absolute top-0 right-0 -mt-6 bg-slate-800 text-white text-[10px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                       Bugün
-                    </div>
-                 </div>
-              </div>
-
-              {/* Vertical Divider (Desktop) */}
-              <div className="hidden lg:block w-px bg-slate-100 mx-2"></div>
-
-              {/* Right Column: Key Insights */}
-              <div className="flex-[1.5] grid grid-cols-2 gap-3">
-                  {/* Macro Insight */}
-                  <div className="col-span-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                     <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Makro Ortalaması</span>
-                        <span className="text-[10px] font-bold text-emerald-600 bg-white px-1.5 py-0.5 rounded border border-emerald-100 shadow-sm">İdeal</span>
-                     </div>
-                     <div className="flex h-2 w-full rounded-full overflow-hidden gap-0.5 mb-2">
-                        <div className="bg-blue-400 w-[35%]"></div>
-                        <div className="bg-orange-400 w-[45%]"></div>
-                        <div className="bg-yellow-400 w-[20%]"></div>
-                     </div>
-                     <div className="flex justify-between text-[10px] text-slate-400 font-medium">
-                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> 75g Prot</span>
-                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div> 180g Karb</span>
-                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div> 55g Yağ</span>
-                     </div>
-                  </div>
-
-                  {/* Water Insight */}
-                  <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 flex flex-col justify-between">
-                     <div className="flex items-center gap-1.5 mb-1 text-blue-600/80">
-                        <Droplets className="w-3.5 h-3.5" />
-                        <span className="text-[10px] font-bold uppercase">Su</span>
-                     </div>
-                     <p className="text-sm font-bold text-slate-700">2.1 Lt <span className="text-[10px] font-normal text-slate-400">/ 2.5</span></p>
-                  </div>
-
-                  {/* Calories Insight */}
-                  <div className="bg-orange-50/50 p-3 rounded-xl border border-orange-100 flex flex-col justify-between">
-                     <div className="flex items-center gap-1.5 mb-1 text-orange-600/80">
-                        <Flame className="w-3.5 h-3.5" />
-                        <span className="text-[10px] font-bold uppercase">Kalori</span>
-                     </div>
-                     <p className="text-sm font-bold text-slate-700">1850 <span className="text-[10px] font-normal text-slate-400">kcal</span></p>
-                  </div>
-              </div>
-            </div>
-
-            {/* AI Summary Footer */}
-            <div className="mt-5 pt-4 border-t border-slate-100">
-               <div className="flex items-start gap-3">
-                  <div className="mt-0.5 p-1 rounded-md bg-indigo-50 text-indigo-500 shrink-0">
-                     <Sparkles className="w-3.5 h-3.5" />
-                  </div>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                     <span className="font-bold text-slate-700">Haftalık Özet:</span> Protein alımı hedefin üzerinde ve istikrarlı. Cuma günü öğün atlama oranı yüksekti, hafta sonu su tüketimi artırılmalı.
-                  </p>
-               </div>
+              <button type="button" onClick={() => navigate('/clients')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
+                <User className="h-5 w-5 text-primary" aria-hidden="true" />
+                <span className="flex-1 text-sm font-bold text-slate-700">Danışanları yönet</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => navigate('/meal-plans')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
+                <ClipboardList className="h-5 w-5 text-primary" aria-hidden="true" />
+                <span className="flex-1 text-sm font-bold text-slate-700">Beslenme planlarını aç</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => navigate('/messages')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
+                <MessageCircle className="h-5 w-5 text-primary" aria-hidden="true" />
+                <span className="flex-1 text-sm font-bold text-slate-700">Mesajlara git</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
+              </button>
             </div>
           </section>
         </div>

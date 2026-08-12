@@ -87,12 +87,17 @@ const createActor = async (label, role) => {
     email,
     password: PASSWORD,
     email_confirm: true,
-    user_metadata: { account_type: role, role, full_name: `Disposable ${label}` },
+    user_metadata: {
+      account_type: role,
+      role,
+      full_name: `Disposable ${label}`,
+      mvp7_harness: 'disposable-test-identity',
+    },
   });
   const user = assertNoError(result, `${label} auth fixture`);
   assert(user.user?.id, `${label.toUpperCase()}_AUTH_CREATED`);
   actorIds.push(user.user.id);
-  return { id: user.user.id, email, label };
+  return { id: user.user.id, email, label, role, disposableTestIdentity: true };
 };
 
 const actorClient = async (actor) => {
@@ -116,6 +121,57 @@ const verifyDietitian = async (actor, verificationStatus) => {
   }).eq('user_id', actor.id).select('user_id,verification_status,is_verified').single();
   const row = assertNoError(result, `${actor.label} verification fixture`);
   assert(row.verification_status === verificationStatus, `${actor.label.toUpperCase()}_${verificationStatus.toUpperCase()}_FIXTURE`);
+};
+
+const bootstrapDisposableCore = async (dietitian) => {
+  assert(
+    local.API_URL.startsWith('http://127.0.0.1:') || local.API_URL.startsWith('http://localhost:'),
+    'DISPOSABLE_BOOTSTRAP_LOOPBACK_ONLY',
+  );
+  assert(
+    dietitian.role === 'dietitian'
+      && dietitian.disposableTestIdentity === true
+      && dietitian.email.endsWith('@example.invalid'),
+    'DISPOSABLE_BOOTSTRAP_IDENTITY_EXPLICITLY_VERIFIED',
+    dietitian.email,
+  );
+  const user = assertNoError(
+    await admin.auth.admin.getUserById(dietitian.id),
+    `${dietitian.label} bootstrap Auth identity read`,
+  );
+  assert(
+    user.user?.user_metadata?.mvp7_harness === 'disposable-test-identity',
+    'DISPOSABLE_BOOTSTRAP_METADATA_VERIFIED',
+    dietitian.email,
+  );
+  const profile = assertNoError(
+    await admin.from('profiles').select('id,role').eq('id', dietitian.id).single(),
+    `${dietitian.label} bootstrap profile read`,
+  );
+  const dietitianProfile = assertNoError(
+    await admin.from('dietitian_profiles')
+      .select('user_id,verification_status,is_verified')
+      .eq('user_id', dietitian.id)
+      .single(),
+    `${dietitian.label} bootstrap dietitian profile read`,
+  );
+  assert(
+    profile.role === 'dietitian'
+      && dietitianProfile.verification_status === 'approved'
+      && dietitianProfile.is_verified === true,
+    'DISPOSABLE_BOOTSTRAP_APPROVED_DIETITIAN_VERIFIED',
+    dietitian.email,
+  );
+  assertNoError(
+    await admin.from('dietitian_subscriptions').upsert({
+      dietitian_id: dietitian.id,
+      plan_id: 'core',
+      status: 'active',
+      client_limit_override: null,
+    }).select('dietitian_id').single(),
+    `${dietitian.label} disposable Core bootstrap`,
+  );
+  pass('DISPOSABLE_TEST_CORE_BOOTSTRAP', dietitian.email);
 };
 
 const activateRelationship = async (dietitian, client) => {
@@ -231,6 +287,8 @@ try {
   const clientB = await createActor('client-b', 'client');
   await verifyDietitian(approvedA, 'approved');
   await verifyDietitian(approvedB, 'approved');
+  await bootstrapDisposableCore(approvedA);
+  await bootstrapDisposableCore(approvedB);
   await verifyDietitian(rejected, 'rejected');
   const relationshipA = await activateRelationship(approvedA, clientA);
   await activateRelationship(approvedB, clientB);
@@ -376,6 +434,7 @@ try {
     try {
       if (appointmentIds.length) await admin.from('appointments').delete().in('id', appointmentIds);
       if (relationshipIds.length) await admin.from('dietitian_clients').delete().in('id', relationshipIds);
+      if (actorIds.length) await admin.from('dietitian_subscriptions').delete().in('dietitian_id', actorIds);
       for (const id of [...actorIds].reverse()) await admin.auth.admin.deleteUser(id);
       const appointmentResidue = appointmentIds.length
         ? assertNoError(await admin.from('appointments').select('id').in('id', appointmentIds), 'appointment residue check').length
@@ -385,6 +444,10 @@ try {
         : 0;
       assert(appointmentResidue === 0, 'TEMPORARY_APPOINTMENTS_ZERO');
       assert(relationshipResidue === 0, 'TEMPORARY_RELATIONSHIPS_ZERO');
+      const subscriptionResidue = actorIds.length
+        ? assertNoError(await admin.from('dietitian_subscriptions').select('dietitian_id').in('dietitian_id', actorIds), 'subscription residue check').length
+        : 0;
+      assert(subscriptionResidue === 0, 'TEMPORARY_SUBSCRIPTIONS_ZERO');
       pass('CLEANUP_QUEUE_RESIDUE_ZERO', 'appointment harness creates no queue rows');
     } catch (cleanupError) {
       if (mainError) mainError.message += `; fixture cleanup failed: ${cleanupError.message}`;

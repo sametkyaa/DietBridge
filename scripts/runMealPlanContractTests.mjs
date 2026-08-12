@@ -74,6 +74,7 @@ const SOURCES = [
   'features/appointments/services/appointmentService.ts',
   'features/dashboard/types/dailyTask.ts',
   'features/dashboard/utils/dailyTaskContract.ts',
+  'features/dashboard/utils/dashboardContract.ts',
   'features/dashboard/services/dailyTaskService.ts',
   'features/analytics/types/analytics.ts',
   'features/analytics/utils/analyticsContract.ts',
@@ -109,6 +110,7 @@ const EXPECTED_OUTPUTS = [
   'features/appointments/services/appointmentService.js',
   'features/dashboard/types/dailyTask.js',
   'features/dashboard/utils/dailyTaskContract.js',
+  'features/dashboard/utils/dashboardContract.js',
   'features/dashboard/services/dailyTaskService.js',
   'features/analytics/types/analytics.js',
   'features/analytics/utils/analyticsContract.js',
@@ -241,6 +243,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'measurementContracts.test.cjs'),
   join(repoRoot, 'tests', 'appointmentContracts.test.cjs'),
   join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs'),
+  join(repoRoot, 'tests', 'dashboardClosureContracts.test.cjs'),
   join(repoRoot, 'tests', 'analyticsContracts.test.cjs'),
   join(repoRoot, 'tests', 'subscriptionContracts.test.cjs'),
 ];
