@@ -84,6 +84,26 @@ test('subscription mapper clamps negatives and non-finite values', () => {
   assert.equal(overview.limitReached, false);
 });
 
+test('subscription mapper does not fabricate an active plan for a missing row', () => {
+  const overview = service.mapSubscriptionOverviewRow({
+    plan_id: null,
+    plan_name: null,
+    subscription_status: null,
+    plan_limit: null,
+    effective_limit: 0,
+    active_count: 0,
+    pending_count: 0,
+    used: 0,
+    remaining: 0,
+    limit_reached: true,
+  });
+  assert.equal(overview.planId, 'unknown');
+  assert.equal(overview.planName, 'Plan bilgisi yok');
+  assert.equal(overview.status, 'no_subscription');
+  assert.equal(overview.effectiveLimit, 0);
+  assert.equal(overview.limitReached, true);
+});
+
 test('fetchSubscriptionOverview fails closed on RPC error', async () => {
   stub.__setRpcHandler(async () => ({ data: null, error: { message: 'boom' } }));
   const result = await service.fetchSubscriptionOverview();
@@ -133,17 +153,26 @@ test('migration defines the canonical plan catalog with authoritative limits', (
 
 test('migration represents Scale above-50 capacity with a bounded account override', () => {
   assert.match(MIGRATION, /client_limit_override integer/);
-  assert.match(MIGRATION, /client_limit_override is null or client_limit_override >= 0/);
+  assert.match(MIGRATION, /client_limit_override is null[\s\S]*?plan_id = 'scale'[\s\S]*?client_limit_override > 50/);
   assert.match(MIGRATION, /return coalesce\(v_override, v_limit\);/);
   assert.match(MIGRATION, /client_limit integer not null/);
   assert.doesNotMatch(MIGRATION, /client_limit\s+text/i);
 });
 
-test('migration preserves existing dietitian access with Core backfill and fallback', () => {
-  assert.match(MIGRATION, /insert into public\.dietitian_subscriptions \(dietitian_id, plan_id, status\)/);
-  assert.match(MIGRATION, /select dp\.user_id, 'core', 'active'/);
-  assert.match(MIGRATION, /where sp\.id = 'core'/);
-  assert.match(MIGRATION, /where not exists \([\s\S]*?dietitian_subscriptions/);
+test('migration keeps a missing subscription row at zero entitlement', () => {
+  assert.doesNotMatch(MIGRATION, /insert into public\.dietitian_subscriptions \(dietitian_id, plan_id, status\)/);
+  assert.match(MIGRATION, /if not found then[\s\S]*?There is no Free plan[\s\S]*?return 0;/);
+  assert.match(MIGRATION, /No subscription row is a real, non-entitled state/);
+  assert.match(MIGRATION, /v_status := null/);
+  assert.match(MIGRATION, /v_plan_id := null/);
+});
+
+test('controlled Core bootstrap is local harness responsibility, not migration entitlement', () => {
+  const harness = read('scripts/runDisposableSubscriptionRuntimeHarness.mjs');
+  assert.match(harness, /DISPOSABLE_BOOTSTRAP_LOOPBACK_ONLY/);
+  assert.match(harness, /mvp7_harness: 'disposable-test-identity'/);
+  assert.match(harness, /await setPlan\(dietitian, 'core', 'active'\)/);
+  assert.doesNotMatch(MIGRATION, /EXISTING_DIETITIAN_BACKFILLED_TO_CORE/);
 });
 
 test('migration enforces client capacity with a fail-closed trigger', () => {
@@ -158,6 +187,7 @@ test('effective-limit helper fails closed for inactive or unknown plan state', (
   assert.match(MIGRATION, /v_status not in \('active', 'trialing'\)[\s\S]*?return 0;/);
   // Unknown/inactive plan returns 0.
   assert.match(MIGRATION, /v_plan_active is distinct from true or v_limit is null[\s\S]*?return 0;/);
+  assert.match(MIGRATION, /plan_id text not null references public\.subscription_plans\(id\)/);
 });
 
 test('capacity enforcement is serialized with a per-dietitian advisory lock', () => {

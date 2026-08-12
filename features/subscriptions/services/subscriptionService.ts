@@ -49,7 +49,7 @@ export const mapSubscriptionOverviewRow = (
   return {
     planId: row.plan_id ?? 'unknown',
     planName: row.plan_name ?? row.plan_id ?? 'Plan bilgisi yok',
-    status: row.subscription_status ?? 'active',
+    status: row.subscription_status ?? 'no_subscription',
     planLimit: toNullableInt(row.plan_limit),
     effectiveLimit,
     activeCount,

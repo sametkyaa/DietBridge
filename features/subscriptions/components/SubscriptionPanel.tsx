@@ -9,6 +9,7 @@ const STATUS_LABELS: Record<string, string> = {
   past_due: 'Ödeme bekliyor',
   canceled: 'İptal edildi',
   inactive: 'Pasif',
+  no_subscription: 'Abonelik yok',
 };
 
 const statusLabel = (status: string): string => STATUS_LABELS[status] ?? status;

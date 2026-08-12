@@ -102,11 +102,16 @@ const createActor = async (label, role) => {
     email,
     password: PASSWORD,
     email_confirm: true,
-    user_metadata: { account_type: role, role, full_name: `Disposable ${label}` },
+    user_metadata: {
+      account_type: role,
+      role,
+      full_name: `Disposable ${label}`,
+      mvp7_harness: 'disposable-test-identity',
+    },
   }), `${label} auth fixture`);
   assert(data.user?.id, `${label.toUpperCase()}_AUTH_CREATED`);
   actorIds.push(data.user.id);
-  return { id: data.user.id, email, label };
+  return { id: data.user.id, email, label, role, disposableTestIdentity: true };
 };
 
 const actorClient = async (actor) => {
@@ -137,6 +142,49 @@ const setPlan = async (dietitian, planId, subStatus = 'active', clientLimitOverr
   };
   assertNoError(await admin.from('dietitian_subscriptions').upsert(payload)
     .select('dietitian_id').single(), `${dietitian.label} plan ${planId}/${subStatus}`);
+};
+
+const bootstrapDisposableCore = async (dietitian) => {
+  assert(
+    local.API_URL.startsWith('http://127.0.0.1:') || local.API_URL.startsWith('http://localhost:'),
+    'DISPOSABLE_BOOTSTRAP_LOOPBACK_ONLY',
+  );
+  assert(
+    dietitian.role === 'dietitian'
+      && dietitian.disposableTestIdentity === true
+      && dietitian.email.endsWith('@example.invalid'),
+    'DISPOSABLE_BOOTSTRAP_IDENTITY_EXPLICITLY_VERIFIED',
+    dietitian.email,
+  );
+  const user = assertNoError(
+    await admin.auth.admin.getUserById(dietitian.id),
+    `${dietitian.label} bootstrap Auth identity read`,
+  );
+  assert(
+    user.user?.user_metadata?.mvp7_harness === 'disposable-test-identity',
+    'DISPOSABLE_BOOTSTRAP_METADATA_VERIFIED',
+    dietitian.email,
+  );
+  const profile = assertNoError(
+    await admin.from('profiles').select('id,role').eq('id', dietitian.id).single(),
+    `${dietitian.label} bootstrap profile read`,
+  );
+  const dietitianProfile = assertNoError(
+    await admin.from('dietitian_profiles')
+      .select('user_id,verification_status,is_verified')
+      .eq('user_id', dietitian.id)
+      .single(),
+    `${dietitian.label} bootstrap dietitian profile read`,
+  );
+  assert(
+    profile.role === 'dietitian'
+      && dietitianProfile.verification_status === 'approved'
+      && dietitianProfile.is_verified === true,
+    'DISPOSABLE_BOOTSTRAP_APPROVED_DIETITIAN_VERIFIED',
+    dietitian.email,
+  );
+  await setPlan(dietitian, 'core', 'active');
+  pass('DISPOSABLE_TEST_CORE_BOOTSTRAP', dietitian.email);
 };
 
 const seedRelationship = async (dietitian, client, status = 'active') => {
@@ -192,28 +240,20 @@ try {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
-  // Create one legacy dietitian before MVP-7 is applied. The migration must
-  // backfill this pre-existing profile with Core/active so the new gate cannot
-  // accidentally strand an existing user at a zero limit.
+  // Create one pre-existing dietitian before MVP-7 is applied. The migration
+  // must not create a commercial entitlement for this existing identity.
   const legacyDiet = await createActor('legacy-dietitian', 'dietitian');
   await verifyDietitian(legacyDiet, 'approved');
   renameSync(deferredMvp7MigrationPath, mvp7MigrationPath);
   cli(['migration', 'up', '--local']);
   pass('DISPOSABLE_MIGRATION_REPLAY');
-  const legacySubscription = assertNoError(
+  const legacySubscriptions = assertNoError(
     await admin.from('dietitian_subscriptions')
       .select('dietitian_id,plan_id,status,client_limit_override')
-      .eq('dietitian_id', legacyDiet.id)
-      .single(),
-    'legacy subscription backfill read',
+      .eq('dietitian_id', legacyDiet.id),
+    'legacy subscription absence read',
   );
-  assert(
-    legacySubscription.plan_id === 'core'
-      && legacySubscription.status === 'active'
-      && legacySubscription.client_limit_override === null,
-    'EXISTING_DIETITIAN_BACKFILLED_TO_CORE',
-    JSON.stringify(legacySubscription),
-  );
+  assert(legacySubscriptions.length === 0, 'EXISTING_DIETITIAN_NOT_AUTO_ENTITLED');
 
   const plans = assertNoError(await admin.from('subscription_plans').select('id,client_limit,is_active').order('sort_order'), 'plan catalog read');
   const planLimit = Object.fromEntries(plans.map((p) => [p.id, p.client_limit]));
@@ -229,6 +269,22 @@ try {
     JSON.stringify(planLimit),
   );
 
+  const nonScaleOverride = await admin.from('dietitian_subscriptions').upsert({
+    dietitian_id: legacyDiet.id,
+    plan_id: 'core',
+    status: 'active',
+    client_limit_override: 51,
+  }).select('dietitian_id').single();
+  assert(Boolean(nonScaleOverride.error), 'NON_SCALE_OVERRIDE_REJECTED', nonScaleOverride.error?.message ?? 'no error');
+
+  const nonAbove50ScaleOverride = await admin.from('dietitian_subscriptions').upsert({
+    dietitian_id: legacyDiet.id,
+    plan_id: 'scale',
+    status: 'active',
+    client_limit_override: 50,
+  }).select('dietitian_id').single();
+  assert(Boolean(nonAbove50ScaleOverride.error), 'SCALE_BASE_OVERRIDE_REJECTED', nonAbove50ScaleOverride.error?.message ?? 'no error');
+
   const dietA = await createActor('dietitian-a', 'dietitian');
   const dietB = await createActor('dietitian-b', 'dietitian');
   const pendingDiet = await createActor('pending-dietitian', 'dietitian');
@@ -242,6 +298,51 @@ try {
   const apiA = await actorClient(dietA);
   const apiB = await actorClient(dietB);
   const anon = anonymousClient();
+
+  // Only explicitly identified disposable test dietitians receive a local
+  // Core bootstrap. The migration itself never creates this entitlement.
+  await bootstrapDisposableCore(dietA);
+  await bootstrapDisposableCore(dietB);
+
+  const legacyApi = await actorClient(legacyDiet);
+  const noSubscriptionOverview = assertNoError(
+    await legacyApi.rpc('get_dietitian_subscription_overview'),
+    'no-subscription overview',
+  );
+  assert(
+    noSubscriptionOverview[0].plan_id === null
+      && noSubscriptionOverview[0].plan_name === null
+      && noSubscriptionOverview[0].subscription_status === null
+      && noSubscriptionOverview[0].effective_limit === 0
+      && noSubscriptionOverview[0].limit_reached === true,
+    'NO_SUBSCRIPTION_IS_ZERO_LIMIT',
+    JSON.stringify(noSubscriptionOverview[0]),
+  );
+  const noSubscriptionRequest = assertNoError(
+    await legacyApi.rpc('request_client_connection_by_email', { p_email: clients[0].email }),
+    'no-subscription add request',
+  );
+  assert(noSubscriptionRequest === 'limit_reached', 'NO_SUBSCRIPTION_RPC_REFUSED', noSubscriptionRequest);
+  const noSubscriptionDirect = await seedRelationship(legacyDiet, clients[1], 'active');
+  assert(Boolean(noSubscriptionDirect.error), 'NO_SUBSCRIPTION_DIRECT_INSERT_DENIED', noSubscriptionDirect.error?.message ?? 'no error');
+
+  // Every non-entitled subscription status is zero-limit. The catalog FK
+  // prevents an unknown plan row; the migration helper also fails closed if
+  // catalog drift ever bypasses that invariant.
+  for (const status of ['canceled', 'inactive', 'past_due']) {
+    await setPlan(dietA, 'core', status);
+    const statusOverview = assertNoError(
+      await apiA.rpc('get_dietitian_subscription_overview'),
+      `${status} overview`,
+    );
+    assert(
+      statusOverview[0].subscription_status === status
+        && statusOverview[0].effective_limit === 0
+        && statusOverview[0].limit_reached === true,
+      `${status.toUpperCase()}_ZERO_LIMIT`,
+      JSON.stringify(statusOverview[0]),
+    );
+  }
 
   // limit = 0: a not-entitled subscription blocks everything.
   await setPlan(dietA, 'core', 'canceled');
@@ -378,16 +479,10 @@ try {
   const foreignSub = assertNoError(await apiB.from('dietitian_subscriptions').select('dietitian_id').eq('dietitian_id', dietA.id), 'foreign subscription read');
   assert(foreignSub.length === 0, 'FOREIGN_SUBSCRIPTION_NOT_READABLE');
   const bOverview = assertNoError(await apiB.rpc('get_dietitian_subscription_overview'), 'B overview');
-  assert(bOverview[0].used === 0 && bOverview[0].plan_id === 'core' && bOverview[0].effective_limit === 10, 'MISSING_ROW_DEFAULTS_TO_CORE_WITHOUT_LOCKOUT', JSON.stringify(bOverview[0]));
-  const missingRowRequest = assertNoError(await apiB.rpc('request_client_connection_by_email', { p_email: clients[76].email }), 'missing-row add request');
-  assert(missingRowRequest === 'requested', 'MISSING_ROW_CAN_ADD_CLIENT', missingRowRequest);
-  await trackRel(dietB, clients[76], 'track missing-row relation');
-  const legacyApi = await actorClient(legacyDiet);
-  const legacyOverview = assertNoError(await legacyApi.rpc('get_dietitian_subscription_overview'), 'legacy backfilled overview');
-  assert(legacyOverview[0].plan_id === 'core' && legacyOverview[0].effective_limit === 10, 'BACKFILLED_DIETITIAN_CAN_USE_CORE', JSON.stringify(legacyOverview[0]));
-  const legacyRequest = assertNoError(await legacyApi.rpc('request_client_connection_by_email', { p_email: clients[77].email }), 'backfilled add request');
-  assert(legacyRequest === 'requested', 'BACKFILLED_DIETITIAN_CAN_ADD_CLIENT', legacyRequest);
-  await trackRel(legacyDiet, clients[77], 'track backfilled relation');
+  assert(bOverview[0].used === 0 && bOverview[0].plan_id === 'core' && bOverview[0].effective_limit === 10, 'BOOTSTRAPPED_TEST_DIETITIAN_HAS_CORE_LIMIT', JSON.stringify(bOverview[0]));
+  const bootstrappedTestRequest = assertNoError(await apiB.rpc('request_client_connection_by_email', { p_email: clients[76].email }), 'bootstrapped test add request');
+  assert(bootstrappedTestRequest === 'requested', 'BOOTSTRAPPED_TEST_DIETITIAN_CAN_ADD_CLIENT', bootstrappedTestRequest);
+  await trackRel(dietB, clients[76], 'track bootstrapped test relation');
   const anonPlans = await anon.from('subscription_plans').select('id');
   assert((anonPlans.data ?? []).length === 0, 'ANON_PLAN_CATALOG_DENIED');
   const anonOverview = await anon.rpc('get_dietitian_subscription_overview');
