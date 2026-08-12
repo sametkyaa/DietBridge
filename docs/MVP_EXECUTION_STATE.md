@@ -7,7 +7,7 @@ Status:
 MVP-10 — COMPLETE (2026-08-12) — Web/Mobile shared contract closure, disposable runtime matrix, full quality gates and independent security reviews PASS; STOPPED BEFORE MVP-11
 
 Last Verified Base Commit:
-`8917777` (`feat: close MVP-10 shared contract closure`)
+`64513d4` (`docs: record MVP-10 checkpoint SHAs`)
 
 MVP-4 Checkpoint:
 This document is included in the verified local MVP-4 checkpoint commit.
