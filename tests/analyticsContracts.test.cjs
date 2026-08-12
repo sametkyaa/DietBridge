@@ -232,9 +232,9 @@ test('analytics runtime harness is loopback-only, compiles real service and owns
   assert.match(harness, /127\\\.0\\\.0\\\.1\|localhost/);
   assert.match(harness, /analyticsService\.ts/);
   assert.match(harness, /service\.fetchClientAnalytics/);
-  assert.match(harness, /PENDING_REJECTED_ACTIVE_RELATIONSHIPS_PRESENT/);
-  assert.match(harness, /PENDING_WITH_ACTIVE_RELATION/);
-  assert.match(harness, /REJECTED_WITH_ACTIVE_RELATION/);
+  assert.match(harness, /PENDING_REJECTED_HAVE_NO_ACTIVE_RELATIONSHIP/);
+  assert.match(harness, /PENDING_WITHOUT_RELATION/);
+  assert.match(harness, /REJECTED_WITHOUT_RELATION/);
   assert.match(harness, /ACTOR_SOURCE_DATA_RESIDUE_ZERO/);
   assert.match(harness, /DISPOSABLE_MATERIALIZATION_FAILURE_TEMP_RESIDUE_ZERO/);
   assert.match(harness, /stop', '--project-id', projectId, '--no-backup/);

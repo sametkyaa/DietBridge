@@ -246,6 +246,11 @@ try {
   await verifyDietitian(legacyDiet, 'approved');
   renameSync(deferredMvp7MigrationPath, mvp7MigrationPath);
   cli(['migration', 'up', '--local']);
+  // `migration up` applies the SQL after PostgREST has started. Refresh the
+  // disposable schema cache before the first REST read of the new tables;
+  // this is local harness plumbing only and does not modify migration history.
+  cli(['db', 'query', '--local', "notify pgrst, 'reload schema';"]);
+  pass('DISPOSABLE_POSTGREST_SCHEMA_RELOADED');
   pass('DISPOSABLE_MIGRATION_REPLAY');
   const legacySubscriptions = assertNoError(
     await admin.from('dietitian_subscriptions')

@@ -121,6 +121,36 @@ const verifyDietitian = async (actor, status) => {
   assert(row.verification_status === status, `${actor.label.toUpperCase()}_${status.toUpperCase()}_FIXTURE`);
 };
 
+const bootstrapDisposableCore = async (dietitian) => {
+  assert(
+    local.API_URL.startsWith('http://127.0.0.1:') || local.API_URL.startsWith('http://localhost:'),
+    'DISPOSABLE_BOOTSTRAP_LOOPBACK_ONLY',
+  );
+  const user = assertNoError(await admin.auth.admin.getUserById(dietitian.id), `${dietitian.label} bootstrap Auth read`);
+  assert(
+    user.user?.user_metadata?.account_type === 'dietitian'
+      && dietitian.email.endsWith('@example.invalid'),
+    'DISPOSABLE_BOOTSTRAP_IDENTITY_EXPLICITLY_VERIFIED',
+    dietitian.email,
+  );
+  const profile = assertNoError(await admin.from('profiles').select('id,role').eq('id', dietitian.id).single(), `${dietitian.label} bootstrap profile read`);
+  const dietitianProfile = assertNoError(await admin.from('dietitian_profiles')
+    .select('user_id,verification_status,is_verified').eq('user_id', dietitian.id).single(), `${dietitian.label} bootstrap dietitian profile read`);
+  assert(
+    profile.role === 'dietitian'
+      && dietitianProfile.verification_status === 'approved'
+      && dietitianProfile.is_verified === true,
+    'DISPOSABLE_BOOTSTRAP_APPROVED_DIETITIAN',
+  );
+  assertNoError(await admin.from('dietitian_subscriptions').upsert({
+    dietitian_id: dietitian.id,
+    plan_id: 'core',
+    status: 'active',
+    client_limit_override: null,
+  }).select('dietitian_id').single(), `${dietitian.label} disposable Core bootstrap`);
+  pass('DISPOSABLE_TEST_CORE_BOOTSTRAP', dietitian.email);
+};
+
 const activateRelationship = async (dietitian, client) => {
   const pending = assertNoError(await admin.from('dietitian_clients').insert({
     dietitian_id: dietitian.id, client_id: client.id, status: 'pending',
@@ -300,10 +330,10 @@ try {
   await verifyDietitian(approvedA, 'approved');
   await verifyDietitian(approvedB, 'approved');
   await verifyDietitian(rejected, 'rejected');
+  await bootstrapDisposableCore(approvedA);
+  await bootstrapDisposableCore(approvedB);
   const relationshipA = await activateRelationship(approvedA, clientA);
   await activateRelationship(approvedB, clientB);
-  await activateRelationship(pending, pendingClient);
-  await activateRelationship(rejected, rejectedClient);
   const approvalIsolationRelations = assertNoError(
     await admin.from('dietitian_clients')
       .select('dietitian_id,client_id,status')
@@ -311,9 +341,8 @@ try {
     'approval isolation relationship check',
   );
   assert(
-    approvalIsolationRelations.length === 2
-      && approvalIsolationRelations.every(({ status }) => status === 'active'),
-    'PENDING_REJECTED_ACTIVE_RELATIONSHIPS_PRESENT',
+    approvalIsolationRelations.length === 0,
+    'PENDING_REJECTED_HAVE_NO_ACTIVE_RELATIONSHIP',
   );
   assertNoError(await admin.from('profiles').delete().eq('id', missing.id), 'missing profile fixture');
   assert((assertNoError(await admin.from('profiles').select('id').eq('id', missing.id), 'missing profile check')).length === 0, 'MISSING_PROFILE_FIXTURE');
@@ -356,8 +385,8 @@ try {
 
   for (const [label, actor, targetClientId] of [
     ['FOREIGN_APPROVED', api.approvedB, clientA.id],
-    ['PENDING_WITH_ACTIVE_RELATION', api.pending, pendingClient.id],
-    ['REJECTED_WITH_ACTIVE_RELATION', api.rejected, rejectedClient.id],
+    ['PENDING_WITHOUT_RELATION', api.pending, pendingClient.id],
+    ['REJECTED_WITHOUT_RELATION', api.rejected, rejectedClient.id],
     ['MISSING_PROFILE', api.missing, clientA.id],
     ['CLIENT', api.clientA, clientA.id],
     ['ANONYMOUS', api.anonymous, clientA.id],
@@ -396,6 +425,7 @@ try {
       if (measurementIds.length) await admin.from('measurements').delete().in('id', measurementIds);
       if (clientProfileIds.length) await admin.from('client_profiles').delete().in('user_id', clientProfileIds);
       if (relationshipIds.length) await admin.from('dietitian_clients').delete().in('id', relationshipIds);
+      if (actorIds.length) await admin.from('dietitian_subscriptions').delete().in('dietitian_id', actorIds);
       const residue = async (table, column, values, label) => {
         if (values.length === 0) return assert(true, label);
         const rows = assertNoError(await admin.from(table).select(column).in(column, values), `${table} residue check`);

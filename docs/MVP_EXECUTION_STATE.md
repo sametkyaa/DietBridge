@@ -1,10 +1,10 @@
 # DietBridge MVP Execution State
 
 Current Gate:
-MVP-9 — Mock / Local Cleanup
+MVP-10 — Web / Mobile Shared Contract Closure
 
 Status:
-MVP-9 — COMPLETE (2026-08-12) — production-reachable mock cleanup and independent security review PASS; MVP-10 may begin
+MVP-10 — COMPLETE (2026-08-12) — Web/Mobile shared contract closure, disposable runtime matrix, full quality gates and independent security reviews PASS; STOPPED BEFORE MVP-11
 
 Last Verified Base Commit:
 `1517bd6` (`feat: close MVP-7 subscriptions and client limits`)
@@ -26,6 +26,7 @@ Completed Gates:
 - MVP-7 — COMPLETE (2026-08-12); production migration and controlled provisioning PASS
 - MVP-8 — COMPLETE (2026-08-12); operational dashboard closure and local/runtime/security gates PASS
 - MVP-9 — COMPLETE (2026-08-12); mock/local cleanup, full Web gates and independent diff review PASS
+- MVP-10 — COMPLETE (2026-08-12); Web/Mobile shared contract closure, disposable runtime matrix, full quality gates and independent security reviews PASS; stopped before MVP-11
 
 MVP-9 Mock / Local Cleanup:
 - Dedicated branch: `codex/mvp9-mock-cleanup`; base checkpoint `8dea423` (`feat: close MVP-8 dashboard closure`).
@@ -49,7 +50,28 @@ MVP-9 Quality Gates:
 
 MVP-9 Production Boundary:
 - No production database/Auth/Storage/RLS write or migration was performed. No historical migration or hash allowlist was modified.
-- MVP-9 is local-only and ready for its verified checkpoint commit. Next gate is MVP-10 Web/Mobile Shared Contract Closure; do not begin MVP-11 or release/CI work.
+- MVP-9 was local-only and its verified checkpoint commit is `10d06e9` (`chore: close MVP-9 mock cleanup`). MVP-10 followed on a dedicated closure branch; do not begin MVP-11 or release/CI work.
+
+MVP-10 Web / Mobile Shared Contract Closure:
+- Web repository/worktree: `C:\dev\DietBridge-Web-MVP4`, branch `codex/mvp10-shared-contract-closure`, based on the verified MVP-9 checkpoint.
+- Mobile canonical source: `C:\dev\DietBridge-Mobile-Chat-Final`, branch `codex/mobile-chat-final`, base `eb6182ad7ad5afd733b23c5f6ef3cacf5939b8c0`; disposable implementation: `C:\dev\DietBridge-Mobile-MVP10`, branch `codex/mvp10-shared-contract-closure`.
+- A separate Mobile worktree carrying unrelated Odaklan changes was rejected and was not used.
+- Contract inventory: `docs/MVP10_SHARED_CONTRACT_INVENTORY.md`; identity/profile, meals/meal plans, measurements, daily tracking, chat, subscription semantics, enums/nullability, Europe/Istanbul civil dates, cache isolation and tenant boundaries were reconciled.
+- Disposable Flow A meal plan/completion, Flow B measurement, Flow C daily tracking, Flow D chat and A-to-B account/cache isolation all PASS. Mobile appointment UI was not added; shared appointment assumptions were verified only.
+- Mobile state providers now reset on account change and guard stale request generations; no Auth persistence/client lifecycle change was introduced.
+- Canonical MVP-7 migration remains `20260812090000_mvp7_subscription_plans_and_client_limits.sql`, SHA-256 `623033e5e4e61498c5f1f48b94fe00d9269bae908291a87b8bca831d775c111`; no historical migration or hash allowlist was changed.
+
+MVP-10 Quality Gates:
+- Web: `npm test` PASS, 242/242; typecheck PASS; lint PASS, 0 errors / 21 warnings; build PASS with the existing >500 kB chunk warning; `git diff --check` PASS.
+- Web disposable runtime: shared contract, analytics, subscriptions, appointments and daily-task harnesses PASS. Subscription coverage includes no-subscription=0, Core/Plus/Scale below/at/above, finite Scale override, downgrade/upgrade, reactivation, tenant isolation and zero residue.
+- Mobile: configured tests PASS, 14/14; full source test discovery PASS, 78/78; Android Expo export PASS at `C:\dev\DietBridge-Mobile-MVP10-android-export-5` before disposable cleanup.
+- Mobile direct TypeScript check is unavailable for the canonical project: no typecheck script exists and `tsc` is blocked only by two pre-existing inactive `src_backup` imports (`src_backup/screens/AuthScreen.tsx` and `src_backup/screens/ProfileScreen.tsx`). No canonical MVP-10 source error was identified.
+- Final independent Web security review `08665d5c-4db3-441d-a477-6ab3bd4ce140`: 0 reportable findings, 4/4 rows. Final independent Mobile security review `dffbc9f1-9fd4-4ec5-8023-6ae870d85de0`: 0 reportable findings, 12/12 rows. Both current-worktree reviews completed with no P0/P1.
+
+MVP-10 Boundary / Stop:
+- MVP-10 implementation and all new harnesses were local/disposable only. No production database/Auth/Storage/RLS write, migration, smoke fixture, secret/Vault/cron mutation, push or merge was performed.
+- Verified local MVP-10 checkpoint commits are created on the Web and disposable Mobile closure branches; exact SHAs are recorded in the final handoff after commit.
+- MVP-10 is complete. Do not start MVP-11, CI/GitHub Actions, release-candidate work, deployment/public launch or post-MVP features without a new explicit user instruction.
 
 MVP-8 Dashboard Closure:
 - The active `/` route now answers “Bugün ne yapmalıyım?” from existing owner-scoped client, appointment and persistent daily-task data. The dashboard does not invent analytics or nutrition values.
