@@ -147,10 +147,10 @@ create policy "dietitian_subscriptions_select_own"
   to authenticated
   using (dietitian_id = (select auth.uid()));
 
-revoke all on table public.subscription_plans from public, anon;
+revoke all on table public.subscription_plans from public, anon, authenticated;
 grant select on table public.subscription_plans to authenticated;
 
-revoke all on table public.dietitian_subscriptions from public, anon;
+revoke all on table public.dietitian_subscriptions from public, anon, authenticated;
 grant select on table public.dietitian_subscriptions to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -242,9 +242,9 @@ revoke all on function public.dietitian_active_client_usage(uuid) from public, a
 
 -- ---------------------------------------------------------------------------
 -- 5. Fail-closed, race-safe capacity trigger. Fires for every path that
---    consumes a new capacity slot: RPC insert (always pending) and
---    rejected/removed -> pending reactivation. Client accept (pending ->
---    active) does not increase active+pending usage and is not blocked.
+--    consumes a new capacity slot: pending/active inserts and rejected/removed
+--    -> pending reactivation. Client accept (pending -> active) does not
+--    increase active+pending usage and is not blocked.
 -- ---------------------------------------------------------------------------
 create or replace function public.enforce_dietitian_client_capacity()
 returns trigger
@@ -257,7 +257,8 @@ declare
   v_usage integer;
 begin
   if tg_op = 'INSERT' then
-    if new.status is distinct from 'pending'::public.client_status then
+    if new.status is distinct from 'pending'::public.client_status
+       and new.status is distinct from 'active'::public.client_status then
       return new;
     end if;
   elsif tg_op = 'UPDATE' then

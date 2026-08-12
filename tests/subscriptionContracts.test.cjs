@@ -170,7 +170,8 @@ test('RPC returns a friendly limit_reached signal before inserting', () => {
 });
 
 test('subscription tables are fail-closed for anon and browser writes', () => {
-  assert.match(MIGRATION, /revoke all on table public\.dietitian_subscriptions from public, anon;/);
+  assert.match(MIGRATION, /revoke all on table public\.subscription_plans from public, anon, authenticated;/);
+  assert.match(MIGRATION, /revoke all on table public\.dietitian_subscriptions from public, anon, authenticated;/);
   assert.match(MIGRATION, /grant select on table public\.dietitian_subscriptions to authenticated;/);
   // No authenticated INSERT/UPDATE/DELETE grant on subscriptions.
   assert.doesNotMatch(
@@ -183,6 +184,11 @@ test('overview RPC is restricted to authenticated dietitians only', () => {
   assert.match(MIGRATION, /revoke all on function public\.get_dietitian_subscription_overview\(\) from public, anon;/);
   assert.match(MIGRATION, /grant execute on function public\.get_dietitian_subscription_overview\(\) to authenticated;/);
   assert.match(MIGRATION, /if v_dietitian_id is null or not public\.is_current_user_dietitian\(\) then/);
+});
+
+test('capacity trigger covers direct active inserts as well as pending inserts', () => {
+  assert.match(MIGRATION, /new\.status is distinct from 'pending'::public\.client_status/);
+  assert.match(MIGRATION, /new\.status is distinct from 'active'::public\.client_status/);
 });
 
 test('client service surfaces the limit_reached status to the UI', () => {

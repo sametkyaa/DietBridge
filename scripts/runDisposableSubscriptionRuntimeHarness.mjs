@@ -281,6 +281,10 @@ try {
   assert(coreAboveLimit === 'limit_reached', 'CORE_ABOVE_LIMIT_RPC_REFUSED', coreAboveLimit);
   const coreDirectOverLimit = await seedRelationship(dietA, clients[10], 'active');
   assert(Boolean(coreDirectOverLimit.error), 'CORE_ABOVE_LIMIT_DIRECT_INSERT_DENIED', coreDirectOverLimit.error?.message ?? 'no error');
+  const coreDirectActiveOverLimit = await admin.from('dietitian_clients')
+    .insert({ dietitian_id: dietA.id, client_id: clients[11].id, status: 'active' })
+    .select('id').single();
+  assert(Boolean(coreDirectActiveOverLimit.error), 'CORE_ACTIVE_INSERT_OVER_LIMIT_DENIED', coreDirectActiveOverLimit.error?.message ?? 'no error');
 
   // pending -> active acceptance does not consume another slot and remains
   // allowed at the exact capacity boundary.
@@ -325,6 +329,10 @@ try {
   assert(scaleAboveLimit === 'limit_reached', 'SCALE_ABOVE_50_RPC_REFUSED', scaleAboveLimit);
   const scaleDirectOverLimit = await seedRelationship(dietA, clients[50], 'active');
   assert(Boolean(scaleDirectOverLimit.error), 'SCALE_ABOVE_50_DIRECT_INSERT_DENIED', scaleDirectOverLimit.error?.message ?? 'no error');
+  const scaleDirectActiveOverLimit = await admin.from('dietitian_clients')
+    .insert({ dietitian_id: dietA.id, client_id: clients[51].id, status: 'active' })
+    .select('id').single();
+  assert(Boolean(scaleDirectActiveOverLimit.error), 'SCALE_ACTIVE_INSERT_OVER_LIMIT_DENIED', scaleDirectActiveOverLimit.error?.message ?? 'no error');
 
   // Scale is not unlimited: a future per-account override of 75 is explicit,
   // bounded and visible as effective_limit while plan_limit remains 50.
