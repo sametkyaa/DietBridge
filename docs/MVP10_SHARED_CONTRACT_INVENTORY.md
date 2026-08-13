@@ -1,6 +1,6 @@
 # MVP-10 Web / Mobile Shared Contract Inventory
 
-Status: local/disposable verification record only. No production read or write was performed for MVP-10.
+Status: local/disposable verification record plus read-only production revalidation. No production write was performed for MVP-10.
 
 ## Canonical repositories and baseline
 
@@ -13,6 +13,12 @@ Status: local/disposable verification record only. No production read or write w
 The Mobile repository is the DietBridge client app. The separately inspected Odaklan worktree was rejected as a different product and is not part of this contract.
 
 The verified Supabase migration state remains 41 local/41 remote, with canonical MVP-7 migration `20260812090000_mvp7_subscription_plans_and_client_limits.sql` SHA-256 `623033e5e4e61498c5f1f48b94fe00d9269bae908291a87b8bca831d775c111b`. MVP-10 does not change migration history, schema, RLS, Auth, Storage, secrets, or production data.
+
+## Production read-only closure evidence
+
+- Existing project-owned authenticated Web and Mobile sessions read the same existing `daily_logs` row: stored `water_intake = 1`, interpreted as `1 L`, date `2026-08-13` in `Europe/Istanbul`.
+- Before/after read-only backend checks preserved the same row ID, date, water value, null weight/mood fields, active relationship, and Core entitlement. No `INSERT`, `UPDATE`, `DELETE`, migration, Auth, relationship, subscription, Storage or customer-data mutation was performed.
+- Existing production Web→Mobile meal-plan and Mobile→Web `is_eaten` evidence remains valid. Measurement and chat production mutations were not run; disposable shared-contract evidence remains the approved closure evidence because no safe zero-residue production path was needed for this correction.
 
 ## Canonical contract matrix
 

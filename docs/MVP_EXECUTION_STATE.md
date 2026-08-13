@@ -4,10 +4,10 @@ Current Gate:
 MVP-10 — Web / Mobile Shared Contract Closure
 
 Status:
-MVP-10 — COMPLETE (2026-08-12) — Web/Mobile shared contract closure, disposable runtime matrix, full quality gates and independent security reviews PASS; STOPPED BEFORE MVP-11
+MVP-10 — COMPLETE (2026-08-13) — Web/Mobile shared contract closure, final water contract correction, read-only production verification and sealed security review PASS; STOPPED BEFORE MVP-11
 
 Last Verified Base Commit:
-Current Web `HEAD` (`fix: correct MVP-10 water contract`); exact SHA is recorded in the final handoff.
+Web source checkpoint `6d7396186c95f574dbf4ffbc8020e3ebe2b60283` (`fix: correct MVP-10 water contract`); final closure documentation is recorded in the follow-up local checkpoint.
 
 MVP-4 Checkpoint:
 This document is included in the verified local MVP-4 checkpoint commit.
@@ -62,15 +62,17 @@ MVP-10 Web / Mobile Shared Contract Closure:
 - Canonical MVP-7 migration remains `20260812090000_mvp7_subscription_plans_and_client_limits.sql`, SHA-256 `623033e5e4e61498c5f1f48b94fe00d9269bae908291a87b8bca831d775c111`; no historical migration or hash allowlist was changed.
 
 MVP-10 Quality Gates:
-- Web: `npm test` PASS, 242/242; typecheck PASS; lint PASS, 0 errors / 21 warnings; build PASS with the existing >500 kB chunk warning; `git diff --check` PASS.
+- Web: `npm test` PASS, 247/247; water/shared contract `4/4`; MVP-6 analytics contracts `8/8`; typecheck PASS; lint PASS, 0 errors / 21 existing warnings; build PASS with the existing >500 kB chunk warning; `git diff --check` PASS.
 - Web disposable runtime: shared contract, analytics, subscriptions, appointments and daily-task harnesses PASS. Subscription coverage includes no-subscription=0, Core/Plus/Scale below/at/above, finite Scale override, downgrade/upgrade, reactivation, tenant isolation and zero residue.
-- Mobile: configured tests PASS, 14/14; full source test discovery PASS, 78/78; Android Expo export PASS at `C:\dev\DietBridge-Mobile-MVP10-android-export-5` before disposable cleanup.
+- Web MVP-10 shared-contract runtime and analytics runtime PASS with zero fixture/Auth/relationship/Storage/queue/Docker/temp residue.
+- Mobile: configured tests PASS, 14/14; water contract `2/2`; previously verified full source discovery `78/78` and Android Expo export PASS at `C:\dev\DietBridge-Mobile-MVP10-android-export-5` remain applicable. Mobile runtime source was not changed by the water correction.
 - Mobile direct TypeScript check is unavailable for the canonical project: no typecheck script exists and `tsc` is blocked only by two pre-existing inactive `src_backup` imports (`src_backup/screens/AuthScreen.tsx` and `src_backup/screens/ProfileScreen.tsx`). No canonical MVP-10 source error was identified.
-- Final independent Web security review `08665d5c-4db3-441d-a477-6ab3bd4ce140`: 0 reportable findings, 4/4 rows. Final independent Mobile security review `dffbc9f1-9fd4-4ec5-8023-6ae870d85de0`: 0 reportable findings, 12/12 rows. Both current-worktree reviews completed with no P0/P1.
+- Sealed independent Web security review `0c772a46-b593-4b5f-a88a-76215f9ea5c4`: 0 candidate findings, 0 reportable findings, complete coverage, 9/9 worklist rows, validation and attack-path analysis complete, no remediation. Tool-measured usage was 232,919 tokens; enclosing goal accounting was 315,935 tokens.
+- Credential-marker scans for Web and Mobile PASS; no credentials leaked.
 
 MVP-10 Boundary / Stop:
 - MVP-10 implementation and all new harnesses were local/disposable only. No production database/Auth/Storage/RLS write, migration, smoke fixture, secret/Vault/cron mutation, push or merge was performed.
-- Verified local MVP-10 checkpoint commits: Web current `HEAD` (`fix: correct MVP-10 water contract`); disposable Mobile `c102564` (`test: add mobile water contract coverage`). The exact Web SHA is recorded in the final handoff; neither branch was pushed or merged.
+- Verified local MVP-10 source checkpoint commits: Web `6d7396186c95f574dbf4ffbc8020e3ebe2b60283` (`fix: correct MVP-10 water contract`); Mobile `c102564be41a50d122fc8ee5d81c4a35263c3eb5` (`test: add mobile water contract coverage`). Neither branch was pushed or merged.
 - MVP-10 is complete. Do not start MVP-11, CI/GitHub Actions, release-candidate work, deployment/public launch or post-MVP features without a new explicit user instruction.
 
 MVP-10 Final Water Contract Correction (2026-08-13):
@@ -82,6 +84,7 @@ MVP-10 Final Water Contract Correction (2026-08-13):
 - Production read-only revalidation PASS with the existing authenticated Web/Mobile sessions: both showed the same `1 L` value for the existing `2026-08-13` Europe/Istanbul day; Samsung device timezone is `Europe/Istanbul`; the exact `daily_logs` row remained `water_intake = 1` before/after, with the active test relationship and Core entitlement preserved. No production write, migration, schema, RLS, Auth or Storage change occurred.
 - Measurement disposition: no synthetic production measurement was created because a safe canonical cleanup path was not authorized/available; the existing disposable shared measurement contract PASS remains the evidence. Chat disposition: no production message was created because temporary canonical-path cleanup was not needed for this correction; existing disposable Chat Flow D PASS remains the evidence.
 - Existing production meal-plan / `is_eaten` evidence remains valid and was not repeated, per scope. Production temporary residue remains zero; no customer data was touched and no Auth user, relationship or subscription was created or removed.
+- Physical Android Meals regression remains PASS: the root cause was locale-formatted weekday/date text containing a Hermes narrow no-break space (`U+202F`) and fragile locale-string parsing; the fix uses the canonical Europe/Istanbul civil-date helper instead of parsing locale display strings. `Per 13`, `Cum 14 → Per 13`, and the Android Expo export were revalidated previously; the long Auth soak was not repeated.
 - Final state: `MVP-10 — COMPLETE — STOPPED BEFORE MVP-11`. Do not start MVP-11.
 
 MVP-8 Dashboard Closure:
