@@ -16,6 +16,7 @@ import {
   RefreshCw,
   RotateCcw,
   Trash2,
+  ListChecks,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import DietitianAvatar from '../../../shared/components/DietitianAvatar';
@@ -46,6 +47,63 @@ const TASK_FILTERS: Array<{ key: TaskFilter; label: string }> = [
   { key: 'completed', label: 'Tamamlanan' },
 ];
 
+const getClientInitials = (name: string): string => {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase('tr-TR'))
+    .join('');
+
+  return initials || '?';
+};
+
+const TaskClientAvatar: React.FC<{
+  name: string;
+  src: string | null;
+  sizeClassName: string;
+}> = ({ name, src, sizeClassName }) => {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+
+  if (!src || imageFailed) {
+    return (
+      <span
+        role="img"
+        aria-label={`${name} profil fotoğrafı yok`}
+        className={`${sizeClassName} flex shrink-0 items-center justify-center rounded-full bg-emerald-100 font-bold text-emerald-700`}
+      >
+        {getClientInitials(name)}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={name}
+      onError={() => setImageFailed(true)}
+      className={`${sizeClassName} shrink-0 rounded-full object-cover`}
+    />
+  );
+};
+
+const formatTaskDueDate = (dateKey: string): string => {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return 'Tarih belirtilmemiş';
+
+  return new Intl.DateTimeFormat('tr-TR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+};
+
 const DashboardPage = () => {
   const navigate = useNavigate();
   // Clients State
@@ -62,16 +120,21 @@ const DashboardPage = () => {
   const [isTaskMenuOpen, setIsTaskMenuOpen] = useState(false);
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [taskFilter, setTaskFilter] = useState<TaskFilter>('today');
   const [taskDraft, setTaskDraft] = useState<DailyTaskDraft>(emptyTaskDraft);
   const taskDialogRef = useRef<HTMLDivElement>(null);
+  const taskDetailDialogRef = useRef<HTMLDivElement>(null);
   const taskTitleInputRef = useRef<HTMLInputElement>(null);
+  const taskDetailCloseButtonRef = useRef<HTMLButtonElement>(null);
   const taskMenuButtonRef = useRef<HTMLButtonElement>(null);
   const taskDialogOpenerRef = useRef<HTMLElement | null>(null);
+  const taskDetailOpenerRef = useRef<HTMLElement | null>(null);
   const pendingTaskActionRef = useRef<string | null>(null);
 
   const {
     viewState: taskViewState,
+    tasks: dailyTasks,
     groups: taskGroups,
     mutationError: taskMutationError,
     pendingAction: pendingTaskAction,
@@ -139,6 +202,15 @@ const DashboardPage = () => {
       priority: task.priority,
     });
     setIsAddTaskModalOpen(true);
+  };
+
+  const openTaskDetails = (task: DailyTask) => {
+    taskDetailOpenerRef.current = document.activeElement as HTMLElement | null;
+    setSelectedTaskId(task.id);
+  };
+
+  const closeTaskDetails = () => {
+    setSelectedTaskId(null);
   };
 
   const handleTaskSubmit = async (e: React.FormEvent) => {
@@ -229,6 +301,55 @@ const DashboardPage = () => {
       taskDialogOpenerRef.current?.focus();
     };
   }, [isAddTaskModalOpen]);
+
+  const selectedTask = selectedTaskId
+    ? dailyTasks.find((task) => task.id === selectedTaskId) ?? null
+    : null;
+  const clientById = new Map<string, Client>(
+    clients.map((client): [string, Client] => [client.id, client]),
+  );
+  const selectedTaskClient = selectedTask?.clientId
+    ? clientById.get(selectedTask.clientId)
+    : undefined;
+
+  useEffect(() => {
+    if (selectedTaskId && !dailyTasks.some((task) => task.id === selectedTaskId)) {
+      setSelectedTaskId(null);
+    }
+  }, [dailyTasks, selectedTaskId]);
+
+  useEffect(() => {
+    if (!selectedTaskId) return;
+    taskDetailCloseButtonRef.current?.focus();
+
+    const handleDetailKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedTaskId(null);
+        return;
+      }
+      if (event.key !== 'Tab' || !taskDetailDialogRef.current) return;
+
+      const focusable: HTMLElement[] = Array.from(taskDetailDialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleDetailKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleDetailKeyDown);
+      taskDetailOpenerRef.current?.focus();
+    };
+  }, [selectedTaskId]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -444,27 +565,40 @@ const DashboardPage = () => {
                 </div>
               ) : visibleTasks.map((task) => (
                 <div key={task.id} className="flex flex-col gap-3 rounded-xl border border-slate-100 p-3 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 items-center gap-4">
-                    {task.clientAvatar ? (
-                      <img src={task.clientAvatar} alt="" className="h-11 w-11 rounded-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => openTaskDetails(task)}
+                    aria-label={`${task.title} görev ayrıntılarını aç`}
+                    className="flex min-w-0 flex-1 items-center gap-4 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    {task.clientId !== null ? (
+                      <TaskClientAvatar
+                        name={task.clientName || 'Atanan danışan'}
+                        src={clientById.get(task.clientId)?.profilePhotoUrl || null}
+                        sizeClassName="h-11 w-11"
+                      />
                     ) : (
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                        <User className="h-5 w-5" />
-                      </div>
+                      <span
+                        role="img"
+                        aria-label="Genel görev"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+                      >
+                        <ListChecks className="h-5 w-5" aria-hidden="true" />
+                      </span>
                     )}
-                    <div className="min-w-0">
-                      <p className={`truncate font-semibold ${task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</p>
-                      <p className="mt-1 text-xs text-slate-500">
+                    <span className="min-w-0">
+                      <span className={`block truncate font-semibold ${task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</span>
+                      <span className="mt-1 block text-xs text-slate-500">
                         {task.clientName || 'Genel görev'} · {new Date(`${task.dueDate}T00:00:00`).toLocaleDateString('tr-TR')}
                         {task.dueTime ? ` ${task.dueTime}` : ''}
-                      </p>
+                      </span>
                       <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
                         task.priority === 'high' ? 'bg-rose-50 text-rose-600' : task.priority === 'low' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'
                       }`}>
                         {task.priority === 'high' ? 'Yüksek' : task.priority === 'low' ? 'Düşük' : 'Orta'} öncelik
                       </span>
-                    </div>
-                  </div>
+                    </span>
+                  </button>
                   <div className="flex items-center justify-end gap-1">
                     <button
                       type="button"
@@ -628,6 +762,85 @@ const DashboardPage = () => {
           </section>
         </div>
       </div>
+
+      {/* Task Detail Modal */}
+      {selectedTask && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div
+            ref={taskDetailDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="daily-task-detail-title"
+            className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200"
+          >
+            <div className="p-6 border-b border-slate-100 flex justify-between items-start gap-4">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wide text-primary">Görev ayrıntısı</p>
+                <h2 id="daily-task-detail-title" className="mt-1 text-xl font-bold text-slate-800 break-words">{selectedTask.title}</h2>
+              </div>
+              <button
+                ref={taskDetailCloseButtonRef}
+                type="button"
+                aria-label="Görev ayrıntısını kapat"
+                onClick={closeTaskDetails}
+                className="shrink-0 p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="flex items-center gap-3">
+                {selectedTask.clientId !== null ? (
+                  <TaskClientAvatar
+                    name={selectedTaskClient?.name || selectedTask.clientName || 'Atanan danışan'}
+                    src={selectedTaskClient?.profilePhotoUrl || null}
+                    sizeClassName="h-12 w-12"
+                  />
+                ) : (
+                  <span
+                    role="img"
+                    aria-label="Genel görev"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+                  >
+                    <ListChecks className="h-6 w-6" aria-hidden="true" />
+                  </span>
+                )}
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Atanan</p>
+                  <p className="font-semibold text-slate-800">
+                    {selectedTask.clientId === null
+                      ? 'Genel görev'
+                      : selectedTaskClient?.name || selectedTask.clientName || 'Atanan danışan'}
+                  </p>
+                </div>
+              </div>
+
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Durum</dt>
+                  <dd className="mt-1 font-semibold text-slate-800">
+                    {selectedTask.status === 'completed' ? 'Tamamlandı' : 'Bekliyor'}
+                  </dd>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Bitiş tarihi</dt>
+                  <dd className="mt-1 font-semibold text-slate-800">
+                    {formatTaskDueDate(selectedTask.dueDate)}{selectedTask.dueTime ? ` · ${selectedTask.dueTime}` : ''}
+                  </dd>
+                </div>
+              </dl>
+
+              <div>
+                <h3 className="text-sm font-bold text-slate-700">Açıklama</h3>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  {selectedTask.description || 'Açıklama eklenmemiş.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Task Modal */}
       {isAddTaskModalOpen && (

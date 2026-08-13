@@ -236,6 +236,41 @@ test('Dashboard uses persistent tasks with real client IDs and distinct operatio
   assert.match(source, /taskDialogOpenerRef\.current\?\.focus\(\)/);
 });
 
+test('Dashboard task details use persisted task content and keep task actions outside detail trigger', () => {
+  const source = read('features/dashboard/pages/DashboardPage.tsx');
+  assert.match(source, /const \[selectedTaskId, setSelectedTaskId\] = useState<string \| null>\(null\)/);
+  assert.match(source, /const selectedTask = selectedTaskId[\s\S]*dailyTasks\.find\(\(task\) => task\.id === selectedTaskId\)/);
+  assert.match(source, /onClick=\{\(\) => openTaskDetails\(task\)\}/);
+  assert.match(source, /id="daily-task-detail-title"[\s\S]*\{selectedTask\.title\}/);
+  assert.match(source, /\{selectedTask\.description \|\| 'Açıklama eklenmemiş\.'\}/);
+  assert.match(source, /selectedTask\.status === 'completed' \? 'Tamamlandı' : 'Bekliyor'/);
+  assert.match(source, /formatTaskDueDate\(selectedTask\.dueDate\)/);
+  assert.match(source, /aria-label="Görev ayrıntısını kapat"[\s\S]*onClick=\{closeTaskDetails\}/);
+  assert.match(source, /if \(event\.key === 'Escape'\)[\s\S]*setSelectedTaskId\(null\)/);
+  assert.match(source, /dailyTasks\.some\(\(task\) => task\.id === selectedTaskId\)/);
+  assert.match(source, /onClick=\{\(\) => void \(task\.status === 'completed' \? reopenTask\(task\.id\) : completeTask\(task\.id\)\)\}/);
+  assert.match(source, /onClick=\{\(\) => openEditTaskModal\(task\)\}/);
+  assert.match(source, /onClick=\{\(\) => void handleDeleteTask\(task\)\}/);
+});
+
+test('Dashboard task identity uses the tenant-scoped client list, initials fallback and a general-task icon', () => {
+  const source = read('features/dashboard/pages/DashboardPage.tsx');
+  assert.match(source, /const clientById = new Map<string, Client>\([\s\S]*?clients\.map\(\(client\): \[string, Client\] => \[client\.id, client\]\)/);
+  assert.match(source, /clientById\.get\(task\.clientId\)\?\.profilePhotoUrl/);
+  assert.match(source, /onError=\{\(\) => setImageFailed\(true\)\}/);
+  assert.match(source, /getClientInitials\(name\)/);
+  assert.match(source, /task\.clientId !== null/);
+  assert.match(source, /<ListChecks className="h-5 w-5"/);
+  assert.match(source, /<ListChecks className="h-6 w-6"/);
+  const detailTriggerIndex = source.indexOf('onClick={() => openTaskDetails(task)}');
+  assert.notEqual(detailTriggerIndex, -1);
+  const detailTriggerStart = source.lastIndexOf('<button', detailTriggerIndex);
+  const detailTriggerEnd = source.indexOf('</button>', detailTriggerIndex);
+  assert.ok(detailTriggerStart >= 0 && detailTriggerEnd > detailTriggerStart);
+  assert.doesNotMatch(source.slice(detailTriggerStart, detailTriggerEnd), /<div/);
+  assert.doesNotMatch(source, /task\.clientAvatar[^\n]*src=/);
+});
+
 test('daily task runtime harness is loopback-only, compiles the real service and cleans all residue', () => {
   const source = read('scripts/runDisposableDailyTaskRuntimeHarness.mjs');
   assert.match(source, /SUPABASE_ACCESS_TOKEN: _accessToken/);
