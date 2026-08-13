@@ -94,6 +94,7 @@ const SOURCES = [
   'features/chat/utils/chatImageUploadReducer.ts',
   'features/chat/utils/chatImageUploadResources.ts',
   'features/chat/utils/chatImageUiState.ts',
+  'features/chat/utils/chatScrollLifecycle.ts',
   'features/chat/services/chatService.ts',
   'features/chat/services/chatImageService.ts',
   'features/chat/services/chatImageReadService.ts',
@@ -131,6 +132,7 @@ const EXPECTED_OUTPUTS = [
   'features/chat/utils/chatImageUploadReducer.js',
   'features/chat/utils/chatImageUploadResources.js',
   'features/chat/utils/chatImageUiState.js',
+  'features/chat/utils/chatScrollLifecycle.js',
   'features/chat/services/chatService.js',
   'features/chat/services/chatImageService.js',
   'features/chat/services/chatImageReadService.js',
@@ -240,6 +242,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'chatImageUploadContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageOwnershipContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageUiContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatScrollLifecycle.test.cjs'),
   join(repoRoot, 'tests', 'disposableReplayMaterializer.test.cjs'),
   join(repoRoot, 'tests', 'disposableSupabaseLocalReplay.test.cjs'),
   join(repoRoot, 'tests', 'measurementContracts.test.cjs'),
@@ -254,6 +257,8 @@ const testFiles = [
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
+  : process.argv.includes('--chat-only')
+    ? testFiles.filter((file) => /chat(?:Contracts|Image|ScrollLifecycle)/i.test(file))
   : process.argv.includes('--daily-tasks-only')
     ? [join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs')]
     : process.argv.includes('--analytics-only')

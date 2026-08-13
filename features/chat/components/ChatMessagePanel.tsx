@@ -15,6 +15,11 @@ import ChatImageBubble from "./ChatImageBubble";
 import ChatImageViewer from "./ChatImageViewer";
 import { useChatImageUrls } from "../hooks/useChatImageUrls";
 import { getChatImageBubbleLabel } from "../utils/chatImageUiState";
+import {
+  shouldFollowLatestChat,
+  shouldAdjustInitialChatLayout,
+  shouldPositionInitialChat,
+} from "../utils/chatScrollLifecycle";
 
 interface ChatMessagePanelProps {
   conversation: ChatConversationListItem | null;
@@ -280,6 +285,9 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pendingOlderAnchorRef = useRef<ScrollAnchor | null>(null);
   const lastTimelineKeyRef = useRef<string | null>(null);
+  const initialPositionedConversationIdRef = useRef<string | null>(null);
+  const initialLayoutAdjustedConversationIdRef = useRef<string | null>(null);
+  const messageContentRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const [messagePendingDeletion, setMessagePendingDeletion] =
     useState<ChatMessage | null>(null);
@@ -320,10 +328,17 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
       ),
     [messages],
   );
+  const hasPendingImageLayout = messages.some((message) => (
+    message.messageKind === "image" && imageStates[message.id] === undefined
+  )) || messages.some((message) => (
+    message.messageKind === "image" && imageStates[message.id]?.loading === true
+  ));
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     pendingOlderAnchorRef.current = null;
     lastTimelineKeyRef.current = null;
+    initialPositionedConversationIdRef.current = null;
+    initialLayoutAdjustedConversationIdRef.current = null;
     isNearBottomRef.current = true;
   }, [conversationId]);
   useLayoutEffect(() => {
@@ -334,6 +349,44 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
       anchor.scrollTop + (container.scrollHeight - anchor.scrollHeight);
     pendingOlderAnchorRef.current = null;
   }, [isLoadingOlder, timeline]);
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!shouldPositionInitialChat({
+      conversationId,
+      isLoading,
+      latestTimelineKey,
+      hasPendingImageLayout,
+      hasPendingOlderLoad: Boolean(pendingOlderAnchorRef.current),
+      positionedConversationId: initialPositionedConversationIdRef.current,
+    }) || !container) return;
+
+    container.scrollTop = container.scrollHeight;
+    initialPositionedConversationIdRef.current = conversationId;
+    lastTimelineKeyRef.current = latestTimelineKey;
+  }, [conversationId, hasPendingImageLayout, isLoading, latestTimelineKey, timeline]);
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    const content = messageContentRef.current;
+    if (!container || !content || typeof ResizeObserver === "undefined") return undefined;
+
+    const observer = new ResizeObserver(() => {
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+      const shouldAdjust = shouldAdjustInitialChatLayout({
+        conversationId,
+        positionedConversationId: initialPositionedConversationIdRef.current,
+        distanceFromBottom,
+        adjustedConversationId: initialLayoutAdjustedConversationIdRef.current,
+        isNearBottom: isNearBottomRef.current,
+      });
+      if (!shouldAdjust) return;
+
+      container.scrollTop = container.scrollHeight;
+      initialLayoutAdjustedConversationIdRef.current = conversationId;
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [conversationId, timeline.length]);
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (
@@ -343,14 +396,17 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
       pendingOlderAnchorRef.current
     )
       return;
-    if (
-      lastTimelineKeyRef.current === null ||
-      (lastTimelineKeyRef.current !== latestTimelineKey &&
-        isNearBottomRef.current)
-    )
+    if (shouldFollowLatestChat({
+      conversationId,
+      latestTimelineKey,
+      previousTimelineKey: lastTimelineKeyRef.current,
+      isNearBottom: isNearBottomRef.current,
+      hasPendingOlderLoad: Boolean(pendingOlderAnchorRef.current),
+      positionedConversationId: initialPositionedConversationIdRef.current,
+    }))
       container.scrollTop = container.scrollHeight;
     lastTimelineKeyRef.current = latestTimelineKey;
-  }, [isLoading, latestTimelineKey]);
+  }, [conversationId, isLoading, latestTimelineKey]);
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container || typeof IntersectionObserver === "undefined")
@@ -496,7 +552,7 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
           className="min-h-0 flex-1 overflow-y-auto bg-slate-50/30 p-4 sm:p-6"
           aria-live="polite"
         >
-          <div className="space-y-3">
+          <div ref={messageContentRef} className="space-y-3">
             {hasMore && (
               <div className="text-center">
                 <button
