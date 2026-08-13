@@ -246,9 +246,6 @@ const Appointments = () => {
             <CalendarDays className="h-4 w-4" /> Takvim
           </button>
         </div>
-        {viewMode === 'calendar' && (
-          <p className="text-sm text-slate-500">Takvim saatleri Europe/Istanbul yerel tarihine göre gösterilir.</p>
-        )}
       </div>
 
       {viewMode === 'calendar' ? (

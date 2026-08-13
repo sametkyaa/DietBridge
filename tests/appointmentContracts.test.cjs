@@ -146,6 +146,11 @@ test('appointment modal close keeps page state isolated from form state', () => 
   assert.doesNotMatch(closeHandler[1], /addAppointment|updateAppointment|deleteAppointment|refreshAppointments|setSelectedDate|setVisibleMonth/);
 });
 
+test('appointment calendar does not render implementation timezone guidance', () => {
+  const source = read('pages/Appointments.tsx');
+  assert.doesNotMatch(source, /Takvim saatleri Europe\/Istanbul yerel tarihine göre gösterilir\./);
+});
+
 test('legacy supported appointment types normalize explicitly', () => {
   assert.equal(contract.normalizeAppointmentType('online'), 'Görüntülü Görüşme');
   assert.equal(contract.normalizeAppointmentType('in_person'), 'Yüzyüze');
