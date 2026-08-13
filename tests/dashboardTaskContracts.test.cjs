@@ -229,7 +229,7 @@ test('Dashboard uses persistent tasks with real client IDs and distinct operatio
   assert.match(source, /disabled=\{pendingTaskAction !== null\}/);
   assert.match(source, /getPendingDailyTaskGroup\(taskDraft\.dueDate, taskDraft\.dueTime\)/);
   assert.match(source, /editingTask\?\.status === 'completed'[\s\S]*?\? 'completed'/);
-  assert.match(source, /taskDialogOpenerRef\.current = taskMenuButtonRef\.current/);
+  assert.match(source, /taskDialogOpenerRef\.current = document\.activeElement as HTMLElement \| null/);
   assert.match(source, /taskTitleInputRef\.current\?\.focus\(\)/);
   assert.match(source, /event\.key === 'Escape'/);
   assert.match(source, /event\.key !== 'Tab'/);

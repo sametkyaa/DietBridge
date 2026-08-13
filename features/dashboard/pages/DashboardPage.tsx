@@ -1,7 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { 
   CheckCircle2, 
-  MoreHorizontal, 
   Search, 
   ChevronRight, 
   Calendar, 
@@ -21,7 +20,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import DietitianAvatar from '../../../shared/components/DietitianAvatar';
 import { useAppointments } from '../../appointments/context/AppointmentContext';
-import { getLocalDateKey } from '../../appointments/utils/appointmentContract';
+import { getTodayDateKey } from '../../appointments/utils/appointmentContract';
 import { fetchDietitianClients } from '../../clients/services/clientService';
 import { Client } from '../../../shared/types';
 import { useDailyTasks } from '../hooks/useDailyTasks';
@@ -117,7 +116,6 @@ const DashboardPage = () => {
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Task Management State
-  const [isTaskMenuOpen, setIsTaskMenuOpen] = useState(false);
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -127,7 +125,6 @@ const DashboardPage = () => {
   const taskDetailDialogRef = useRef<HTMLDivElement>(null);
   const taskTitleInputRef = useRef<HTMLInputElement>(null);
   const taskDetailCloseButtonRef = useRef<HTMLButtonElement>(null);
-  const taskMenuButtonRef = useRef<HTMLButtonElement>(null);
   const taskDialogOpenerRef = useRef<HTMLElement | null>(null);
   const taskDetailOpenerRef = useRef<HTMLElement | null>(null);
   const pendingTaskActionRef = useRef<string | null>(null);
@@ -157,7 +154,7 @@ const DashboardPage = () => {
   } = useAppointments();
   
   // Get today's appointments dynamically
-  const today = getLocalDateKey();
+  const today = getTodayDateKey();
   const todaysAppointments = getAppointmentsByDate(today)
     .filter((appointment) => appointment.status !== 'cancelled');
 
@@ -182,7 +179,7 @@ const DashboardPage = () => {
   }, [loadClients]);
 
   const openCreateTaskModal = () => {
-    taskDialogOpenerRef.current = taskMenuButtonRef.current;
+    taskDialogOpenerRef.current = document.activeElement as HTMLElement | null;
     clearMutationError();
     setEditingTask(null);
     setTaskDraft(emptyTaskDraft());
@@ -240,23 +237,16 @@ const DashboardPage = () => {
   const activeTaskClients = clients.filter((client) => client.status === 'Aktif');
   const visibleTasks = taskGroups[taskFilter];
   const dashboardSummary = summarizeDashboard({
-    clients,
     todayAppointments: todaysAppointments,
     tasks: taskGroups,
   });
-  const clientSummaryReady = !loadingClients && !clientLoadError;
   const appointmentsSummaryReady = !appointmentsLoading && !appointmentsError;
   const tasksSummaryReady = taskViewState.status === 'success';
-  const dashboardFocusMessage = clientLoadError || appointmentsError || taskViewState.status === 'error'
+  const dashboardFocusMessage = appointmentsError || taskViewState.status === 'error'
     ? 'Bugünün özeti şu anda tamamlanamadı. Verileri tekrar deneyin.'
-    : !clientSummaryReady || !appointmentsSummaryReady || !tasksSummaryReady
+    : !appointmentsSummaryReady || !tasksSummaryReady
       ? 'Bugünün özeti yükleniyor...'
       : getDashboardFocusMessage(dashboardSummary);
-
-  const focusTasks = (filter: 'overdue' | 'today') => {
-    setTaskFilter(filter);
-    document.getElementById('daily-tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
 
   // Close search dropdowns when clicking outside
   useEffect(() => {
@@ -431,52 +421,12 @@ const DashboardPage = () => {
       </header>
 
       {/* Operational summary */}
-      <section aria-labelledby="dashboard-summary-title" className="mb-8 space-y-4">
-        <div className="flex flex-col gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <section aria-labelledby="dashboard-summary-title" className="mb-8">
+        <div className="rounded-2xl border border-primary/15 bg-primary/5 p-5">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-primary">Bugünün odağı</p>
             <h2 id="dashboard-summary-title" className="mt-1 text-lg font-bold text-slate-800">{dashboardFocusMessage}</h2>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {dashboardSummary.overdueTaskCount > 0 && (
-              <button type="button" onClick={() => focusTasks('overdue')} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-rose-600 shadow-sm ring-1 ring-rose-100 hover:bg-rose-50">
-                Geciken görevleri aç
-              </button>
-            )}
-            {dashboardSummary.todayTaskCount > 0 && (
-              <button type="button" onClick={() => focusTasks('today')} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-primary shadow-sm ring-1 ring-primary/15 hover:bg-primary/5">
-                Bugünkü görevleri aç
-              </button>
-            )}
-            {dashboardSummary.overdueTaskCount === 0 && dashboardSummary.todayTaskCount === 0 && (
-              <button type="button" onClick={openCreateTaskModal} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-primary-dark">
-                Görev ekle
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <button type="button" onClick={() => navigate('/clients')} className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/5">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Aktif danışan</p>
-            <p className="mt-2 text-2xl font-bold text-slate-800">{clientSummaryReady ? dashboardSummary.activeClientCount : '—'}</p>
-            <p className="mt-1 text-xs text-slate-500">{clientLoadError ? 'Veri yüklenemedi' : clientSummaryReady ? `${dashboardSummary.pendingClientCount} onay bekliyor` : 'Yükleniyor...'}</p>
-          </button>
-          <button type="button" onClick={() => navigate('/appointments')} className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/5">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Bugünkü randevu</p>
-            <p className="mt-2 text-2xl font-bold text-slate-800">{appointmentsSummaryReady ? dashboardSummary.todayAppointmentCount : '—'}</p>
-            <p className="mt-1 text-xs text-slate-500">{appointmentsError ? 'Veri yüklenemedi' : appointmentsSummaryReady ? 'Randevu takvimini aç' : 'Yükleniyor...'}</p>
-          </button>
-          <button type="button" onClick={() => focusTasks('overdue')} className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-rose-200 hover:bg-rose-50">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Geciken görev</p>
-            <p className="mt-2 text-2xl font-bold text-slate-800">{tasksSummaryReady ? dashboardSummary.overdueTaskCount : '—'}</p>
-            <p className="mt-1 text-xs text-slate-500">{taskViewState.status === 'error' ? 'Veri yüklenemedi' : tasksSummaryReady ? 'Öncelikli iş listesi' : 'Yükleniyor...'}</p>
-          </button>
-          <button type="button" onClick={() => focusTasks('today')} className="rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/5">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Bugünün görevi</p>
-            <p className="mt-2 text-2xl font-bold text-slate-800">{tasksSummaryReady ? dashboardSummary.todayTaskCount : '—'}</p>
-            <p className="mt-1 text-xs text-slate-500">{taskViewState.status === 'error' ? 'Veri yüklenemedi' : tasksSummaryReady ? 'Bugünkü iş listesi' : 'Yükleniyor...'}</p>
-          </button>
         </div>
       </section>
 
@@ -487,39 +437,18 @@ const DashboardPage = () => {
           
           {/* Persistent Daily Tasks */}
           <section id="daily-tasks" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <div className="flex justify-between items-center mb-6">
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">Günlük Görevler</h3>
                 <p className="mt-1 text-xs text-slate-500">Kalıcı iş listenizi yönetin.</p>
               </div>
-              <div className="relative">
-                <button 
-                  ref={taskMenuButtonRef}
-                  onClick={() => setIsTaskMenuOpen(!isTaskMenuOpen)}
-                  aria-label="Görev menüsünü aç"
-                  className="text-slate-400 hover:text-primary transition-colors p-1 rounded-full hover:bg-slate-50"
-                >
-                  <MoreHorizontal className="w-6 h-6" />
-                </button>
-                
-                {/* Task Menu Dropdown */}
-                {isTaskMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10 cursor-default" onClick={() => setIsTaskMenuOpen(false)}></div>
-                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 z-20 py-1 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
-                      <button
-                        onClick={() => {
-                          openCreateTaskModal();
-                          setIsTaskMenuOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 text-slate-600 font-medium flex items-center gap-2 transition-colors"
-                      >
-                        <Plus className="w-4 h-4 text-primary" /> Yeni Görev Ekle
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={openCreateTaskModal}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-primary-dark"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" /> Yeni Görev Ekle
+              </button>
             </div>
 
             <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist" aria-label="Görev görünümü">

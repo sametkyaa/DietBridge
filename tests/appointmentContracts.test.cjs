@@ -191,9 +191,9 @@ test('appointment page uses active linked clients and awaits CRUD outcomes', () 
   assert.match(source, /disabled=\{pendingAction !== null/);
 });
 
-test('dashboard keeps appointment loading, error and empty states distinct using local dates', () => {
+test('dashboard keeps appointment loading, error and empty states distinct using Istanbul dates', () => {
   const source = read('features/dashboard/pages/DashboardPage.tsx');
-  assert.match(source, /getLocalDateKey\(\)/);
+  assert.match(source, /getTodayDateKey\(\)/);
   assert.doesNotMatch(source, /toISOString\(\)\.split/);
   assert.match(source, /appointmentsLoading[\s\S]*appointmentsError[\s\S]*todaysAppointments\.length/);
   assert.match(source, /refreshAppointments\(\)/);
