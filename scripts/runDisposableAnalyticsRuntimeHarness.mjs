@@ -168,6 +168,7 @@ const compileAnalyticsService = () => {
   const sources = [
     'features/analytics/services/analyticsService.ts',
     'features/analytics/types/analytics.ts',
+    'features/analytics/utils/waterContract.ts',
     'features/analytics/utils/analyticsContract.ts',
     'shared/types.ts',
     'shared/utils/uuid.ts',
@@ -260,9 +261,9 @@ const insertAnalyticsFixtures = async (approvedA, approvedB, clientA, clientB) =
   measurementIds.push(...insertedMeasurements.map(({ id }) => id));
 
   const logs = [
-    { client_id: clientA.id, date: '2026-08-04', water_intake: 1000 },
-    { client_id: clientA.id, date: '2026-08-05', water_intake: 2000 },
-    { client_id: clientA.id, date: '2026-08-06', water_intake: 2500 },
+    { client_id: clientA.id, date: '2026-08-04', water_intake: 1 },
+    { client_id: clientA.id, date: '2026-08-05', water_intake: 1.5 },
+    { client_id: clientA.id, date: '2026-08-06', water_intake: 2.5 },
     { client_id: clientA.id, date: '2026-08-07', water_intake: null },
     { client_id: clientA.id, date: '2026-08-08', water_intake: 0 },
     { client_id: clientB.id, date: '2026-08-11', water_intake: 3000 },
@@ -374,8 +375,8 @@ try {
     'CANONICAL_ALL_TIME_WEIGHT_KPI_AGGREGATION',
   );
   assert(report.kpis.plannedMeals === 5 && report.kpis.completedMeals === 3 && report.kpis.mealAdherencePercentage === 60, 'MEAL_ADHERENCE_AGGREGATION');
-  assert(report.kpis.water.averageMl === 1500 && report.kpis.water.trackedDays === 3, 'WATER_NULL_ZERO_AGGREGATION');
-  assert(Math.abs(report.kpis.water.goalAchievementPercentage - (200 / 3)) < 1e-10, 'WATER_GOAL_AGGREGATION');
+  assert(Math.abs(report.kpis.water.averageLiters - (4 / 3)) < 1e-10 && report.kpis.water.trackedDays === 3, 'WATER_NULL_ZERO_AGGREGATION');
+  assert(Math.abs(report.kpis.water.goalAchievementPercentage - (100 / 3)) < 1e-10, 'WATER_GOAL_AGGREGATION');
   assert(report.plannedNutrition.calories.total === 1100 && report.plannedNutrition.calories.isComplete === false, 'PLANNED_NUTRITION_COVERAGE');
 
   const freshApprovedA = await actorClient(approvedA);

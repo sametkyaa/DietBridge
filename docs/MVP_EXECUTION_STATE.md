@@ -7,7 +7,7 @@ Status:
 MVP-10 — COMPLETE (2026-08-12) — Web/Mobile shared contract closure, disposable runtime matrix, full quality gates and independent security reviews PASS; STOPPED BEFORE MVP-11
 
 Last Verified Base Commit:
-`64513d4` (`docs: record MVP-10 checkpoint SHAs`)
+Current Web `HEAD` (`fix: correct MVP-10 water contract`); exact SHA is recorded in the final handoff.
 
 MVP-4 Checkpoint:
 This document is included in the verified local MVP-4 checkpoint commit.
@@ -70,8 +70,19 @@ MVP-10 Quality Gates:
 
 MVP-10 Boundary / Stop:
 - MVP-10 implementation and all new harnesses were local/disposable only. No production database/Auth/Storage/RLS write, migration, smoke fixture, secret/Vault/cron mutation, push or merge was performed.
-- Verified local MVP-10 checkpoint commits: Web `8917777` (`feat: close MVP-10 shared contract closure`); disposable Mobile `0c3471f` (`feat(mobile): close MVP-10 shared contract closure`). Neither branch was pushed or merged.
+- Verified local MVP-10 checkpoint commits: Web current `HEAD` (`fix: correct MVP-10 water contract`); disposable Mobile `c102564` (`test: add mobile water contract coverage`). The exact Web SHA is recorded in the final handoff; neither branch was pushed or merged.
 - MVP-10 is complete. Do not start MVP-11, CI/GitHub Actions, release-candidate work, deployment/public launch or post-MVP features without a new explicit user instruction.
+
+MVP-10 Final Water Contract Correction (2026-08-13):
+- Canonical persisted unit is liters: `daily_logs.water_intake = 1` means `1 L`; `1.5` means `1.5 L`; `0` remains `0 L`; null/missing remains unknown. The separate `client_profiles.daily_water_goal_ml` field remains milliliters and is converted once for display.
+- Web removed the incorrect `/1000` conversion from persisted daily-log analytics and Client Details paths. Mobile’s `/1000` remains only at the user-input milliliter-to-liter boundary; persisted reads remain direct. No production water data was mutated.
+- Deterministic contract coverage PASS: Web water/shared contract `4/4`; MVP-6 analytics contracts `8/8`; Mobile water contract `2/2`; MVP-10 shared-contract suite and both disposable runtime harnesses PASS with zero fixture/Auth/relationship/Storage/queue residue.
+- Final quality gates PASS: Web full suite `247/247`, typecheck, lint (0 errors / 21 existing warnings), build (existing >500 kB chunk warning), `git diff --check`, and Web/Mobile credential-marker scans. Mobile configured suite `14/14`; Mobile typecheck remains unavailable because no script exists and only the pre-existing inactive `src_backup` imports block direct `tsc`.
+- Independent Web Codex Security diff review `0c772a46-b593-4b5f-a88a-76215f9ea5c4`: 0 reportable findings, 0 P0/P1, 9/9 diff worklist rows closed, complete coverage; report is retained at the generated scan artifact path. Measured usage: 232,919 total tokens; 8,465,339 input; 8,272,128 cached input; 39,708 output.
+- Production read-only revalidation PASS with the existing authenticated Web/Mobile sessions: both showed the same `1 L` value for the existing `2026-08-13` Europe/Istanbul day; Samsung device timezone is `Europe/Istanbul`; the exact `daily_logs` row remained `water_intake = 1` before/after, with the active test relationship and Core entitlement preserved. No production write, migration, schema, RLS, Auth or Storage change occurred.
+- Measurement disposition: no synthetic production measurement was created because a safe canonical cleanup path was not authorized/available; the existing disposable shared measurement contract PASS remains the evidence. Chat disposition: no production message was created because temporary canonical-path cleanup was not needed for this correction; existing disposable Chat Flow D PASS remains the evidence.
+- Existing production meal-plan / `is_eaten` evidence remains valid and was not repeated, per scope. Production temporary residue remains zero; no customer data was touched and no Auth user, relationship or subscription was created or removed.
+- Final state: `MVP-10 — COMPLETE — STOPPED BEFORE MVP-11`. Do not start MVP-11.
 
 MVP-8 Dashboard Closure:
 - The active `/` route now answers “Bugün ne yapmalıyım?” from existing owner-scoped client, appointment and persistent daily-task data. The dashboard does not invent analytics or nutrition values.

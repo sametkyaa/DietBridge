@@ -19,11 +19,16 @@ import {
   aggregateClientAnalytics,
   ANALYTICS_MAX_MACRO_GRAMS,
   ANALYTICS_MAX_MEAL_CALORIES,
-  ANALYTICS_MAX_WATER_ML,
   isAnalyticsDate,
   isAnalyticsDateRangeKey,
   resolveAnalyticsDateRange,
 } from '../utils/analyticsContract';
+import {
+  DAILY_WATER_GOAL_MAX_ML,
+  hasRawDailyWaterValue,
+  isValidDailyWaterLiters,
+  parseDailyWaterLiters,
+} from '../utils/waterContract';
 
 export const ANALYTICS_LOAD_ERROR = 'Analiz verileri y\u00fcklenemedi. L\u00fctfen tekrar deneyin.';
 export const ANALYTICS_ACCESS_ERROR = 'Bu dan\u0131\u015fan\u0131n analiz verilerine eri\u015filemiyor.';
@@ -223,12 +228,13 @@ const mapProfile = (row: ProfileRow | null, clientId: string): AnalyticsClientPr
   if (row !== null && row.user_id !== clientId) {
     throw new AnalyticsServiceError(ANALYTICS_LOAD_ERROR);
   }
+  const waterGoalMl = nullableBoundedNonNegativeNumber(row?.daily_water_goal_ml, DAILY_WATER_GOAL_MAX_ML);
   return {
     clientId,
     startWeight: nullableFiniteNumber(row?.start_weight),
     currentWeight: nullableFiniteNumber(row?.current_weight),
     targetWeight: nullableFiniteNumber(row?.target_weight),
-    waterGoalMl: nullableBoundedNonNegativeNumber(row?.daily_water_goal_ml, ANALYTICS_MAX_WATER_ML),
+    waterGoalLiters: waterGoalMl === null ? null : waterGoalMl / 1000,
   };
 };
 
@@ -259,14 +265,14 @@ const mapDailyLog = (row: DailyLogRow, clientId: string): AnalyticsDailyLog => {
   if (!isValidUuid(row.id) || row.client_id !== clientId || !isAnalyticsDate(row.date)) {
     throw new AnalyticsServiceError(ANALYTICS_LOAD_ERROR);
   }
-  const parsed = nullableFiniteNumber(row.water_intake);
-  const hasRawValue = row.water_intake !== null && row.water_intake !== undefined && row.water_intake !== '';
-  const isValid = parsed !== null && parsed >= 0 && parsed <= ANALYTICS_MAX_WATER_ML;
+  const parsed = parseDailyWaterLiters(row.water_intake);
+  const hasRawValue = hasRawDailyWaterValue(row.water_intake);
+  const isValid = isValidDailyWaterLiters(parsed);
   return {
     id: row.id,
     clientId,
     date: row.date,
-    waterMl: isValid ? parsed : null,
+    waterLiters: isValid ? parsed : null,
     hasInvalidWaterValue: hasRawValue && !isValid,
   };
 };

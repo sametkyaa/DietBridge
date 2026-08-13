@@ -15,9 +15,12 @@ import type {
   PlannedNutritionMetric,
 } from '../types/analytics';
 import { ANALYTICS_DATE_RANGE_KEYS, BODY_MEASUREMENT_FIELDS } from '../types/analytics';
+import {
+  DAILY_WATER_MAX_LITERS,
+  isValidDailyWaterLiters,
+} from './waterContract';
 
 export const ANALYTICS_TIME_ZONE = 'Europe/Istanbul';
-export const ANALYTICS_MAX_WATER_ML = 10_000;
 export const ANALYTICS_MAX_MEAL_CALORIES = 10_000;
 export const ANALYTICS_MAX_MACRO_GRAMS = 1_000;
 
@@ -207,18 +210,18 @@ const plannedMetric = (
 
 const waterSummary = (
   logs: AnalyticsSourceData['dailyLogs'],
-  goalMl: number | null,
+  goalLiters: number | null,
   range: AnalyticsDateRange,
 ): AnalyticsWaterSummary => {
-  const tracked = logs.filter((log) => isBoundedNonNegativeMetric(log.waterMl, ANALYTICS_MAX_WATER_ML));
-  const values = tracked.map((log) => log.waterMl as number);
-  const goalIsValid = isBoundedNonNegativeMetric(goalMl, ANALYTICS_MAX_WATER_ML) && goalMl > 0;
-  const achievedGoalDays = goalIsValid ? values.filter((value) => value >= goalMl).length : 0;
-  const totalWaterMl = safeFiniteSum(values);
+  const tracked = logs.filter((log) => isValidDailyWaterLiters(log.waterLiters));
+  const values = tracked.map((log) => log.waterLiters as number);
+  const goalIsValid = isBoundedNonNegativeMetric(goalLiters, DAILY_WATER_MAX_LITERS) && goalLiters > 0;
+  const achievedGoalDays = goalIsValid ? values.filter((value) => value >= goalLiters).length : 0;
+  const totalWaterLiters = safeFiniteSum(values);
   return {
-    averageMl: values.length === 0 || totalWaterMl === null ? null : totalWaterMl / values.length,
-    latestMl: tracked.length === 0 ? null : tracked[tracked.length - 1].waterMl,
-    goalMl: goalIsValid ? goalMl : null,
+    averageLiters: values.length === 0 || totalWaterLiters === null ? null : totalWaterLiters / values.length,
+    latestLiters: tracked.length === 0 ? null : tracked[tracked.length - 1].waterLiters,
+    goalLiters: goalIsValid ? goalLiters : null,
     trackedDays: tracked.length,
     periodDays: countAnalyticsRangeDays(range),
     achievedGoalDays,
@@ -274,13 +277,13 @@ export const aggregateClientAnalytics = (source: AnalyticsSourceData): ClientAna
       plannedMeals: allMeals.length,
       completedMeals,
       mealAdherencePercentage: percentage(completedMeals, allMeals.length),
-      water: waterSummary(logs, source.profile.waterGoalMl, source.range),
+      water: waterSummary(logs, source.profile.waterGoalLiters, source.range),
     },
     weightTrend,
     bodyMeasurementTrends,
     waterTrend: logs
-      .filter((log) => isBoundedNonNegativeMetric(log.waterMl, ANALYTICS_MAX_WATER_ML))
-      .map((log) => ({ date: log.date, value: log.waterMl as number })),
+      .filter((log) => isValidDailyWaterLiters(log.waterLiters))
+      .map((log) => ({ date: log.date, value: log.waterLiters as number })),
     dailyAdherence: aggregateAdherence(plans, (date) => date, (date) => date),
     weeklyAdherence: clampAdherencePointsToRange(
       aggregateAdherence(plans, startOfAnalyticsWeek, (start) => addAnalyticsDays(start, 6)),
@@ -291,7 +294,7 @@ export const aggregateClientAnalytics = (source: AnalyticsSourceData): ClientAna
     dataQuality: {
       invalidWaterRows: logs.filter((log) => (
         log.hasInvalidWaterValue
-        || (log.waterMl !== null && !isBoundedNonNegativeMetric(log.waterMl, ANALYTICS_MAX_WATER_ML))
+        || (log.waterLiters !== null && !isValidDailyWaterLiters(log.waterLiters))
       )).length,
       invalidCompletionRows: allMeals.filter((meal) => !meal.hasCompletionValue).length,
       incompleteCalorieMeals: allMeals.length - nutrition.calories.coveredMeals,

@@ -465,7 +465,7 @@ const Analytics = () => {
                   { label: 'Başlangıca Göre', value: formatNumber(report.kpis.weightChange, ' kg'), icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
                   { label: 'Hedef Farkı', value: formatNumber(report.kpis.targetGap, ' kg'), icon: Target, color: 'text-violet-600', bg: 'bg-violet-50' },
                   { label: 'Öğün Uyumu', value: formatPercentage(report.kpis.mealAdherencePercentage), icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                  { label: 'Ort. Su', value: formatNumber(report.kpis.water.averageMl === null ? null : report.kpis.water.averageMl / 1000, ' L'), icon: Droplets, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+                  { label: 'Ort. Su', value: formatNumber(report.kpis.water.averageLiters, ' L'), icon: Droplets, color: 'text-cyan-600', bg: 'bg-cyan-50' },
                   {
                     label: 'Takipli Su Günü',
                     value: report.kpis.water.periodDays === null
@@ -528,7 +528,7 @@ const Analytics = () => {
                   <EmptySection>Seçili dönemde su takip kaydı bulunmuyor.</EmptySection>
                 ) : (
                   <TrendChart
-                    points={report.waterTrend.map((point) => ({ ...point, value: point.value / 1000 }))}
+                    points={report.waterTrend}
                     label="Su takip trendi"
                     unit="L"
                     color="#0891b2"
@@ -538,8 +538,8 @@ const Analytics = () => {
               <article className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
                 <h2 className="font-bold text-slate-800">Su Hedefi Özeti</h2>
                 <dl className="mt-5 space-y-4 text-sm">
-                  <div><dt className="text-slate-500">Günlük hedef</dt><dd className="mt-1 font-bold text-slate-800">{formatNumber(report.kpis.water.goalMl === null ? null : report.kpis.water.goalMl / 1000, ' L')}</dd></div>
-                  <div><dt className="text-slate-500">Son kayıt</dt><dd className="mt-1 font-bold text-slate-800">{formatNumber(report.kpis.water.latestMl === null ? null : report.kpis.water.latestMl / 1000, ' L')}</dd></div>
+                  <div><dt className="text-slate-500">Günlük hedef</dt><dd className="mt-1 font-bold text-slate-800">{formatNumber(report.kpis.water.goalLiters, ' L')}</dd></div>
+                  <div><dt className="text-slate-500">Son kayıt</dt><dd className="mt-1 font-bold text-slate-800">{formatNumber(report.kpis.water.latestLiters, ' L')}</dd></div>
                   <div><dt className="text-slate-500">Hedefe ulaşma</dt><dd className="mt-1 font-bold text-slate-800">{formatPercentage(report.kpis.water.goalAchievementPercentage)}</dd></div>
                   <div><dt className="text-slate-500">Hedefe ulaşılan gün</dt><dd className="mt-1 font-bold text-slate-800">{`${report.kpis.water.achievedGoalDays}/${report.kpis.water.goalEligibleDays}`}</dd></div>
                 </dl>

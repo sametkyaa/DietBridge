@@ -29,7 +29,7 @@ export interface AnalyticsClientProfile {
   startWeight: number | null;
   currentWeight: number | null;
   targetWeight: number | null;
-  waterGoalMl: number | null;
+  waterGoalLiters: number | null;
 }
 
 export interface AnalyticsMeasurement {
@@ -54,7 +54,7 @@ export interface AnalyticsDailyLog {
   id: string;
   clientId: string;
   date: string;
-  waterMl: number | null;
+  waterLiters: number | null;
   hasInvalidWaterValue: boolean;
 }
 
@@ -119,9 +119,9 @@ export interface PlannedNutritionSummary {
 }
 
 export interface AnalyticsWaterSummary {
-  averageMl: number | null;
-  latestMl: number | null;
-  goalMl: number | null;
+  averageLiters: number | null;
+  latestLiters: number | null;
+  goalLiters: number | null;
   trackedDays: number;
   periodDays: number | null;
   achievedGoalDays: number;

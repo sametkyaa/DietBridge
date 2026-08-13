@@ -14,6 +14,8 @@ const completionRpc = read('supabase/migrations/20260713010400_meal_completion_r
 const weeklyPlanRpc = read('supabase/migrations/20260724063211_persist_recipe_meal_snapshots.sql');
 const measurementAlignment = read('supabase/migrations/20260801090000_align_measurements_with_mobile.sql');
 const sharedHarness = read('scripts/runDisposableMvp10SharedContractHarness.mjs');
+const waterSharedContract = read('tests/waterSharedContract.test.cjs');
+const mobileWaterTracker = read('../DietBridge-Mobile-MVP10/apps/mobile/src/features/clients/components/dashboard/WaterTrackerCard.js');
 
 test('MVP-10 inventory records the canonical Web/Mobile repositories and closure flows', () => {
   for (const marker of [
@@ -67,6 +69,13 @@ test('date, nullability, and cache-isolation safeguards are source-locked', () =
   assert.match(inventory, /Mobile date helpers use `Europe\/Istanbul`/);
   assert.match(inventory, /binds `userId` into `MealsProvider`/);
   assert.match(inventory, /ignores stale meal-plan results from the prior generation/);
+});
+
+test('MVP-10 daily water contract stays in persisted liters across Web and Mobile', () => {
+  assert.match(inventory, /persisted `water_intake` is canonical liters/);
+  assert.match(waterSharedContract, /1\.5/);
+  assert.match(mobileWaterTracker, /water\.toFixed\(2\)/);
+  assert.doesNotMatch(waterSharedContract, /point\.value\s*\/\s*1000/);
 });
 
 test('Mobile does not invent appointment or subscription UI contracts', () => {

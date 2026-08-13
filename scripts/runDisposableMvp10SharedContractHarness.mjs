@@ -312,11 +312,11 @@ const runFlows = async () => {
   const dailyLog = assertNoError(await mobileClientA.from('daily_logs').upsert({
     client_id: clientA.id,
     date: MEASURED_AT,
-    water_intake: 1750,
+    water_intake: 1.5,
   }, { onConflict: 'client_id,date' }).select('id,client_id,date,water_intake').single(), 'Mobile daily-log upsert');
   dailyLogIds.push(dailyLog.id);
   const webDailyLog = assertNoError(await webDietitianA.from('daily_logs').select('id,client_id,date,water_intake').eq('id', dailyLog.id).single(), 'Web daily-log read');
-  assert(webDailyLog.client_id === clientA.id && webDailyLog.date === MEASURED_AT && webDailyLog.water_intake === 1750, 'WEB_ANALYTICS_SEES_MOBILE_WATER');
+  assert(webDailyLog.client_id === clientA.id && webDailyLog.date === MEASURED_AT && webDailyLog.water_intake === 1.5, 'WEB_ANALYTICS_SEES_MOBILE_WATER');
   const foreignDailyLog = await webDietitianB.from('daily_logs').select('id').eq('id', dailyLog.id);
   assert(!foreignDailyLog.error && foreignDailyLog.data.length === 0, 'FOREIGN_TENANT_DAILY_LOG_DENIED');
   pass('FLOW_C_DAILY_TRACKING_ROUNDTRIP');

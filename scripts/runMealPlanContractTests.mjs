@@ -77,6 +77,7 @@ const SOURCES = [
   'features/dashboard/utils/dashboardContract.ts',
   'features/dashboard/services/dailyTaskService.ts',
   'features/analytics/types/analytics.ts',
+  'features/analytics/utils/waterContract.ts',
   'features/analytics/utils/analyticsContract.ts',
   'features/analytics/services/analyticsService.ts',
   'features/subscriptions/types/subscription.ts',
@@ -113,6 +114,7 @@ const EXPECTED_OUTPUTS = [
   'features/dashboard/utils/dashboardContract.js',
   'features/dashboard/services/dailyTaskService.js',
   'features/analytics/types/analytics.js',
+  'features/analytics/utils/waterContract.js',
   'features/analytics/utils/analyticsContract.js',
   'features/analytics/services/analyticsService.js',
   'features/subscriptions/types/subscription.js',
@@ -245,6 +247,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs'),
   join(repoRoot, 'tests', 'dashboardClosureContracts.test.cjs'),
   join(repoRoot, 'tests', 'analyticsContracts.test.cjs'),
+  join(repoRoot, 'tests', 'waterSharedContract.test.cjs'),
   join(repoRoot, 'tests', 'subscriptionContracts.test.cjs'),
   join(repoRoot, 'tests', 'mvp9MockCleanupContracts.test.cjs'),
   join(repoRoot, 'tests', 'mvp10SharedContractContracts.test.cjs'),
@@ -255,6 +258,8 @@ const selectedTestFiles = process.argv.includes('--appointments-only')
     ? [join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs')]
     : process.argv.includes('--analytics-only')
       ? [join(repoRoot, 'tests', 'analyticsContracts.test.cjs')]
+      : process.argv.includes('--water-only')
+        ? [join(repoRoot, 'tests', 'waterSharedContract.test.cjs')]
       : process.argv.includes('--subscriptions-only')
         ? [join(repoRoot, 'tests', 'subscriptionContracts.test.cjs')]
     : testFiles;

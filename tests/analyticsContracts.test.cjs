@@ -38,7 +38,7 @@ const source = () => ({
   clientId: CLIENT_ID,
   dietitianId: DIETITIAN_ID,
   range: { key: '7d', startDate: '2026-08-05', endDate: '2026-08-11' },
-  profile: { clientId: CLIENT_ID, startWeight: 80, currentWeight: 79, targetWeight: 70, waterGoalMl: 2000 },
+  profile: { clientId: CLIENT_ID, startWeight: 80, currentWeight: 79, targetWeight: 70, waterGoalLiters: 2 },
   measurements: [
     measurement(ids[0], '2026-08-05', { weight: 78, waist: 90 }),
     measurement(ids[1], '2026-08-11', { weight: 76.5, waist: 88, rightArm: 31 }),
@@ -46,10 +46,10 @@ const source = () => ({
   latestMeasurement: measurement(ids[1], '2026-08-11', { weight: 76.5, waist: 88 }),
   latestWeightMeasurement: measurement(ids[1], '2026-08-11', { weight: 76.5, waist: 88 }),
   dailyLogs: [
-    { id: ids[2], clientId: CLIENT_ID, date: '2026-08-05', waterMl: 2000, hasInvalidWaterValue: false },
-    { id: ids[3], clientId: CLIENT_ID, date: '2026-08-06', waterMl: 2500, hasInvalidWaterValue: false },
-    { id: ids[4], clientId: CLIENT_ID, date: '2026-08-07', waterMl: null, hasInvalidWaterValue: false },
-    { id: ids[5], clientId: CLIENT_ID, date: '2026-08-08', waterMl: 0, hasInvalidWaterValue: false },
+    { id: ids[2], clientId: CLIENT_ID, date: '2026-08-05', waterLiters: 1, hasInvalidWaterValue: false },
+    { id: ids[3], clientId: CLIENT_ID, date: '2026-08-06', waterLiters: 1.5, hasInvalidWaterValue: false },
+    { id: ids[4], clientId: CLIENT_ID, date: '2026-08-07', waterLiters: null, hasInvalidWaterValue: false },
+    { id: ids[5], clientId: CLIENT_ID, date: '2026-08-08', waterLiters: 0, hasInvalidWaterValue: false },
   ],
   mealPlans: [
     {
@@ -107,11 +107,11 @@ test('analytics aggregation computes weight, adherence, water and body trends fr
   assert.equal(report.kpis.mealAdherencePercentage, 60);
   assert.deepEqual(report.dailyAdherence.map(({ planned, completed }) => [planned, completed]), [[2, 1], [3, 2]]);
   assert.ok(Math.abs(report.dailyAdherence[1].percentage - (200 / 3)) < 1e-10);
-  assert.equal(report.kpis.water.averageMl, 1500);
-  assert.equal(report.kpis.water.latestMl, 0);
+  assert.equal(report.kpis.water.averageLiters, 2.5 / 3);
+  assert.equal(report.kpis.water.latestLiters, 0);
   assert.equal(report.kpis.water.trackedDays, 3);
-  assert.ok(Math.abs(report.kpis.water.goalAchievementPercentage - (200 / 3)) < 1e-10);
-  assert.deepEqual(report.waterTrend.map(({ value }) => value), [2000, 2500, 0]);
+  assert.equal(report.kpis.water.goalAchievementPercentage, 0);
+  assert.deepEqual(report.waterTrend.map(({ value }) => value), [1, 1.5, 0]);
   assert.deepEqual(report.weeklyAdherence.map(({ periodStart, periodEnd }) => [periodStart, periodEnd]), [
     ['2026-08-05', '2026-08-09'],
     ['2026-08-10', '2026-08-11'],
@@ -142,17 +142,17 @@ test('analytics null and coverage semantics never invent complete data', () => {
   assert.equal(report.dataQuality.incompleteMacroMeals, 3);
 
   const empty = source();
-  empty.profile = { ...empty.profile, startWeight: null, currentWeight: null, targetWeight: null, waterGoalMl: null };
+  empty.profile = { ...empty.profile, startWeight: null, currentWeight: null, targetWeight: null, waterGoalLiters: null };
   empty.measurements = [measurement(ids[0], '2026-08-11')];
   empty.latestMeasurement = empty.measurements[0];
   empty.latestWeightMeasurement = null;
-  empty.dailyLogs = [{ id: ids[2], clientId: CLIENT_ID, date: '2026-08-11', waterMl: null, hasInvalidWaterValue: true }];
+  empty.dailyLogs = [{ id: ids[2], clientId: CLIENT_ID, date: '2026-08-11', waterLiters: null, hasInvalidWaterValue: true }];
   empty.mealPlans = [];
   const emptyReport = contract.aggregateClientAnalytics(empty);
   assert.equal(emptyReport.kpis.currentWeight, null);
   assert.equal(emptyReport.kpis.weightChange, null);
   assert.equal(emptyReport.kpis.mealAdherencePercentage, null);
-  assert.equal(emptyReport.kpis.water.averageMl, null);
+  assert.equal(emptyReport.kpis.water.averageLiters, null);
   assert.equal(emptyReport.kpis.water.goalAchievementPercentage, null);
   assert.equal(emptyReport.plannedNutrition.calories.total, null);
   assert.equal(emptyReport.dataQuality.invalidWaterRows, 1);
@@ -161,8 +161,8 @@ test('analytics null and coverage semantics never invent complete data', () => {
 test('analytics rejects huge finite metrics and never emits Infinity', () => {
   const extreme = source();
   extreme.dailyLogs = [
-    { id: ids[2], clientId: CLIENT_ID, date: '2026-08-05', waterMl: 2000, hasInvalidWaterValue: false },
-    { id: ids[3], clientId: CLIENT_ID, date: '2026-08-06', waterMl: Number.MAX_VALUE, hasInvalidWaterValue: false },
+    { id: ids[2], clientId: CLIENT_ID, date: '2026-08-05', waterLiters: 1, hasInvalidWaterValue: false },
+    { id: ids[3], clientId: CLIENT_ID, date: '2026-08-06', waterLiters: Number.MAX_VALUE, hasInvalidWaterValue: false },
   ];
   extreme.mealPlans[0].meals[0] = meal(ids[0], 'breakfast', true, {
     calories: Number.MAX_VALUE,
@@ -171,10 +171,10 @@ test('analytics rejects huge finite metrics and never emits Infinity', () => {
     fat: 15,
   });
   const report = contract.aggregateClientAnalytics(extreme);
-  assert.equal(report.kpis.water.averageMl, 2000);
+  assert.equal(report.kpis.water.averageLiters, 1);
   assert.equal(report.kpis.water.trackedDays, 1);
   assert.equal(report.dataQuality.invalidWaterRows, 1);
-  assert.deepEqual(report.waterTrend.map(({ value }) => value), [2000]);
+  assert.deepEqual(report.waterTrend.map(({ value }) => value), [1]);
   assert.equal(report.plannedNutrition.calories.coveredMeals, 1);
   assert.equal(report.plannedNutrition.calories.total, 600);
   assert.equal(report.plannedNutrition.calories.isComplete, false);

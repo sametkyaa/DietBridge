@@ -18,6 +18,7 @@
     "test:daily-tasks": "node scripts/runMealPlanContractTests.mjs --daily-tasks-only",
     "test:daily-tasks:runtime": "node scripts/runDisposableDailyTaskRuntimeHarness.mjs",
     "test:analytics": "node scripts/runMealPlanContractTests.mjs --analytics-only",
+    "test:water": "node scripts/runMealPlanContractTests.mjs --water-only",
     "test:analytics:runtime": "node scripts/runDisposableAnalyticsRuntimeHarness.mjs",
     "test:subscriptions": "node scripts/runMealPlanContractTests.mjs --subscriptions-only",
     "test:subscriptions:runtime": "node scripts/runDisposableSubscriptionRuntimeHarness.mjs",

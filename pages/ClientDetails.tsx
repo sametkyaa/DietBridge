@@ -821,7 +821,7 @@ const ClientDetails = () => {
   const hasDailyLogs = recentLogs.length > 0;
   const hasWaterData = recordedWaterValues.length > 0;
   const waterAvg = hasWaterData
-    ? (recordedWaterValues.reduce((sum, value) => sum + value, 0) / recordedWaterValues.length / 1000).toFixed(1)
+    ? (recordedWaterValues.reduce((sum, value) => sum + value, 0) / recordedWaterValues.length).toFixed(1)
     : null;
   const waterAverageLabel = recordedWaterValues.length === 1
     ? 'Son Kayıt'
@@ -831,8 +831,8 @@ const ClientDetails = () => {
   const waterData = recentLogs.map(log => {
       const d = new Date(log.date);
       return {
-          val: typeof log.water_intake === 'number'
-            ? parseFloat((log.water_intake / 1000).toFixed(1))
+        val: typeof log.water_intake === 'number'
+            ? parseFloat(log.water_intake.toFixed(1))
             : null,
           day: dayNames[d.getDay()] || '-'
       };
