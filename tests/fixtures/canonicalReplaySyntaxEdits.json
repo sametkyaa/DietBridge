@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 34,
+  "expectedCanonicalCount": 35,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2821,6 +2821,13 @@
       "phase": "canonical",
       "sourceSha256": "623033e5e4e61498c5f1f48b94fe00d9269bae908291a87b8bca831d775c111b",
       "materializedSha256": "623033e5e4e61498c5f1f48b94fe00d9269bae908291a87b8bca831d775c111b",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260813120000_create_persistent_dietitian_notes.sql",
+      "phase": "canonical",
+      "sourceSha256": "c90574ac319d443652bd2ffaaccdf03a91b3396223554de719cc0603dce4e865",
+      "materializedSha256": "c90574ac319d443652bd2ffaaccdf03a91b3396223554de719cc0603dce4e865",
       "edits": []
     }
   ]

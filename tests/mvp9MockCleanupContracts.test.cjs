@@ -8,11 +8,12 @@ const test = require('node:test');
 const root = path.join(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('MVP-9 active route chain does not expose the local Notes mock', () => {
+test('MVP-9 legacy local Notes mock remains absent from the active route chain', () => {
   const app = read('App.tsx');
   const sidebar = read('shared/components/Sidebar.tsx');
-  assert.doesNotMatch(app, /Notes|\/notes/);
-  assert.doesNotMatch(sidebar, /Notlar|\/notes/);
+  assert.doesNotMatch(app, /from ['"]\.\/pages\/Notes['"]/);
+  assert.match(app, /features\/notes\/pages\/NotesPage/);
+  assert.match(sidebar, /Notlar|\/notes/);
 });
 
 test('MVP-9 recipe detail is authenticated and owner-scoped', () => {

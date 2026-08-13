@@ -76,6 +76,9 @@ const SOURCES = [
   'features/dashboard/utils/dailyTaskContract.ts',
   'features/dashboard/utils/dashboardContract.ts',
   'features/dashboard/services/dailyTaskService.ts',
+  'features/notes/types/note.ts',
+  'features/notes/utils/noteContract.ts',
+  'features/notes/services/noteService.ts',
   'features/analytics/types/analytics.ts',
   'features/analytics/utils/waterContract.ts',
   'features/analytics/utils/analyticsContract.ts',
@@ -114,6 +117,9 @@ const EXPECTED_OUTPUTS = [
   'features/dashboard/utils/dailyTaskContract.js',
   'features/dashboard/utils/dashboardContract.js',
   'features/dashboard/services/dailyTaskService.js',
+  'features/notes/types/note.js',
+  'features/notes/utils/noteContract.js',
+  'features/notes/services/noteService.js',
   'features/analytics/types/analytics.js',
   'features/analytics/utils/waterContract.js',
   'features/analytics/utils/analyticsContract.js',
@@ -255,6 +261,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'mvp9MockCleanupContracts.test.cjs'),
   join(repoRoot, 'tests', 'mvp10SharedContractContracts.test.cjs'),
   join(repoRoot, 'tests', 'dietitianProfilePresentation.test.cjs'),
+  join(repoRoot, 'tests', 'noteContracts.test.cjs'),
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
@@ -262,6 +269,8 @@ const selectedTestFiles = process.argv.includes('--appointments-only')
     ? testFiles.filter((file) => /chat(?:Contracts|Image|ScrollLifecycle)/i.test(file))
   : process.argv.includes('--daily-tasks-only')
     ? [join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs')]
+  : process.argv.includes('--notes-only')
+    ? [join(repoRoot, 'tests', 'noteContracts.test.cjs')]
     : process.argv.includes('--analytics-only')
       ? [join(repoRoot, 'tests', 'analyticsContracts.test.cjs')]
       : process.argv.includes('--water-only')
