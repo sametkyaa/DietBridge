@@ -124,10 +124,26 @@ test('new appointment form defaults to an editable weekly control title and clic
 
 test('appointment page preserves persisted titles for edits and uses the canonical create flow', () => {
   const source = read('pages/Appointments.tsx');
-  assert.match(source, /setFormData\(createAppointmentDraft\(date\)\)/);
+  assert.match(source, /setFormData\(createAppointmentDraft\(nextDate\)\)/);
   assert.match(source, /title: appointment\.title/);
   assert.match(source, /onChange=\{\(e\) => setFormData\(\{\.\.\.formData, date: e\.target\.value\}\)\}/);
   assert.doesNotMatch(source, /title: DEFAULT_APPOINTMENT_TITLE/);
+});
+
+test('appointment modal close keeps page state isolated from form state', () => {
+  const source = read('pages/Appointments.tsx');
+  assert.match(source, /const openCreateModal = \(date\?: string\) => \{/);
+  assert.match(source, /const nextDate = typeof date === 'string' \? date : selectedDate;/);
+  assert.match(source, /setViewMode\('list'\)/);
+  assert.match(source, /setViewMode\('calendar'\)/);
+  assert.match(source, /viewMode === 'calendar' \?/);
+  assert.doesNotMatch(source, /onClick=\{openCreateModal\}/);
+  assert.equal((source.match(/onClick=\{\(\) => openCreateModal\(\)\}/g) ?? []).length, 2);
+  assert.match(source, /const closeModal = \(\) => \{[\s\S]*?setIsModalOpen\(false\);[\s\S]*?setEditingAppointment\(null\);[\s\S]*?setFormData\(createAppointmentDraft\(\)\);[\s\S]*?\}/);
+  assert.equal((source.match(/onClick=\{closeModal\}/g) ?? []).length, 2);
+  const closeHandler = source.match(/const closeModal = \(\) => \{([\s\S]*?)\n  \};/);
+  assert.ok(closeHandler);
+  assert.doesNotMatch(closeHandler[1], /addAppointment|updateAppointment|deleteAppointment|refreshAppointments|setSelectedDate|setVisibleMonth/);
 });
 
 test('legacy supported appointment types normalize explicitly', () => {

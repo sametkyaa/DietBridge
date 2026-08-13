@@ -101,13 +101,20 @@ const Appointments = () => {
   const appointmentsInVisibleMonth = useMemo(() => appointments
     .filter((appointment) => appointment.date.startsWith(visibleMonth)), [appointments, visibleMonth]);
 
-  const openCreateModal = (date = selectedDate) => {
+  const openCreateModal = (date?: string) => {
+    const nextDate = typeof date === 'string' ? date : selectedDate;
     clearMutationError();
     setEditingAppointment(null);
-    setSelectedDate(date);
-    setVisibleMonth(getMonthKeyFromDateKey(date) ?? visibleMonth);
-    setFormData(createAppointmentDraft(date));
+    setSelectedDate(nextDate);
+    setVisibleMonth(getMonthKeyFromDateKey(nextDate) ?? visibleMonth);
+    setFormData(createAppointmentDraft(nextDate));
     setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingAppointment(null);
+    setFormData(createAppointmentDraft());
   };
 
   const openEditModal = (appointment: Appointment) => {
@@ -190,7 +197,7 @@ const Appointments = () => {
           <p className="text-slate-500 mt-1">Takviminizi ve görüşmelerinizi yönetin.</p>
         </div>
         <button 
-          onClick={openCreateModal}
+          onClick={() => openCreateModal()}
           disabled={clientState.status === 'loading' || clientState.status === 'error'}
           className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-medium shadow-sm transition-all active:scale-95"
         >
@@ -466,7 +473,7 @@ const Appointments = () => {
                         <CalendarIcon className="w-8 h-8" />
                      </div>
                      <p className="text-slate-500 font-medium">Bu tarihte randevu yok.</p>
-                     <button onClick={openCreateModal} disabled={clientState.status !== 'success'} className="text-primary text-sm font-bold mt-2 hover:underline disabled:opacity-50">Oluştur</button>
+                     <button onClick={() => openCreateModal()} disabled={clientState.status !== 'success'} className="text-primary text-sm font-bold mt-2 hover:underline disabled:opacity-50">Oluştur</button>
                   </div>
                 )}
              </div>
@@ -545,7 +552,7 @@ const Appointments = () => {
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                <h2 className="text-xl font-bold text-slate-800">{editingAppointment ? 'Randevuyu Düzenle' : 'Yeni Randevu Oluştur'}</h2>
-               <button type="button" onClick={() => setIsModalOpen(false)} disabled={pendingAction !== null} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 disabled:opacity-50">
+               <button type="button" onClick={closeModal} disabled={pendingAction !== null} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 disabled:opacity-50">
                   <X className="w-5 h-5" />
                </button>
             </div>
@@ -658,7 +665,7 @@ const Appointments = () => {
                <div className="pt-4 flex gap-3">
                   <button 
                     type="button" 
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={closeModal}
                     disabled={pendingAction !== null}
                     className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors"
                   >
