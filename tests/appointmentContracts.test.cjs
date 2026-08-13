@@ -70,6 +70,66 @@ test('local appointment dates do not use UTC serialization', () => {
   assert.equal(contract.parseLocalDate('2026-08-11').getDate(), 11);
 });
 
+test('monthly calendar is Monday-first and maps 2026-08-13 to Thursday', () => {
+  const days = contract.getMonthCalendarDays('2026-08');
+  const selected = days.find((day) => day.date === '2026-08-13');
+  assert.ok(selected);
+  assert.equal(days.length, 42);
+  assert.equal(days.indexOf(selected) % 7, 3);
+  assert.equal(days[0].date, '2026-07-27');
+  assert.equal(days[0].isCurrentMonth, false);
+  assert.equal(days[5].date, '2026-08-01');
+  assert.equal(days[5].isCurrentMonth, true);
+});
+
+test('calendar handles months beginning and ending mid-week', () => {
+  const september = contract.getMonthCalendarDays('2026-09');
+  assert.equal(september.length, 35);
+  assert.equal(september[0].date, '2026-08-31');
+  assert.equal(september[1].date, '2026-09-01');
+  assert.equal(september[1].isCurrentMonth, true);
+  assert.equal(september[30].date, '2026-09-30');
+  assert.equal(september[31].date, '2026-10-01');
+  assert.equal(september[31].isCurrentMonth, false);
+});
+
+test('calendar month navigation and Istanbul civil dates are deterministic', () => {
+  assert.equal(contract.addCalendarMonths('2026-08', -1), '2026-07');
+  assert.equal(contract.addCalendarMonths('2026-08', 1), '2026-09');
+  assert.equal(contract.addCalendarDays('2026-08-13', 1), '2026-08-14');
+  assert.equal(contract.getTodayDateKey(new Date('2026-08-12T21:30:00.000Z')), '2026-08-13');
+  assert.equal(contract.getTodayDateKey(new Date('2026-08-13T20:59:59.000Z')), '2026-08-13');
+  assert.equal(contract.getTodayDateKey(new Date('2026-08-13T21:00:00.000Z')), '2026-08-14');
+});
+
+test('new appointment form defaults to an editable weekly control title and clicked date', () => {
+  const draft = contract.createAppointmentDraft('2026-08-13');
+  assert.equal(draft.title, 'Haftalık kontrol');
+  assert.equal(draft.date, '2026-08-13');
+
+  const edited = contract.validateAppointmentDraft(
+    { ...draft, clientId: VALID_DRAFT.clientId, title: 'İlk görüşme' },
+    new Date(2026, 7, 1),
+  );
+  assert.equal(edited.success, true);
+  assert.equal(edited.value.title, 'İlk görüşme');
+
+  const rescheduled = contract.validateAppointmentDraft(
+    { ...draft, clientId: VALID_DRAFT.clientId, date: '2026-08-14' },
+    new Date(2026, 7, 1),
+  );
+  assert.equal(rescheduled.success, true);
+  assert.equal(rescheduled.value.date, '2026-08-14');
+});
+
+test('appointment page preserves persisted titles for edits and uses the canonical create flow', () => {
+  const source = read('pages/Appointments.tsx');
+  assert.match(source, /setFormData\(createAppointmentDraft\(date\)\)/);
+  assert.match(source, /title: appointment\.title/);
+  assert.match(source, /onChange=\{\(e\) => setFormData\(\{\.\.\.formData, date: e\.target\.value\}\)\}/);
+  assert.doesNotMatch(source, /title: DEFAULT_APPOINTMENT_TITLE/);
+});
+
 test('legacy supported appointment types normalize explicitly', () => {
   assert.equal(contract.normalizeAppointmentType('online'), 'Görüntülü Görüşme');
   assert.equal(contract.normalizeAppointmentType('in_person'), 'Yüzyüze');

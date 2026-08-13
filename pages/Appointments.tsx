@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { 
   Calendar as CalendarIcon, 
+  CalendarDays,
   Clock, 
   MapPin, 
   Video, 
@@ -8,6 +9,7 @@ import {
   Plus, 
   X, 
   User, 
+  List,
   ChevronLeft,
   ChevronRight,
   Trash2,
@@ -22,8 +24,16 @@ import {
   APPOINTMENT_DURATIONS,
   APPOINTMENT_TYPES,
   AppointmentDraft,
-  getLocalDateKey,
-  parseLocalDate,
+  CALENDAR_WEEKDAY_LABELS,
+  addCalendarDays,
+  addCalendarMonths,
+  createAppointmentDraft,
+  formatDateKey,
+  formatMonthKey,
+  getMonthCalendarDays,
+  getMonthKey,
+  getMonthKeyFromDateKey,
+  getTodayDateKey,
 } from '../features/appointments/utils/appointmentContract';
 import { Appointment, Client } from '../shared/types';
 
@@ -31,15 +41,6 @@ type ClientState =
   | { status: 'loading'; clients: Client[] }
   | { status: 'success'; clients: Client[] }
   | { status: 'error'; clients: Client[]; message: string };
-
-const createEmptyForm = (date = getLocalDateKey()): AppointmentDraft => ({
-  clientId: '',
-  title: '',
-  date,
-  time: '09:00',
-  duration: 30,
-  type: 'Görüntülü Görüşme',
-});
 
 const Appointments = () => {
   const {
@@ -56,10 +57,12 @@ const Appointments = () => {
   } = useAppointments();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(getLocalDateKey());
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateKey());
+  const [visibleMonth, setVisibleMonth] = useState<string>(() => getMonthKey());
   const [clientState, setClientState] = useState<ClientState>({ status: 'loading', clients: [] });
 
-  const [formData, setFormData] = useState<AppointmentDraft>(() => createEmptyForm());
+  const [formData, setFormData] = useState<AppointmentDraft>(() => createAppointmentDraft());
 
   const loadClients = useCallback(async () => {
     setClientState((current) => ({ status: 'loading', clients: current.clients }));
@@ -79,18 +82,38 @@ const Appointments = () => {
 
   const selectedClientForForm = activeClients.find((client) => client.id === formData.clientId);
 
-  // Group appointments by date
-  const appointmentsByDate = appointments.filter(a => a.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time));
+  const appointmentsByDate = useMemo(() => appointments
+    .filter((appointment) => appointment.date === selectedDate)
+    .sort((left, right) => left.time.localeCompare(right.time)), [appointments, selectedDate]);
 
-  const openCreateModal = () => {
+  const calendarDays = useMemo(() => getMonthCalendarDays(visibleMonth), [visibleMonth]);
+
+  const appointmentsByCalendarDate = useMemo(() => {
+    const grouped = new Map<string, Appointment[]>();
+    appointments.forEach((appointment) => {
+      const current = grouped.get(appointment.date) ?? [];
+      current.push(appointment);
+      grouped.set(appointment.date, current.sort((left, right) => left.time.localeCompare(right.time)));
+    });
+    return grouped;
+  }, [appointments]);
+
+  const appointmentsInVisibleMonth = useMemo(() => appointments
+    .filter((appointment) => appointment.date.startsWith(visibleMonth)), [appointments, visibleMonth]);
+
+  const openCreateModal = (date = selectedDate) => {
     clearMutationError();
     setEditingAppointment(null);
-    setFormData(createEmptyForm(selectedDate));
+    setSelectedDate(date);
+    setVisibleMonth(getMonthKeyFromDateKey(date) ?? visibleMonth);
+    setFormData(createAppointmentDraft(date));
     setIsModalOpen(true);
   };
 
   const openEditModal = (appointment: Appointment) => {
     clearMutationError();
+    setSelectedDate(appointment.date);
+    setVisibleMonth(getMonthKeyFromDateKey(appointment.date) ?? visibleMonth);
     setEditingAppointment(appointment);
     setFormData({
       clientId: appointment.clientId,
@@ -111,9 +134,10 @@ const Appointments = () => {
     if (!result.success) return;
 
     setSelectedDate(formData.date);
+    setVisibleMonth(getMonthKeyFromDateKey(formData.date) ?? visibleMonth);
     setIsModalOpen(false);
     setEditingAppointment(null);
-    setFormData(createEmptyForm(formData.date));
+    setFormData(createAppointmentDraft(formData.date));
   };
 
   const handleDelete = async (appointment: Appointment) => {
@@ -139,25 +163,23 @@ const Appointments = () => {
     }
   };
 
-  // Simple date navigator
   const changeDate = (days: number) => {
-    const [year, month, day] = selectedDate.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    date.setDate(date.getDate() + days);
-    setSelectedDate(getLocalDateKey(date));
+    const nextDate = addCalendarDays(selectedDate, days);
+    if (!nextDate) return;
+    setSelectedDate(nextDate);
+    setVisibleMonth(getMonthKeyFromDateKey(nextDate) ?? visibleMonth);
   };
 
-  const selectedDateValue = useMemo(() => {
-    const [year, month, day] = selectedDate.split('-').map(Number);
-    return new Date(year, month - 1, day);
-  }, [selectedDate]);
+  const changeMonth = (months: number) => {
+    const nextMonth = addCalendarMonths(visibleMonth, months);
+    if (!nextMonth) return;
+    setVisibleMonth(nextMonth);
+    setSelectedDate(`${nextMonth}-01`);
+  };
 
   const upcomingAppointments = useMemo(() => appointments
-    .filter((appointment) => {
-      const appointmentDate = parseLocalDate(appointment.date);
-      return appointmentDate ? appointmentDate > selectedDateValue : false;
-    })
-    .sort((left, right) => `${left.date}T${left.time}`.localeCompare(`${right.date}T${right.time}`)), [appointments, selectedDateValue]);
+    .filter((appointment) => appointment.date > selectedDate)
+    .sort((left, right) => `${left.date}T${left.time}`.localeCompare(`${right.date}T${right.time}`)), [appointments, selectedDate]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto min-h-screen">
@@ -198,7 +220,177 @@ const Appointments = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="group" aria-label="Randevu görünümü">
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            aria-pressed={viewMode === 'list'}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <List className="h-4 w-4" /> Liste
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('calendar')}
+            aria-pressed={viewMode === 'calendar'}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${viewMode === 'calendar' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <CalendarDays className="h-4 w-4" /> Takvim
+          </button>
+        </div>
+        {viewMode === 'calendar' && (
+          <p className="text-sm text-slate-500">Takvim saatleri Europe/Istanbul yerel tarihine göre gösterilir.</p>
+        )}
+      </div>
+
+      {viewMode === 'calendar' ? (
+        <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm md:p-6" aria-label="Aylık randevu takvimi">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold capitalize text-slate-800">{formatMonthKey(visibleMonth)}</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {loading
+                  ? 'Randevular yükleniyor...'
+                  : error
+                    ? 'Randevular gösterilemiyor.'
+                    : appointmentsInVisibleMonth.length === 0
+                  ? 'Bu ay planlanmış randevu yok.'
+                  : `${appointmentsInVisibleMonth.length} randevu planlandı.`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => changeMonth(-1)}
+                className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+                aria-label="Önceki ay"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibleMonth(getMonthKey())}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Bu ay
+              </button>
+              <button
+                type="button"
+                onClick={() => changeMonth(1)}
+                className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+                aria-label="Sonraki ay"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex min-h-[24rem] items-center justify-center gap-2 text-sm font-medium text-slate-500" role="status">
+              <Loader2 className="h-5 w-5 animate-spin" /> Randevular yükleniyor...
+            </div>
+          ) : error ? (
+            <div className="flex min-h-[24rem] flex-col items-center justify-center text-center">
+              <p className="text-sm font-medium text-rose-600">Randevular gösterilemiyor.</p>
+              <button type="button" onClick={() => void refreshAppointments()} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-primary">
+                <RefreshCw className="h-4 w-4" /> Tekrar dene
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-7 border-b border-l border-slate-200" role="grid" aria-label={`${formatMonthKey(visibleMonth)} randevu günleri`}>
+                {CALENDAR_WEEKDAY_LABELS.map((weekday) => (
+                  <div key={weekday} className="border-r border-t border-slate-200 bg-slate-50 px-2 py-3 text-center text-xs font-bold uppercase tracking-wide text-slate-500">
+                    {weekday}
+                  </div>
+                ))}
+                {calendarDays.map((day) => {
+                  const dayAppointments = appointmentsByCalendarDate.get(day.date) ?? [];
+                  const isSelected = selectedDate === day.date;
+                  const isToday = getTodayDateKey() === day.date;
+                  return (
+                    <div
+                      key={day.date}
+                      className={`min-h-[8.5rem] border-r border-t border-slate-200 p-1.5 sm:min-h-[10rem] ${day.isCurrentMonth ? 'bg-white' : 'bg-slate-50/70'}`}
+                      role="gridcell"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openCreateModal(day.date)}
+                        className={`mb-1 flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${isSelected ? 'bg-primary text-white' : isToday ? 'border-2 border-primary text-primary' : day.isCurrentMonth ? 'text-slate-700 hover:bg-slate-100' : 'text-slate-400 hover:bg-slate-100'}`}
+                        aria-label={`${formatDateKey(day.date)} tarihinde randevu oluştur`}
+                      >
+                        {day.day}
+                      </button>
+                      <div className="space-y-1">
+                        {dayAppointments.slice(0, 3).map((appointment) => (
+                          <button
+                            key={appointment.id}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openEditModal(appointment);
+                            }}
+                            disabled={pendingAction !== null}
+                            className={`block w-full truncate rounded-md border px-1.5 py-1 text-left text-[11px] leading-tight transition-colors hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 ${getStatusColor(appointment.type)}`}
+                            title={`${appointment.time} ${appointment.title} — ${appointment.clientName}`}
+                          >
+                            <span className="font-bold">{appointment.time}</span> {appointment.title} · {appointment.clientName}
+                          </button>
+                        ))}
+                        {dayAppointments.length > 3 && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDate(day.date)}
+                            className="px-1.5 text-[11px] font-semibold text-primary hover:underline"
+                          >
+                            +{dayAppointments.length - 3} daha
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {selectedDate && (
+                <div className="mt-6 border-t border-slate-100 pt-5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="font-bold text-slate-800">{formatDateKey(selectedDate)}</h3>
+                    <button
+                      type="button"
+                      onClick={() => openCreateModal(selectedDate)}
+                      disabled={clientState.status !== 'success'}
+                      className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline disabled:opacity-50"
+                    >
+                      <Plus className="h-4 w-4" /> Oluştur
+                    </button>
+                  </div>
+                  {appointmentsByDate.length === 0 ? (
+                    <p className="text-sm text-slate-500">Bu tarihte randevu yok.</p>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {appointmentsByDate.map((appointment) => (
+                        <button
+                          key={appointment.id}
+                          type="button"
+                          onClick={() => openEditModal(appointment)}
+                          className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-left hover:border-primary/30 hover:bg-primary/5"
+                        >
+                          <span className="font-bold text-slate-800">{appointment.time}</span>
+                          <span className="ml-2 text-sm font-semibold text-slate-700">{appointment.title}</span>
+                          <span className="mt-1 block text-xs text-slate-500">{appointment.clientName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      ) : (
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         
         {/* Left: Calendar & Mini Calendar (Simulated) */}
         <div className="space-y-6">
@@ -207,10 +399,10 @@ const Appointments = () => {
                 <button onClick={() => changeDate(-1)} className="p-2 hover:bg-slate-50 rounded-full text-slate-500"><ChevronLeft className="w-5 h-5" /></button>
                 <div className="text-center">
                    <h3 className="font-bold text-slate-800 text-lg">
-                      {selectedDateValue.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric', day: 'numeric' })}
+                       {formatDateKey(selectedDate)}
                    </h3>
                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">
-                      {selectedDateValue.toLocaleDateString('tr-TR', { weekday: 'long' })}
+                      {formatDateKey(selectedDate, { weekday: 'long' })}
                    </p>
                 </div>
                 <button onClick={() => changeDate(1)} className="p-2 hover:bg-slate-50 rounded-full text-slate-500"><ChevronRight className="w-5 h-5" /></button>
@@ -324,8 +516,8 @@ const Appointments = () => {
                       <div key={apt.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100">
                          <div className="flex items-center gap-4">
                             <div className="bg-white p-3 rounded-lg border border-slate-200 text-center min-w-[4rem]">
-                               <p className="text-xs text-slate-500 uppercase font-bold">{parseLocalDate(apt.date)?.toLocaleDateString('tr-TR', { month: 'short' })}</p>
-                               <p className="text-xl font-bold text-slate-800">{parseLocalDate(apt.date)?.getDate()}</p>
+                               <p className="text-xs text-slate-500 uppercase font-bold">{formatDateKey(apt.date, { month: 'short' })}</p>
+                               <p className="text-xl font-bold text-slate-800">{formatDateKey(apt.date, { day: 'numeric' })}</p>
                             </div>
                             <div>
                                <h4 className="font-bold text-slate-800">{apt.title}</h4>
@@ -345,6 +537,7 @@ const Appointments = () => {
            </div>
         </div>
       </div>
+      )}
 
       {/* CREATE / EDIT MODAL */}
       {isModalOpen && (
