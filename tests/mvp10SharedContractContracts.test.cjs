@@ -78,10 +78,10 @@ test('MVP-10 daily water contract stays in persisted liters across Web and Mobil
   assert.doesNotMatch(waterSharedContract, /point\.value\s*\/\s*1000/);
 });
 
-test('Mobile does not invent appointment or subscription UI contracts', () => {
+test('Mobile appointments remain read-only and subscription UI remains absent', () => {
   const mobileFeatures = fs.readdirSync(path.join(repoRoot, '..', 'DietBridge-Mobile-MVP10', 'apps/mobile/src/features'));
-  assert.equal(mobileFeatures.includes('appointments'), false);
+  assert.equal(mobileFeatures.includes('appointments'), true);
   assert.equal(mobileFeatures.includes('subscriptions'), false);
-  assert.match(inventory, /no current appointment UI or service surface/i);
+  assert.match(inventory, /read-only appointment list\/detail service surface/i);
   assert.match(inventory, /No subscription UI\/state is exposed/i);
 });

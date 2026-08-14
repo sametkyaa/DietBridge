@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "node scripts/runMealPlanContractTests.mjs",
+    "test:notification-core": "node scripts/runNotificationCoreContractTests.mjs",
+    "test:notification-core:runtime": "node scripts/runDisposableNotificationCoreRuntimeHarness.mjs",
     "test:appointments": "node scripts/runMealPlanContractTests.mjs --appointments-only",
     "test:appointments:runtime": "node scripts/runDisposableAppointmentRuntimeHarness.mjs",
     "test:daily-tasks": "node scripts/runMealPlanContractTests.mjs --daily-tasks-only",

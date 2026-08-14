@@ -18,6 +18,9 @@ const scriptPath = fileURLToPath(import.meta.url);
 const defaultRepoRoot = resolve(dirname(scriptPath), '..');
 const SUPABASE_CLI_VERSION = '2.110.0';
 const TEMP_PREFIX = 'dietbridge-supabase-replay-';
+const ISOLATED_PHASE2_MIGRATIONS = new Set([
+  '20260814214101_notification_core_backend.sql',
+]);
 export const LOCAL_PREREQUISITE_FILE = '20260728155959_disposable_avatar_bucket_prerequisite.sql';
 export const LOCAL_PREREQUISITE_SQL = `-- Local-only disposable prerequisite. Never add this file to repository migrations.
 begin;
@@ -154,7 +157,9 @@ const assertManifestMatchesSourceInventory = ({ repoRoot, runtimeManifest }) => 
   }
 
   const sourcePaths = readdirSync(join(repoRoot, 'supabase', 'migrations'), { withFileTypes: true })
-    .filter((entry) => entry.isFile() && /^\d+_.+\.sql$/.test(entry.name))
+    .filter((entry) => entry.isFile()
+      && /^\d+_.+\.sql$/.test(entry.name)
+      && !ISOLATED_PHASE2_MIGRATIONS.has(entry.name))
     .map((entry) => `supabase/migrations/${entry.name}`)
     .sort();
   const materializedPaths = runtimeManifest.files.map(({ path }) => path);
