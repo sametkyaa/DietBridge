@@ -98,9 +98,15 @@ const SOURCES = [
   'features/chat/utils/chatImageUploadResources.ts',
   'features/chat/utils/chatImageUiState.ts',
   'features/chat/utils/chatScrollLifecycle.ts',
+  'features/chat/types/mealActivity.ts',
+  'features/chat/utils/mealActivity.ts',
   'features/chat/services/chatService.ts',
+  'features/chat/services/mealActivityService.ts',
   'features/chat/services/chatImageService.ts',
   'features/chat/services/chatImageReadService.ts',
+  'features/meal-tracking/types/mealTracking.ts',
+  'features/meal-tracking/utils/mealTrackingContract.ts',
+  'features/meal-tracking/services/mealTrackingService.ts',
 ];
 
 const EXPECTED_OUTPUTS = [
@@ -139,9 +145,15 @@ const EXPECTED_OUTPUTS = [
   'features/chat/utils/chatImageUploadResources.js',
   'features/chat/utils/chatImageUiState.js',
   'features/chat/utils/chatScrollLifecycle.js',
+  'features/chat/types/mealActivity.js',
+  'features/chat/utils/mealActivity.js',
   'features/chat/services/chatService.js',
+  'features/chat/services/mealActivityService.js',
   'features/chat/services/chatImageService.js',
   'features/chat/services/chatImageReadService.js',
+  'features/meal-tracking/types/mealTracking.js',
+  'features/meal-tracking/utils/mealTrackingContract.js',
+  'features/meal-tracking/services/mealTrackingService.js',
 ];
 
 const SUPABASE_CLIENT_STUB = `'use strict';
@@ -260,6 +272,8 @@ const testFiles = [
   join(repoRoot, 'tests', 'subscriptionContracts.test.cjs'),
   join(repoRoot, 'tests', 'mvp9MockCleanupContracts.test.cjs'),
   join(repoRoot, 'tests', 'mvp10SharedContractContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mealTrackingContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mealActivityContracts.test.cjs'),
   join(repoRoot, 'tests', 'dietitianProfilePresentation.test.cjs'),
   join(repoRoot, 'tests', 'noteContracts.test.cjs'),
 ];

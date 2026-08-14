@@ -15,6 +15,7 @@ import DashboardPage from './features/dashboard/pages/DashboardPage';
 import ClientsPage from './features/clients/pages/ClientsPage';
 import SettingsPage from './features/settings/pages/SettingsPage';
 import ClientDetails from './pages/ClientDetails'; 
+import MealTracking from './pages/MealTracking';
 import Appointments from './pages/Appointments'; 
 import Messages from './pages/Messages'; 
 import Recipes from './pages/Recipes'; 
@@ -44,6 +45,7 @@ const App = () => {
                 <Route path="/appointments" element={<Appointments />} />
                 <Route path="/clients" element={<ClientsPage />} />
                 <Route path="/clients/:id" element={<ClientDetails />} />
+                <Route path="/clients/:id/meal-tracking" element={<MealTracking />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/meal-plans" element={<MealPlans />} />
                 <Route path="/messages" element={<Messages />} />

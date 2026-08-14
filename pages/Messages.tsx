@@ -46,6 +46,8 @@ const Messages = () => {
   ), [activeRelationId, conversations]);
   const {
     messages,
+    mealActivities,
+    mealActivityError,
     isLoading: isLoadingMessages,
     isLoadingOlder,
     error: messageError,
@@ -54,7 +56,11 @@ const Messages = () => {
     loadOlder,
     refetch: refetchMessages,
     mergeCommittedMessage,
-  } = useChatMessages(activeConversation?.conversationId, user?.id);
+  } = useChatMessages(activeConversation?.conversationId, user?.id, {
+    relationId: activeConversation?.relationId,
+    clientId: activeConversation?.clientId,
+    dietitianId: user?.id,
+  });
   const serverClientMessageIds = useMemo(
     () => messages.map((message) => message.clientMessageId),
     [messages],
@@ -289,6 +295,8 @@ const Messages = () => {
           <ChatMessagePanel
             conversation={activeConversation}
             messages={messages}
+            mealActivities={mealActivities}
+            mealActivityError={mealActivityError}
             optimisticMessages={optimisticMessages}
             isLoading={isLoadingMessages}
             isLoadingOlder={isLoadingOlder}

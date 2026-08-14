@@ -890,6 +890,14 @@ const ClientDetails = () => {
                         >
                             Planı Düzenle
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/clients/${client.id}/meal-tracking`)}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                        >
+                            <Utensils className="h-4 w-4 text-primary" aria-hidden="true" />
+                            Öğün Takibi
+                        </button>
                         <button 
                           onClick={() => handleRemoveClient(client.relationId)}
                           disabled={isRemoving}
