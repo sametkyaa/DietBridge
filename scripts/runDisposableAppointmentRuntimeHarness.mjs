@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -70,6 +71,51 @@ const assertNoRows = (result, label) => {
   }
   const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
   assert(rows.length === 0, label, `unexpected_rows=${rows.length}`);
+};
+
+const findFreeLoopbackPort = () => new Promise((resolvePort, rejectPort) => {
+  const server = createServer();
+  server.once('error', rejectPort);
+  server.listen(0, '127.0.0.1', () => {
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : null;
+    server.close((closeError) => {
+      if (closeError) rejectPort(closeError);
+      else if (port) resolvePort(port);
+      else rejectPort(new Error('Unable to allocate a disposable loopback port.'));
+    });
+  });
+});
+
+const allocateDisposablePorts = async () => {
+  const ports = await Promise.all(Array.from({ length: 8 }, () => findFreeLoopbackPort()));
+  return {
+    api: ports[0],
+    db: ports[1],
+    shadow: ports[2],
+    pooler: ports[3],
+    studio: ports[4],
+    smtp: ports[5],
+    analytics: ports[6],
+    functionsInspector: ports[7],
+  };
+};
+
+const applyDisposablePorts = (configText, ports) => {
+  const portMap = new Map([
+    [54321, ports.api],
+    [54322, ports.db],
+    [54320, ports.shadow],
+    [54329, ports.pooler],
+    [54323, ports.studio],
+    [54324, ports.smtp],
+    [54327, ports.analytics],
+    [8083, ports.functionsInspector],
+  ]);
+  return configText.replace(/^port\s*=\s*(\d+)$/gm, (line, value) => {
+    const replacement = portMap.get(Number(value));
+    return replacement ? `port = ${replacement}` : line;
+  });
 };
 
 const parseStatus = (text) => Object.fromEntries(text.split(/\r?\n/)
@@ -189,7 +235,7 @@ const activateRelationship = async (dietitian, client) => {
   return active.id;
 };
 
-const appointmentPayload = (dietitianId, clientId, title) => ({
+const appointmentPayload = (dietitianId, clientId, title, overrides = {}) => ({
   dietitian_id: dietitianId,
   client_id: clientId,
   title,
@@ -198,6 +244,7 @@ const appointmentPayload = (dietitianId, clientId, title) => ({
   duration: 45,
   type: 'online',
   status: 'upcoming',
+  ...overrides,
 });
 
 const compileAppointmentService = () => {
@@ -249,7 +296,7 @@ const assertServiceError = async (operation, ServiceError, label) => {
     await operation();
   } catch (error) {
     assert(error instanceof ServiceError, label, `unexpected=${error?.constructor?.name ?? typeof error}`);
-    return;
+    return error;
   }
   throw new Error(`${label}: operation unexpectedly succeeded`);
 };
@@ -258,9 +305,13 @@ try {
   disposable = await runDisposableSupabaseLocalReplay({ materializeOnly: true, keepTemp: true });
   const configText = readFileSync(disposable.configPath, 'utf8');
   assert(/^project_id\s*=\s*"[^"]+"/m.test(configText), 'DISPOSABLE_CONFIG_PROJECT_ID_PRESENT');
+  const disposablePorts = await allocateDisposablePorts();
   writeFileSync(
     disposable.configPath,
-    configText.replace(/^project_id\s*=\s*"[^"]+"/m, `project_id = "${projectId}"`),
+    applyDisposablePorts(
+      configText.replace(/^project_id\s*=\s*"[^"]+"/m, `project_id = "${projectId}"`),
+      disposablePorts,
+    ),
     'utf8',
   );
 
@@ -285,12 +336,14 @@ try {
   const missing = await createActor('missing-profile', 'dietitian');
   const clientA = await createActor('client-a', 'client');
   const clientB = await createActor('client-b', 'client');
+  const clientC = await createActor('client-c', 'client');
   await verifyDietitian(approvedA, 'approved');
   await verifyDietitian(approvedB, 'approved');
   await bootstrapDisposableCore(approvedA);
   await bootstrapDisposableCore(approvedB);
   await verifyDietitian(rejected, 'rejected');
   const relationshipA = await activateRelationship(approvedA, clientA);
+  await activateRelationship(approvedA, clientC);
   await activateRelationship(approvedB, clientB);
   assertNoError(await admin.from('profiles').delete().eq('id', missing.id), 'missing profile fixture');
   const missingRows = assertNoError(await admin.from('profiles').select('id').eq('id', missing.id), 'missing profile check');
@@ -304,6 +357,7 @@ try {
     missing: await actorClient(missing),
     clientA: await actorClient(clientA),
     clientB: await actorClient(clientB),
+    clientC: await actorClient(clientC),
     anonymous: anonymousClient(),
   };
 
@@ -325,6 +379,78 @@ try {
   let result = await admin.from('appointments').select('date,time').eq('id', appointmentA.id).single();
   const rawAppointment = assertNoError(result, 'raw date/time read');
   assert(rawAppointment.date === '2099-12-01' && rawAppointment.time === '09:30:00', 'DATE_TIME_DB_ROUND_TRIP');
+
+  const sameSlotError = await assertServiceError(() => service.createAppointment({
+    clientId: clientA.id,
+    title: 'Same slot must fail',
+    date: '2099-12-01',
+    time: '09:30',
+    duration: 30,
+    type: 'Yüzyüze',
+  }), service.AppointmentServiceError, 'ACTIVE_ACTIVE_SAME_SLOT_DENY');
+  assert(sameSlotError.userMessage === service.APPOINTMENT_SLOT_CONFLICT_ERROR, 'SAME_SLOT_PRODUCT_ERROR_MESSAGE');
+
+  let bookingCheck = await service.checkAppointmentBooking({
+    clientId: clientA.id,
+    title: 'Self edit check',
+    date: '2099-12-01',
+    time: '09:30',
+    duration: 45,
+    type: 'Görüntülü Görüşme',
+  }, appointmentA.id);
+  assert(!bookingCheck.slotConflict && bookingCheck.sameWeekCount === 0, 'EDIT_SELF_RETAINING_SLOT_ALLOWED');
+
+  bookingCheck = await service.checkAppointmentBooking({
+    clientId: clientA.id,
+    title: 'Same week warning check',
+    date: '2099-12-02',
+    time: '10:00',
+    duration: 30,
+    type: 'Telefon Görüşmesi',
+  });
+  assert(!bookingCheck.slotConflict && bookingCheck.sameWeekCount === 1, 'SAME_CLIENT_SAME_WEEK_COUNT_ONE');
+  assert(bookingCheck.weekStartDate === '2099-11-30' && bookingCheck.weekEndDate === '2099-12-06', 'SAME_WEEK_DATE_RANGE');
+
+  const sameWeekAppointment = await service.createAppointment({
+    clientId: clientA.id,
+    title: 'Same week allowed',
+    date: '2099-12-02',
+    time: '11:00',
+    duration: 30,
+    type: 'Telefon Görüşmesi',
+  });
+  appointmentIds.push(sameWeekAppointment.id);
+  assert(sameWeekAppointment.status === 'upcoming', 'SAME_CLIENT_SAME_WEEK_CREATE_ALLOWED');
+
+  bookingCheck = await service.checkAppointmentBooking({
+    clientId: clientA.id,
+    title: 'Same week multiple check',
+    date: '2099-12-03',
+    time: '12:00',
+    duration: 30,
+    type: 'Telefon Görüşmesi',
+  });
+  assert(bookingCheck.sameWeekCount === 2, 'SAME_CLIENT_SAME_WEEK_COUNT_TWO');
+
+  bookingCheck = await service.checkAppointmentBooking({
+    clientId: clientA.id,
+    title: 'Different week check',
+    date: '2099-12-08',
+    time: '12:00',
+    duration: 30,
+    type: 'Telefon Görüşmesi',
+  });
+  assert(bookingCheck.sameWeekCount === 0, 'SAME_CLIENT_DIFFERENT_WEEK_NO_WARNING');
+
+  bookingCheck = await service.checkAppointmentBooking({
+    clientId: clientC.id,
+    title: 'Different client check',
+    date: '2099-12-02',
+    time: '12:30',
+    duration: 30,
+    type: 'Telefon Görüşmesi',
+  });
+  assert(bookingCheck.sameWeekCount === 0, 'DIFFERENT_CLIENT_SAME_WEEK_NO_WARNING');
 
   const freshA = await actorClient(approvedA);
   result = await freshA.from('appointments').select('id,title,status,date,time').eq('id', appointmentA.id).single();
@@ -350,6 +476,112 @@ try {
   });
   const completedUpdate = serviceUpdate;
   assert(completedUpdate.status === 'completed' && completedUpdate.duration === 60, 'UPDATE_PRESERVES_COMPLETED_STATUS');
+
+  const reusedAfterCompletion = await service.createAppointment({
+    clientId: clientA.id,
+    title: 'Completed slot reused',
+    date: '2099-12-01',
+    time: '09:30',
+    duration: 30,
+    type: 'Yüzyüze',
+  });
+  appointmentIds.push(reusedAfterCompletion.id);
+  assert(reusedAfterCompletion.status === 'upcoming', 'COMPLETED_STATUS_DOES_NOT_BLOCK_SLOT');
+
+  const editCollisionError = await assertServiceError(() => service.updateAppointment(sameWeekAppointment.id, {
+    clientId: clientA.id,
+    title: 'Edit into occupied slot',
+    date: '2099-12-01',
+    time: '09:30',
+    duration: 30,
+    type: 'Telefon Görüşmesi',
+  }), service.AppointmentServiceError, 'EDIT_INTO_OCCUPIED_SLOT_DENY');
+  assert(editCollisionError.userMessage === service.APPOINTMENT_SLOT_CONFLICT_ERROR, 'EDIT_COLLISION_PRODUCT_ERROR_MESSAGE');
+
+  const cancelledAtActiveSlot = assertNoError(await admin.from('appointments').insert(
+    appointmentPayload(approvedA.id, clientA.id, 'Cancelled same slot', {
+      status: 'cancelled',
+      date: '2099-12-01',
+      time: '09:30',
+    }),
+  ).select('id').single(), 'cancelled same slot fixture');
+  appointmentIds.push(cancelledAtActiveSlot.id);
+  pass('CANCELLED_STATUS_SHARES_SLOT');
+
+  const cancelledOnlySlot = assertNoError(await admin.from('appointments').insert(
+    appointmentPayload(approvedA.id, clientA.id, 'Cancelled reusable slot', {
+      status: 'cancelled',
+      date: '2099-12-15',
+      time: '09:00',
+    }),
+  ).select('id').single(), 'cancelled reusable slot fixture');
+  appointmentIds.push(cancelledOnlySlot.id);
+  const reusedAfterCancellation = await service.createAppointment({
+    clientId: clientA.id,
+    title: 'Cancelled slot reused',
+    date: '2099-12-15',
+    time: '09:00',
+    duration: 30,
+    type: 'Telefon Görüşmesi',
+  });
+  appointmentIds.push(reusedAfterCancellation.id);
+  assert(reusedAfterCancellation.status === 'upcoming', 'CANCELLED_STATUS_DOES_NOT_BLOCK_SLOT');
+
+  const cancelledOnlyWeek = assertNoError(await admin.from('appointments').insert(
+    appointmentPayload(approvedA.id, clientA.id, 'Cancelled warning exclusion', {
+      status: 'cancelled',
+      date: '2099-12-22',
+      time: '09:00',
+    }),
+  ).select('id').single(), 'cancelled warning exclusion fixture');
+  appointmentIds.push(cancelledOnlyWeek.id);
+  bookingCheck = await service.checkAppointmentBooking({
+    clientId: clientA.id,
+    title: 'Cancelled warning exclusion check',
+    date: '2099-12-23',
+    time: '10:00',
+    duration: 30,
+    type: 'Telefon Görüşmesi',
+  });
+  assert(bookingCheck.sameWeekCount === 0, 'CANCELLED_STATUS_EXCLUDED_FROM_WEEK_WARNING');
+
+  const concurrentSameSlot = await Promise.all([
+    api.approvedA.from('appointments').insert(appointmentPayload(
+      approvedA.id,
+      clientA.id,
+      'Concurrent one',
+      { date: '2099-12-29', time: '09:30' },
+    )).select('id').maybeSingle(),
+    api.approvedA.from('appointments').insert(appointmentPayload(
+      approvedA.id,
+      clientA.id,
+      'Concurrent two',
+      { date: '2099-12-29', time: '09:30' },
+    )).select('id').maybeSingle(),
+  ]);
+  const concurrentSuccesses = concurrentSameSlot.filter((attempt) => !attempt.error && attempt.data?.id);
+  const concurrentConflicts = concurrentSameSlot.filter((attempt) => attempt.error?.code === '23505');
+  assert(concurrentSuccesses.length === 1 && concurrentConflicts.length === 1, 'CONCURRENT_SAME_SLOT_ONE_SUCCESS_ONE_REJECTED');
+  appointmentIds.push(concurrentSuccesses[0].data.id);
+  result = await admin.from('appointments').select('id').eq('dietitian_id', approvedA.id).eq('date', '2099-12-29').eq('time', '09:30').eq('status', 'upcoming');
+  assert(assertNoError(result, 'concurrent same slot count').length === 1, 'CONCURRENT_SAME_SLOT_RESULT_COUNT_ONE');
+
+  const concurrentDifferentTimes = await Promise.all([
+    api.approvedA.from('appointments').insert(appointmentPayload(
+      approvedA.id,
+      clientA.id,
+      'Concurrent different one',
+      { date: '2099-12-30', time: '09:30' },
+    )).select('id').maybeSingle(),
+    api.approvedA.from('appointments').insert(appointmentPayload(
+      approvedA.id,
+      clientA.id,
+      'Concurrent different two',
+      { date: '2099-12-30', time: '10:30' },
+    )).select('id').maybeSingle(),
+  ]);
+  assert(concurrentDifferentTimes.every((attempt) => !attempt.error && attempt.data?.id), 'CONCURRENT_DIFFERENT_TIMES_BOTH_ALLOWED');
+  for (const attempt of concurrentDifferentTimes) appointmentIds.push(attempt.data.id);
 
   const deletableAppointment = await service.createAppointment({
     clientId: clientA.id,

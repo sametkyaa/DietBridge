@@ -2,13 +2,24 @@ import { supabase } from '../../../lib/supabaseClient';
 import { Appointment } from '../../../shared/types';
 import {
   AppointmentDraft,
+  getMondayFirstWeekRange,
   normalizeAppointmentType,
+  SLOT_BLOCKING_APPOINTMENT_STATUSES,
   validateAppointmentDraft,
 } from '../utils/appointmentContract';
 
 export const APPOINTMENT_LOAD_ERROR = 'Randevular yüklenemedi. Lütfen tekrar deneyin.';
 export const APPOINTMENT_SAVE_ERROR = 'Randevu kaydedilemedi. Lütfen tekrar deneyin.';
 export const APPOINTMENT_DELETE_ERROR = 'Randevu silinemedi. Lütfen tekrar deneyin.';
+export const APPOINTMENT_SLOT_CONFLICT_ERROR = 'Bu tarih ve saatte zaten bir randevunuz bulunuyor.';
+export const APPOINTMENT_SLOT_CONFLICT_CONSTRAINT = 'appointments_dietitian_date_time_upcoming_unique';
+
+export interface AppointmentBookingCheck {
+  slotConflict: boolean;
+  sameWeekCount: number;
+  weekStartDate: string;
+  weekEndDate: string;
+}
 
 interface AppointmentClientRow {
   full_name: string | null;
@@ -99,6 +110,70 @@ const assertActiveRelationship = async (
   if (error || !data) throw new AppointmentServiceError(userMessage, error);
 };
 
+type DatabaseErrorLike = {
+  code?: string | null;
+  constraint?: string | null;
+  message?: string | null;
+};
+
+export const isAppointmentSlotConflictError = (error: unknown) => {
+  const databaseError = error as DatabaseErrorLike | null;
+  return databaseError?.code === '23505'
+    && (
+      databaseError.constraint === APPOINTMENT_SLOT_CONFLICT_CONSTRAINT
+      || databaseError.message?.includes(APPOINTMENT_SLOT_CONFLICT_CONSTRAINT) === true
+    );
+};
+
+const getSaveError = (cause: unknown) => (
+  isAppointmentSlotConflictError(cause)
+    ? new AppointmentServiceError(APPOINTMENT_SLOT_CONFLICT_ERROR, cause)
+    : new AppointmentServiceError(APPOINTMENT_SAVE_ERROR, cause)
+);
+
+const findSlotConflict = async (
+  dietitianId: string,
+  date: string,
+  time: string,
+  appointmentId?: string,
+) => {
+  let query = supabase
+    .from('appointments')
+    .select('id')
+    .eq('dietitian_id', dietitianId)
+    .eq('date', date)
+    .eq('time', time)
+    .eq('status', SLOT_BLOCKING_APPOINTMENT_STATUSES[0])
+    .limit(1);
+  if (appointmentId) query = query.neq('id', appointmentId);
+
+  const { data, error } = await query;
+  if (error) throw new AppointmentServiceError(APPOINTMENT_SAVE_ERROR, error);
+  return (data ?? []).length > 0;
+};
+
+const assertSlotAvailable = async (
+  dietitianId: string,
+  date: string,
+  time: string,
+  appointmentId?: string,
+) => {
+  if (await findSlotConflict(dietitianId, date, time, appointmentId)) {
+    throw new AppointmentServiceError(APPOINTMENT_SLOT_CONFLICT_ERROR);
+  }
+};
+
+const getExistingAppointmentStatus = async (dietitianId: string, appointmentId: string) => {
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('status')
+    .eq('id', appointmentId)
+    .eq('dietitian_id', dietitianId)
+    .maybeSingle();
+  if (error || !data) throw new AppointmentServiceError(APPOINTMENT_SAVE_ERROR, error);
+  return data.status as string | null;
+};
+
 const APPOINTMENT_SELECT = `
   id,
   dietitian_id,
@@ -130,6 +205,46 @@ export const fetchAppointments = async (): Promise<Appointment[]> => {
   }
 };
 
+export const checkAppointmentBooking = async (
+  draft: AppointmentDraft,
+  appointmentId?: string,
+): Promise<AppointmentBookingCheck> => {
+  const validation = validateAppointmentDraft(draft);
+  if (validation.success === false) throw new AppointmentServiceError(validation.message);
+
+  const weekRange = getMondayFirstWeekRange(validation.value.date);
+  if (!weekRange) throw new AppointmentServiceError(APPOINTMENT_SAVE_ERROR);
+
+  const dietitianId = await requireCurrentDietitianId(APPOINTMENT_SAVE_ERROR);
+  await assertActiveRelationship(dietitianId, validation.value.clientId, APPOINTMENT_SAVE_ERROR);
+  const existingStatus = appointmentId
+    ? await getExistingAppointmentStatus(dietitianId, appointmentId)
+    : SLOT_BLOCKING_APPOINTMENT_STATUSES[0];
+  const slotConflict = SLOT_BLOCKING_APPOINTMENT_STATUSES.includes(existingStatus as 'upcoming')
+    ? await findSlotConflict(dietitianId, validation.value.date, validation.value.time, appointmentId)
+    : false;
+
+  let sameWeekQuery = supabase
+    .from('appointments')
+    .select('id')
+    .eq('dietitian_id', dietitianId)
+    .eq('client_id', validation.value.clientId)
+    .eq('status', SLOT_BLOCKING_APPOINTMENT_STATUSES[0])
+    .gte('date', weekRange.startDate)
+    .lte('date', weekRange.endDate);
+  if (appointmentId) sameWeekQuery = sameWeekQuery.neq('id', appointmentId);
+
+  const { data, error } = await sameWeekQuery;
+  if (error) throw new AppointmentServiceError(APPOINTMENT_SAVE_ERROR, error);
+
+  return {
+    slotConflict,
+    sameWeekCount: (data ?? []).length,
+    weekStartDate: weekRange.startDate,
+    weekEndDate: weekRange.endDate,
+  };
+};
+
 const persistAppointment = async (
   mode: 'create' | 'update',
   draft: AppointmentDraft,
@@ -140,6 +255,17 @@ const persistAppointment = async (
 
   const dietitianId = await requireCurrentDietitianId(APPOINTMENT_SAVE_ERROR);
   await assertActiveRelationship(dietitianId, validation.value.clientId, APPOINTMENT_SAVE_ERROR);
+  const existingStatus = mode === 'update' && appointmentId
+    ? await getExistingAppointmentStatus(dietitianId, appointmentId)
+    : SLOT_BLOCKING_APPOINTMENT_STATUSES[0];
+  if (SLOT_BLOCKING_APPOINTMENT_STATUSES.includes(existingStatus as 'upcoming')) {
+    await assertSlotAvailable(
+      dietitianId,
+      validation.value.date,
+      validation.value.time,
+      appointmentId,
+    );
+  }
   const basePayload = {
     client_id: validation.value.clientId,
     title: validation.value.title,
@@ -161,7 +287,12 @@ const persistAppointment = async (
         .eq('id', appointmentId as string)
         .eq('dietitian_id', dietitianId);
   const { data, error } = await mutation.select(APPOINTMENT_SELECT).maybeSingle();
-  if (error || !data) throw new AppointmentServiceError(APPOINTMENT_SAVE_ERROR, error);
+  if (error || !data) {
+    if (error && isAppointmentSlotConflictError(error)) {
+      throw new AppointmentServiceError(APPOINTMENT_SLOT_CONFLICT_ERROR, error);
+    }
+    throw getSaveError(error);
+  }
 
   try {
     return mapAppointment(data as unknown as AppointmentRow);

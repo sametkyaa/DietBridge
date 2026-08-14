@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Calendar as CalendarIcon, 
   CalendarDays,
@@ -34,13 +34,21 @@ import {
   getMonthKey,
   getMonthKeyFromDateKey,
   getTodayDateKey,
+  sortAppointmentsChronologically,
 } from '../features/appointments/utils/appointmentContract';
+import { APPOINTMENT_SLOT_CONFLICT_ERROR } from '../features/appointments/services/appointmentService';
 import { Appointment, Client } from '../shared/types';
 
 type ClientState =
   | { status: 'loading'; clients: Client[] }
   | { status: 'success'; clients: Client[] }
   | { status: 'error'; clients: Client[]; message: string };
+
+interface SameWeekWarningState {
+  count: number;
+  draft: AppointmentDraft;
+  appointmentId?: string;
+}
 
 const Appointments = () => {
   const {
@@ -53,6 +61,7 @@ const Appointments = () => {
     addAppointment,
     updateAppointment,
     deleteAppointment,
+    checkAppointmentBooking,
     clearMutationError,
   } = useAppointments();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -61,6 +70,14 @@ const Appointments = () => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateKey());
   const [visibleMonth, setVisibleMonth] = useState<string>(() => getMonthKey());
   const [clientState, setClientState] = useState<ClientState>({ status: 'loading', clients: [] });
+  const [dayDetailDate, setDayDetailDate] = useState<string | null>(null);
+  const [sameWeekWarning, setSameWeekWarning] = useState<SameWeekWarningState | null>(null);
+  const [bookingCheckError, setBookingCheckError] = useState<string | null>(null);
+  const [slotConflict, setSlotConflict] = useState(false);
+  const [isCheckingBooking, setIsCheckingBooking] = useState(false);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const bookingCheckRef = useRef(false);
+  const submissionRef = useRef(false);
 
   const [formData, setFormData] = useState<AppointmentDraft>(() => createAppointmentDraft());
 
@@ -82,9 +99,9 @@ const Appointments = () => {
 
   const selectedClientForForm = activeClients.find((client) => client.id === formData.clientId);
 
-  const appointmentsByDate = useMemo(() => appointments
-    .filter((appointment) => appointment.date === selectedDate)
-    .sort((left, right) => left.time.localeCompare(right.time)), [appointments, selectedDate]);
+  const appointmentsByDate = useMemo(() => sortAppointmentsChronologically(
+    appointments.filter((appointment) => appointment.date === selectedDate),
+  ), [appointments, selectedDate]);
 
   const calendarDays = useMemo(() => getMonthCalendarDays(visibleMonth), [visibleMonth]);
 
@@ -93,10 +110,14 @@ const Appointments = () => {
     appointments.forEach((appointment) => {
       const current = grouped.get(appointment.date) ?? [];
       current.push(appointment);
-      grouped.set(appointment.date, current.sort((left, right) => left.time.localeCompare(right.time)));
+      grouped.set(appointment.date, sortAppointmentsChronologically(current));
     });
     return grouped;
   }, [appointments]);
+
+  const dayDetailAppointments = useMemo(() => (
+    dayDetailDate ? appointmentsByCalendarDate.get(dayDetailDate) ?? [] : []
+  ), [appointmentsByCalendarDate, dayDetailDate]);
 
   const appointmentsInVisibleMonth = useMemo(() => appointments
     .filter((appointment) => appointment.date.startsWith(visibleMonth)), [appointments, visibleMonth]);
@@ -104,6 +125,10 @@ const Appointments = () => {
   const openCreateModal = (date?: string) => {
     const nextDate = typeof date === 'string' ? date : selectedDate;
     clearMutationError();
+    setBookingCheckError(null);
+    setSlotConflict(false);
+    setSameWeekWarning(null);
+    setDayDetailDate(null);
     setEditingAppointment(null);
     setSelectedDate(nextDate);
     setVisibleMonth(getMonthKeyFromDateKey(nextDate) ?? visibleMonth);
@@ -114,11 +139,18 @@ const Appointments = () => {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingAppointment(null);
+    setSameWeekWarning(null);
+    setBookingCheckError(null);
+    setSlotConflict(false);
     setFormData(createAppointmentDraft());
   };
 
   const openEditModal = (appointment: Appointment) => {
     clearMutationError();
+    setBookingCheckError(null);
+    setSlotConflict(false);
+    setSameWeekWarning(null);
+    setDayDetailDate(null);
     setSelectedDate(appointment.date);
     setVisibleMonth(getMonthKeyFromDateKey(appointment.date) ?? visibleMonth);
     setEditingAppointment(appointment);
@@ -133,18 +165,72 @@ const Appointments = () => {
     setIsModalOpen(true);
   };
 
+  const persistForm = async (draft: AppointmentDraft, appointmentId?: string) => {
+    if (submissionRef.current) return false;
+    submissionRef.current = true;
+    setIsSubmittingForm(true);
+    try {
+      const result = appointmentId
+        ? await updateAppointment(appointmentId, draft)
+        : await addAppointment(draft);
+      if (!result.success) return false;
+
+      setSelectedDate(draft.date);
+      setVisibleMonth(getMonthKeyFromDateKey(draft.date) ?? visibleMonth);
+      setIsModalOpen(false);
+      setEditingAppointment(null);
+      setSameWeekWarning(null);
+      setFormData(createAppointmentDraft(draft.date));
+      return true;
+    } finally {
+      submissionRef.current = false;
+      setIsSubmittingForm(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = editingAppointment
-      ? await updateAppointment(editingAppointment.id, formData)
-      : await addAppointment(formData);
-    if (!result.success) return;
+    if (pendingAction !== null || bookingCheckRef.current || submissionRef.current) return;
 
-    setSelectedDate(formData.date);
-    setVisibleMonth(getMonthKeyFromDateKey(formData.date) ?? visibleMonth);
-    setIsModalOpen(false);
-    setEditingAppointment(null);
-    setFormData(createAppointmentDraft(formData.date));
+    const draft = { ...formData };
+    const appointmentId = editingAppointment?.id;
+    bookingCheckRef.current = true;
+    setIsCheckingBooking(true);
+    setBookingCheckError(null);
+    setSlotConflict(false);
+    clearMutationError();
+    try {
+      const check = await checkAppointmentBooking(draft, appointmentId);
+      if (!check.success) {
+        setBookingCheckError(check.message);
+        return;
+      }
+      if (check.value.slotConflict) {
+        setSlotConflict(true);
+        return;
+      }
+      if (check.value.sameWeekCount > 0) {
+        setSameWeekWarning({ count: check.value.sameWeekCount, draft, appointmentId });
+        return;
+      }
+      await persistForm(draft, appointmentId);
+    } finally {
+      bookingCheckRef.current = false;
+      setIsCheckingBooking(false);
+    }
+  };
+
+  const confirmSameWeekWarning = () => {
+    if (!sameWeekWarning || pendingAction !== null || submissionRef.current) return;
+    const pendingSubmission = sameWeekWarning;
+    setSameWeekWarning(null);
+    void persistForm(pendingSubmission.draft, pendingSubmission.appointmentId);
+  };
+
+  const openDayDetail = (event: React.MouseEvent, date: string) => {
+    event.stopPropagation();
+    setSelectedDate(date);
+    setDayDetailDate(date);
   };
 
   const handleDelete = async (appointment: Appointment) => {
@@ -328,7 +414,7 @@ const Appointments = () => {
                         {day.day}
                       </button>
                       <div className="space-y-1">
-                        {dayAppointments.slice(0, 3).map((appointment) => (
+                        {dayAppointments.slice(0, 2).map((appointment) => (
                           <button
                             key={appointment.id}
                             type="button"
@@ -338,18 +424,21 @@ const Appointments = () => {
                             }}
                             disabled={pendingAction !== null}
                             className={`block w-full truncate rounded-md border px-1.5 py-1 text-left text-[11px] leading-tight transition-colors hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 ${getStatusColor(appointment.type)}`}
-                            title={`${appointment.time} ${appointment.title} — ${appointment.clientName}`}
+                            title={`${appointment.time} ${appointment.clientName} — ${appointment.title}`}
                           >
-                            <span className="font-bold">{appointment.time}</span> {appointment.title} · {appointment.clientName}
+                            <span className="block truncate font-bold">{appointment.clientName}</span>
+                            <span className="block truncate">{appointment.title}</span>
+                            <span className="block text-[10px] font-semibold opacity-80">{appointment.time}</span>
                           </button>
                         ))}
-                        {dayAppointments.length > 3 && (
+                        {dayAppointments.length > 2 && (
                           <button
                             type="button"
-                            onClick={() => setSelectedDate(day.date)}
-                            className="px-1.5 text-[11px] font-semibold text-primary hover:underline"
+                            onClick={(event) => openDayDetail(event, day.date)}
+                            className="block w-full truncate px-1.5 text-left text-[11px] font-semibold text-primary hover:underline"
+                            aria-label={`${formatDateKey(day.date)} günü için ${dayAppointments.length - 2} randevu daha göster`}
                           >
-                            +{dayAppointments.length - 3} daha
+                            +{dayAppointments.length - 2} randevu daha
                           </button>
                         )}
                       </div>
@@ -382,8 +471,8 @@ const Appointments = () => {
                           className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-left hover:border-primary/30 hover:bg-primary/5"
                         >
                           <span className="font-bold text-slate-800">{appointment.time}</span>
-                          <span className="ml-2 text-sm font-semibold text-slate-700">{appointment.title}</span>
-                          <span className="mt-1 block text-xs text-slate-500">{appointment.clientName}</span>
+                          <span className="ml-2 text-sm font-semibold text-slate-700">{appointment.clientName}</span>
+                          <span className="mt-1 block text-xs text-slate-500">{appointment.title}</span>
                         </button>
                       ))}
                     </div>
@@ -543,23 +632,115 @@ const Appointments = () => {
       </div>
       )}
 
+      {dayDetailDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="appointment-day-detail-title"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 p-5">
+              <div>
+                <h2 id="appointment-day-detail-title" className="text-lg font-bold capitalize text-slate-800">
+                  {formatDateKey(dayDetailDate, { weekday: 'long', day: 'numeric', month: 'long' })}
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">Günün tüm randevuları</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDayDetailDate(null)}
+                aria-label="Gün detayını kapat"
+                className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[min(28rem,70vh)] space-y-2 overflow-y-auto p-5">
+              {dayDetailAppointments.map((appointment) => (
+                <button
+                  key={appointment.id}
+                  type="button"
+                  onClick={() => openEditModal(appointment)}
+                  disabled={pendingAction !== null}
+                  className="block w-full rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span className="block text-sm font-bold text-slate-800">{appointment.clientName}</span>
+                  <span className="mt-0.5 block truncate text-sm text-slate-600">{appointment.title}</span>
+                  <span className="mt-1 block text-xs font-semibold text-slate-500">{appointment.time} · {appointment.duration} dk</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sameWeekWarning && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="same-week-warning-title"
+          >
+            <h2 id="same-week-warning-title" className="text-lg font-bold text-slate-800">Haftalık randevu uyarısı</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Bu danışanın bu hafta zaten {sameWeekWarning.count} randevusu bulunuyor. Yine de yeni bir randevu oluşturmak istiyor musunuz?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setSameWeekWarning(null)}
+                disabled={isSubmittingForm || pendingAction !== null}
+                className="min-h-11 rounded-xl border border-slate-200 px-4 font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={confirmSameWeekWarning}
+                disabled={isSubmittingForm || pendingAction !== null}
+                className="min-h-11 rounded-xl bg-primary px-4 font-semibold text-white hover:bg-primary-dark disabled:opacity-50"
+              >
+                {isSubmittingForm ? 'Kaydediliyor...' : 'Yine de oluştur'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* CREATE / EDIT MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div
+            className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="appointment-dialog-title"
+          >
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-               <h2 className="text-xl font-bold text-slate-800">{editingAppointment ? 'Randevuyu Düzenle' : 'Yeni Randevu Oluştur'}</h2>
-               <button type="button" onClick={closeModal} disabled={pendingAction !== null} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 disabled:opacity-50">
+               <h2 id="appointment-dialog-title" className="text-xl font-bold text-slate-800">{editingAppointment ? 'Randevuyu Düzenle' : 'Yeni Randevu Oluştur'}</h2>
+               <button type="button" onClick={closeModal} disabled={pendingAction !== null || isCheckingBooking || isSubmittingForm} aria-label="Randevu penceresini kapat" className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 disabled:opacity-50">
                   <X className="w-5 h-5" />
                </button>
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
-               {mutationError && (
-                 <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {mutationError}
-                 </div>
-               )}
+                {mutationError && (
+                  <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {mutationError}
+                  </div>
+                )}
+                {slotConflict && (
+                  <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {APPOINTMENT_SLOT_CONFLICT_ERROR}
+                  </div>
+                )}
+                {bookingCheckError && (
+                  <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {bookingCheckError}
+                  </div>
+                )}
                {/* Client Selection */}
                <div className="space-y-1.5">
                   <label className="text-sm font-bold text-slate-700">Danışan Seçimi</label>
@@ -661,19 +842,21 @@ const Appointments = () => {
 
                <div className="pt-4 flex gap-3">
                   <button 
-                    type="button" 
-                    onClick={closeModal}
-                    disabled={pendingAction !== null}
+                    type="button"
+                     onClick={closeModal}
+                     disabled={pendingAction !== null || isCheckingBooking || isSubmittingForm}
                     className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors"
                   >
                      İptal
                   </button>
                   <button 
-                    type="submit"
-                    disabled={pendingAction !== null || clientState.status !== 'success' || activeClients.length === 0}
+                     type="submit"
+                     disabled={pendingAction !== null || isCheckingBooking || isSubmittingForm || clientState.status !== 'success' || activeClients.length === 0}
                     className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                     {pendingAction === 'create' || pendingAction?.startsWith('update:') ? (
+                     {isCheckingBooking ? (
+                       <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Kontrol ediliyor</span>
+                     ) : isSubmittingForm || pendingAction === 'create' || pendingAction?.startsWith('update:') ? (
                        <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Kaydediliyor</span>
                      ) : editingAppointment ? 'Randevuyu Güncelle' : 'Randevu Oluştur'}
                   </button>

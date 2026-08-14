@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 35,
+  "expectedCanonicalCount": 36,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2828,6 +2828,13 @@
       "phase": "canonical",
       "sourceSha256": "c90574ac319d443652bd2ffaaccdf03a91b3396223554de719cc0603dce4e865",
       "materializedSha256": "c90574ac319d443652bd2ffaaccdf03a91b3396223554de719cc0603dce4e865",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260814120000_appointment_slot_collision_and_booking_indexes.sql",
+      "phase": "canonical",
+      "sourceSha256": "b6cac7366eee09e262f13ca4bcd284633641d0fa60d49ea2b0e9002ca89e7c03",
+      "materializedSha256": "b6cac7366eee09e262f13ca4bcd284633641d0fa60d49ea2b0e9002ca89e7c03",
       "edits": []
     }
   ]

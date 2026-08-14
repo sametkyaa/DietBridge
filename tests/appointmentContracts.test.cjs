@@ -102,6 +102,39 @@ test('calendar month navigation and Istanbul civil dates are deterministic', () 
   assert.equal(contract.getTodayDateKey(new Date('2026-08-13T21:00:00.000Z')), '2026-08-14');
 });
 
+test('appointment week ranges are Monday-first across Sunday, month and year boundaries', () => {
+  assert.deepEqual(contract.getMondayFirstWeekRange('2026-08-10'), {
+    startDate: '2026-08-10',
+    endDate: '2026-08-16',
+  });
+  assert.deepEqual(contract.getMondayFirstWeekRange('2026-08-16'), {
+    startDate: '2026-08-10',
+    endDate: '2026-08-16',
+  });
+  assert.deepEqual(contract.getMondayFirstWeekRange('2026-08-17'), {
+    startDate: '2026-08-17',
+    endDate: '2026-08-23',
+  });
+  assert.deepEqual(contract.getMondayFirstWeekRange('2026-08-31'), {
+    startDate: '2026-08-31',
+    endDate: '2026-09-06',
+  });
+  assert.deepEqual(contract.getMondayFirstWeekRange('2026-12-31'), {
+    startDate: '2026-12-28',
+    endDate: '2027-01-03',
+  });
+  assert.equal(contract.getMondayFirstWeekRange('2026-02-30'), null);
+});
+
+test('appointment sorting is chronological with deterministic ID tie-breaking', () => {
+  const sorted = contract.sortAppointmentsChronologically([
+    { id: 'b', date: '2026-08-13', time: '11:30' },
+    { id: 'z', date: '2026-08-13', time: '09:00' },
+    { id: 'a', date: '2026-08-13', time: '09:00' },
+  ]);
+  assert.deepEqual(sorted.map((appointment) => appointment.id), ['a', 'z', 'b']);
+});
+
 test('new appointment form defaults to an editable weekly control title and clicked date', () => {
   const draft = contract.createAppointmentDraft('2026-08-13');
   assert.equal(draft.title, 'Haftalık kontrol');
@@ -185,10 +218,37 @@ test('appointment page uses active linked clients and awaits CRUD outcomes', () 
   const source = read('pages/Appointments.tsx');
   assert.doesNotMatch(source, /\bCLIENTS\b|Date\.now\(\)|toISOString\(\)\.split/);
   assert.match(source, /fetchActiveDietitianClientList/);
-  assert.match(source, /await updateAppointment\(editingAppointment\.id, formData\)/);
-  assert.match(source, /await addAppointment\(formData\)/);
+  assert.match(source, /await updateAppointment\(appointmentId, draft\)/);
+  assert.match(source, /await addAppointment\(draft\)/);
+  assert.match(source, /checkAppointmentBooking\(draft, appointmentId\)/);
   assert.match(source, /window\.confirm/);
   assert.match(source, /disabled=\{pendingAction !== null/);
+});
+
+test('appointment booking rules keep slot conflicts and same-week warnings separate', () => {
+  const page = read('pages/Appointments.tsx');
+  const service = read('features/appointments/services/appointmentService.ts');
+  const migration = read('supabase/migrations/20260814120000_appointment_slot_collision_and_booking_indexes.sql');
+  assert.match(page, /const \[slotConflict, setSlotConflict\]/);
+  assert.match(page, /const \[sameWeekWarning, setSameWeekWarning\]/);
+  assert.match(page, /Yine de oluştur/);
+  assert.match(page, /Vazgeç/);
+  assert.match(service, /\.eq\('status', SLOT_BLOCKING_APPOINTMENT_STATUSES\[0\]\)/);
+  assert.match(service, /\.neq\('id', appointmentId\)/);
+  assert.match(service, /sameWeekCount/);
+  assert.match(migration, /create unique index appointments_dietitian_date_time_upcoming_unique/);
+  assert.match(migration, /where status = 'upcoming'/);
+  assert.doesNotMatch(migration, /drop table|delete from|update public\.appointments/i);
+});
+
+test('monthly appointment cells keep two entries and expose all overflow appointments', () => {
+  const source = read('pages/Appointments.tsx');
+  assert.match(source, /dayAppointments\.slice\(0, 2\)/);
+  assert.match(source, /\+\{dayAppointments\.length - 2\} randevu daha/);
+  assert.match(source, /onClick=\{\(event\) => openDayDetail\(event, day\.date\)\}/);
+  assert.match(source, /event\.stopPropagation\(\)/);
+  assert.match(source, /dayDetailAppointments\.map/);
+  assert.match(source, /appointment\.clientName[\s\S]*?appointment\.title/);
 });
 
 test('dashboard keeps appointment loading, error and empty states distinct using Istanbul dates', () => {

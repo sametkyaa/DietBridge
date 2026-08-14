@@ -11,13 +11,18 @@ import React, {
 import { Appointment } from '../../../shared/types';
 import { useAuth } from '../../auth/context/AuthContext';
 import {
+  AppointmentBookingCheck,
   AppointmentServiceError,
+  checkAppointmentBooking as checkAppointmentBookingService,
   createAppointment,
   deleteAppointmentService,
   fetchAppointments,
   updateAppointment as updateAppointmentService,
 } from '../services/appointmentService';
-import { AppointmentDraft } from '../utils/appointmentContract';
+import {
+  AppointmentDraft,
+  sortAppointmentsChronologically,
+} from '../utils/appointmentContract';
 
 interface AppointmentContextType {
   appointments: Appointment[];
@@ -29,6 +34,10 @@ interface AppointmentContextType {
   addAppointment: (draft: AppointmentDraft) => Promise<AppointmentMutationResult>;
   updateAppointment: (id: string, draft: AppointmentDraft) => Promise<AppointmentMutationResult>;
   deleteAppointment: (id: string) => Promise<AppointmentMutationResult>;
+  checkAppointmentBooking: (
+    draft: AppointmentDraft,
+    appointmentId?: string,
+  ) => Promise<AppointmentBookingCheckResult>;
   clearMutationError: () => void;
   getAppointmentsByDate: (date: string) => Appointment[];
 }
@@ -36,6 +45,10 @@ interface AppointmentContextType {
 export type AppointmentMutationResult =
   | { success: false }
   | { success: true; refreshSucceeded: boolean };
+
+export type AppointmentBookingCheckResult =
+  | { success: true; value: AppointmentBookingCheck }
+  | { success: false; message: string };
 
 const AppointmentContext = createContext<AppointmentContextType>({
   appointments: [],
@@ -47,6 +60,10 @@ const AppointmentContext = createContext<AppointmentContextType>({
   addAppointment: async () => ({ success: false }),
   updateAppointment: async () => ({ success: false }),
   deleteAppointment: async () => ({ success: false }),
+  checkAppointmentBooking: async () => ({
+    success: false,
+    message: 'Randevu kaydedilemedi. Lütfen tekrar deneyin.',
+  }),
   clearMutationError: () => {},
   getAppointmentsByDate: () => [],
 });
@@ -146,10 +163,25 @@ export const AppointmentProvider = ({ children }: PropsWithChildren) => {
     'Randevu silinemedi. Lütfen tekrar deneyin.',
   ), [runMutation]);
 
+  const checkAppointmentBooking = useCallback(async (
+    draft: AppointmentDraft,
+    appointmentId?: string,
+  ): Promise<AppointmentBookingCheckResult> => {
+    try {
+      const value = await checkAppointmentBookingService(draft, appointmentId);
+      return { success: true, value };
+    } catch (checkError) {
+      return {
+        success: false,
+        message: getUserMessage(checkError, 'Randevu kaydedilemedi. Lütfen tekrar deneyin.'),
+      };
+    }
+  }, []);
+
   const getAppointmentsByDate = useCallback((date: string) => (
-    appointments
-      .filter((appointment) => appointment.date === date)
-      .sort((left, right) => left.time.localeCompare(right.time))
+    sortAppointmentsChronologically(
+      appointments.filter((appointment) => appointment.date === date),
+    )
   ), [appointments]);
 
   const value = useMemo<AppointmentContextType>(() => ({
@@ -162,11 +194,13 @@ export const AppointmentProvider = ({ children }: PropsWithChildren) => {
     addAppointment,
     updateAppointment,
     deleteAppointment,
+    checkAppointmentBooking,
     clearMutationError: () => setMutationError(null),
     getAppointmentsByDate,
   }), [
     addAppointment,
     appointments,
+    checkAppointmentBooking,
     deleteAppointment,
     error,
     getAppointmentsByDate,

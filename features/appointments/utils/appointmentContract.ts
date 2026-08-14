@@ -10,6 +10,21 @@ export const APPOINTMENT_TYPES: Appointment['type'][] = [
   'Telefon Görüşmesi',
 ];
 
+export const APPOINTMENT_STATUSES: Appointment['status'][] = [
+  'upcoming',
+  'completed',
+  'cancelled',
+];
+
+export const SLOT_BLOCKING_APPOINTMENT_STATUSES: Extract<Appointment['status'], 'upcoming'>[] = [
+  'upcoming',
+];
+
+export const NON_SLOT_BLOCKING_APPOINTMENT_STATUSES: Extract<Appointment['status'], 'completed' | 'cancelled'>[] = [
+  'completed',
+  'cancelled',
+];
+
 export const APPOINTMENT_DURATIONS = [15, 30, 45, 60] as const;
 export const APPOINTMENT_TITLE_MAX_LENGTH = 120;
 
@@ -44,6 +59,11 @@ export interface CalendarDay {
   date: string;
   day: number;
   isCurrentMonth: boolean;
+}
+
+export interface AppointmentWeekRange {
+  startDate: string;
+  endDate: string;
 }
 
 const pad = (value: number) => String(value).padStart(2, '0');
@@ -149,6 +169,36 @@ export const addCalendarDays = (value: string, days: number) => {
   date.setUTCDate(date.getUTCDate() + days);
   return dateKeyFromUtcDate(date);
 };
+
+/**
+ * Appointment dates are stored as Istanbul civil dates, not instants. Keeping
+ * week arithmetic on the canonical date key avoids browser-local timezone and
+ * localized-string parsing differences.
+ */
+export const getMondayFirstWeekRange = (value: string): AppointmentWeekRange | null => {
+  const parts = getDateKeyParts(value);
+  if (!parts) return null;
+  const date = createUtcDate(parts);
+  const mondayFirstOffset = (date.getUTCDay() + 6) % 7;
+  const startDate = addCalendarDays(value, -mondayFirstOffset);
+  const endDate = startDate ? addCalendarDays(startDate, 6) : null;
+  if (!startDate || !endDate) return null;
+  return { startDate, endDate };
+};
+
+export type AppointmentChronologyValue = Pick<Appointment, 'date' | 'time' | 'id'>;
+
+export const compareAppointmentsChronologically = (
+  left: AppointmentChronologyValue,
+  right: AppointmentChronologyValue,
+) => (
+  `${left.date}T${left.time}`.localeCompare(`${right.date}T${right.time}`)
+  || left.id.localeCompare(right.id)
+);
+
+export const sortAppointmentsChronologically = <T extends AppointmentChronologyValue>(appointments: T[]) => (
+  [...appointments].sort(compareAppointmentsChronologically)
+);
 
 export const addCalendarMonths = (value: string, months: number) => {
   const parts = getMonthKeyParts(value);
