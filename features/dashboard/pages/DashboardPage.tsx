@@ -27,6 +27,7 @@ import { useDailyTasks } from '../hooks/useDailyTasks';
 import type { DailyTask, DailyTaskDraft, DailyTaskGroups } from '../types/dailyTask';
 import { getIstanbulDateKey, getPendingDailyTaskGroup } from '../utils/dailyTaskContract';
 import { getDashboardFocusMessage, summarizeDashboard } from '../utils/dashboardContract';
+import NotificationBell from '../../notifications/components/NotificationBell';
 
 type TaskFilter = keyof DailyTaskGroups;
 
@@ -410,6 +411,8 @@ const DashboardPage = () => {
               </div>
             )}
           </div>
+
+          <NotificationBell />
 
           <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
             <DietitianAvatar

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Bell, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2, Info } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Search, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DietitianAvatar from '../../../shared/components/DietitianAvatar';
 import { Client } from '../../../shared/types';
-import { fetchDietitianClientList, addClientByEmail } from '../services/clientService';
+import { fetchDietitianClientList, addClientByEmail, resolveClientIdByRelationId } from '../services/clientService';
+import NotificationBell from '../../notifications/components/NotificationBell';
 
 type ClientListViewState =
   | { status: 'loading' }
@@ -293,6 +294,8 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
 
 const ClientsPage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const notificationRelationshipId = searchParams.get('notificationRelationshipId');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('all');
   const [viewState, setViewState] = useState<ClientListViewState>({ status: 'loading' });
@@ -304,6 +307,7 @@ const ClientsPage = () => {
   const inviteDialogRef = useRef<HTMLDivElement>(null);
   const inviteEmailInputRef = useRef<HTMLInputElement>(null);
   const wasAddModalOpen = useRef(false);
+  const handledNotificationRelationshipRef = useRef<string | null>(null);
 
   // Add Client Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -352,6 +356,35 @@ const ClientsPage = () => {
       requestInFlight.current = false;
     };
   }, [loadClients]);
+
+  useEffect(() => {
+    if (
+      !notificationRelationshipId
+      || viewState.status !== 'success'
+      || handledNotificationRelationshipRef.current === notificationRelationshipId
+    ) {
+      return undefined;
+    }
+
+    handledNotificationRelationshipRef.current = notificationRelationshipId;
+    let active = true;
+    void resolveClientIdByRelationId(notificationRelationshipId)
+      .then((clientId) => {
+        if (!active) return;
+        if (clientId) {
+          navigate(`/clients/${clientId}`, { replace: true });
+          return;
+        }
+        setSearchParams({}, { replace: true });
+      })
+      .catch(() => {
+        if (active) setSearchParams({}, { replace: true });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [navigate, notificationRelationshipId, setSearchParams, viewState.status]);
 
   const openAddModal = () => {
     setIsAddModalOpen(true);
@@ -565,9 +598,7 @@ const ClientsPage = () => {
           
           <div className="hidden md:block w-px h-8 bg-slate-200 mx-2"></div>
           
-          <button className="hidden md:block p-2.5 rounded-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors">
-            <Bell className="w-5 h-5" />
-          </button>
+          <NotificationBell className="hidden md:inline-flex" />
           
           <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
             <DietitianAvatar
