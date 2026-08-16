@@ -19,15 +19,18 @@ const readMigrationInventory = () => readdirSync(migrationDirectory)
   .sort();
 
 const files = readMigrationInventory();
-assert(files.length === 46, 'NOTIFICATION_MIGRATION_COUNT_46', 'count=' + files.length);
+assert(files.length === 47, 'NOTIFICATION_MIGRATION_COUNT_47', 'count=' + files.length);
 
 const notificationFiles = files.filter((name) => /_notification_core_backend\.sql$/.test(name));
 assert(notificationFiles.length === 1, 'ONE_NOTIFICATION_CORE_MIGRATION', notificationFiles.join(','));
 const migrationName = notificationFiles[0];
 assert(migrationName === '20260814214101_notification_core_backend.sql', 'NEXT_CANONICAL_MIGRATION_VERSION', migrationName);
 const markAllReadMigrationName = '20260816101405_mark_all_notifications_read.sql';
-assert(files.at(-1) === markAllReadMigrationName, 'MARK_ALL_READ_MIGRATION_TAIL', files.at(-1));
+const appointmentReminderMigrationName = '20260816194431_appointment_reminders_backend.sql';
+assert(files.includes(markAllReadMigrationName), 'MARK_ALL_READ_MIGRATION_PRESENT', markAllReadMigrationName);
+assert(files.at(-1) === appointmentReminderMigrationName, 'APPOINTMENT_REMINDER_MIGRATION_TAIL', files.at(-1));
 const markAllReadSql = readFileSync(join(migrationDirectory, markAllReadMigrationName), 'utf8');
+const appointmentReminderSql = readFileSync(join(migrationDirectory, appointmentReminderMigrationName), 'utf8');
 
 const sql = readFileSync(join(migrationDirectory, migrationName), 'utf8');
 const tableStart = sql.indexOf('create table public.notifications');
@@ -208,5 +211,44 @@ assert(!/old\.status = 'pending'::public\.client_status\s+and new\.status = 'rem
 
 assert(/alter publication supabase_realtime add table public\.notifications/.test(sql), 'REALTIME_NOTIFICATIONS_PUBLICATION');
 assert(!/alter publication supabase_realtime add table public\.(?:chat_messages|chat_conversations|chat_read_states|meals)/.test(sql), 'EXISTING_REALTIME_PUBLICATIONS_UNTOUCHED');
+
+assert(appointmentReminderSql.includes('drop constraint notifications_category_event_check'), 'REMINDER_FORWARD_ONLY_CONSTRAINT_REPLACEMENT');
+assert(appointmentReminderSql.includes("event_type = 'reminder_24h'"), 'REMINDER_EVENT_24H');
+assert(appointmentReminderSql.includes("event_type = 'reminder_1h'"), 'REMINDER_EVENT_1H');
+assert(appointmentReminderSql.includes("summary_key = 'appointment_reminder_24h'"), 'REMINDER_SUMMARY_24H');
+assert(appointmentReminderSql.includes("summary_key = 'appointment_reminder_1h'"), 'REMINDER_SUMMARY_1H');
+assert(appointmentReminderSql.includes('notifications_appointment_reminder_contract_check'), 'REMINDER_SAFE_SNAPSHOT_CONSTRAINT');
+assert(appointmentReminderSql.includes('appointments_upcoming_reminder_candidate_idx'), 'REMINDER_CANDIDATE_INDEX');
+assert(/format\(\s*'appointment_reminder:%s:%s:%s:%s'/.test(appointmentReminderSql), 'REMINDER_OCCURRENCE_KEY_BACKEND_GENERATED');
+assert(/to_char\(p_appointment_time,\s*'HH24:MI'\)/.test(appointmentReminderSql), 'REMINDER_OCCURRENCE_KEY_CIVIL_TIME');
+
+const reminderProducerStart = appointmentReminderSql.indexOf('create function private.insert_appointment_reminder_once');
+const reminderProcessorStart = appointmentReminderSql.indexOf('create function private.process_appointment_reminders_at');
+assert(reminderProducerStart >= 0 && reminderProcessorStart > reminderProducerStart, 'REMINDER_FUNCTION_ORDER');
+const reminderProducerBlock = appointmentReminderSql.slice(reminderProducerStart, reminderProcessorStart);
+const reminderProcessorBlock = appointmentReminderSql.slice(reminderProcessorStart);
+assert(/returns boolean/.test(reminderProducerBlock), 'REMINDER_PRODUCER_BOOLEAN_RESULT');
+assert(/security definer/.test(reminderProducerBlock), 'REMINDER_PRODUCER_SECURITY_DEFINER');
+assert(/set search_path = pg_catalog, public, private/.test(reminderProducerBlock), 'REMINDER_PRODUCER_FIXED_SEARCH_PATH');
+assert(/on conflict \(recipient_id, aggregation_key\) do nothing/.test(reminderProducerBlock), 'REMINDER_PRODUCER_INSERT_ONCE');
+assert(!/on conflict[\s\S]*do update/.test(reminderProducerBlock), 'REMINDER_PRODUCER_NO_UPDATE_ON_CONFLICT');
+assert(/event_count,/.test(reminderProducerBlock) && /\n\s*1,/.test(reminderProducerBlock), 'REMINDER_PRODUCER_EVENT_COUNT_ONE');
+assert(/seen_at,\s*read_at/.test(reminderProducerBlock) && /\n\s*null,\s*null/.test(reminderProducerBlock), 'REMINDER_PRODUCER_UNSEEN_UNREAD');
+assert(/revoke all on function private\.insert_appointment_reminder_once/.test(reminderProducerBlock), 'REMINDER_PRODUCER_PRIVATE_ACL');
+assert(/for update of a skip locked/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_ROW_LOCKING');
+assert(/status = 'upcoming'/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_UPCOMING_ONLY');
+assert(/p\.role = 'client'::public\.user_role/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_CLIENT_ROLE');
+assert(/status = 'active'::public\.client_status/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_ACTIVE_RELATIONSHIP');
+assert(/at time zone 'Europe\/Istanbul'/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_ISTANBUL_TIMEZONE');
+assert(/interval '24 hours'/.test(reminderProcessorBlock) && /interval '1 hour'/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_OFFSETS');
+assert(/interval '10 minutes'/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_BOUNDED_WINDOW');
+assert(/created_at <= reminder\.target_at/.test(reminderProcessorBlock)
+  && /v_current\.created_at > v_target_at/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_NO_LATE_CATCHUP');
+assert(!/update public\.appointments/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_NO_APPOINTMENT_MUTATION');
+assert(/create function private\.process_appointment_reminders\(\)/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_PRODUCTION_WRAPPER');
+assert(/revoke all on function private\.process_appointment_reminders\(\)/.test(reminderProcessorBlock), 'REMINDER_PROCESSOR_PRIVATE_ACL');
+assert(/cron\.schedule\(\s*'appointment-reminders-every-5-minutes',\s*'\*\/5 \* \* \* \*'/.test(appointmentReminderSql), 'REMINDER_CRON_NAME_AND_SCHEDULE');
+assert(/select private\.process_appointment_reminders\(\);/.test(appointmentReminderSql), 'REMINDER_CRON_DATABASE_TARGET');
+assert(!/net\.http_post|vault\.decrypted_secrets|pg_net|service_role_key/i.test(appointmentReminderSql), 'REMINDER_CRON_NO_HTTP_SECRET_DEPENDENCY');
 
 process.stdout.write('NOTIFICATION_CORE_STATIC_CONTRACT_PASS\n');

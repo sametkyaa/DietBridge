@@ -15,6 +15,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
 const notificationCoreMigrationName = '20260814214101_notification_core_backend.sql';
 const markAllReadMigrationName = '20260816101405_mark_all_notifications_read.sql';
+const appointmentReminderMigrationName = '20260816194431_appointment_reminders_backend.sql';
 const supabaseVersion = '2.110.0';
 const projectId = `db-notify-${process.pid}-${randomUUID().slice(0, 6)}`;
 const password = 'Disposable-Notification-Client-4m!';
@@ -112,7 +113,7 @@ const compileClient = (outputRoot) => {
 
 const run = async () => {
   const sourceMigrations = readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  assert(sourceMigrations.at(-1) === markAllReadMigrationName, 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
+  assert(sourceMigrations.at(-1) === appointmentReminderMigrationName, 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
 
   tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-client-runtime-'));
   tempRoot = join(tempParent, 'project');
@@ -123,6 +124,7 @@ const run = async () => {
     copyFileSync(join(repoRoot, 'supabase', 'config.toml'), configPath);
     const runtimeMigrationDirectory = join(tempRoot, 'supabase', 'migrations');
     copyFileSync(join(migrationDirectory, notificationCoreMigrationName), join(runtimeMigrationDirectory, notificationCoreMigrationName));
+    copyFileSync(join(migrationDirectory, appointmentReminderMigrationName), join(runtimeMigrationDirectory, appointmentReminderMigrationName));
     writeFileSync(join(runtimeMigrationDirectory, LOCAL_PREREQUISITE_FILE), LOCAL_PREREQUISITE_SQL, { flag: 'wx' });
     assert(manifest.expectedHistory.total === 45, 'CLIENT_RUNTIME_BASELINE_45');
     await configureProject(configPath);
