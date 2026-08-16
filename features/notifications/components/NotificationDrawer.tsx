@@ -292,7 +292,7 @@ const NotificationDrawer: React.FC = () => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="notification-center-title"
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] flex-col border-l border-slate-200 bg-white shadow-2xl sm:w-[min(100vw,420px)]"
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[416px] flex-col border-l border-slate-200 bg-white shadow-2xl sm:w-[min(100vw,416px)]"
         data-testid="notification-drawer"
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
@@ -300,7 +300,7 @@ const NotificationDrawer: React.FC = () => {
             <h2 id="notification-center-title" className="text-lg font-bold text-slate-800">Bildirimler</h2>
             <p className="mt-1 text-xs text-slate-500">Güncel bildirimleriniz</p>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-3">
             <button
               type="button"
               onClick={() => void handleMarkAllRead()}
