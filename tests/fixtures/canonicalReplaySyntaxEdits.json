@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 37,
+  "expectedCanonicalCount": 38,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2842,6 +2842,13 @@
       "phase": "canonical",
       "sourceSha256": "1e6a44079b6507aa3528f13535aadfbdbbbb07ca8449e471e83c003ea781c966",
       "materializedSha256": "1e6a44079b6507aa3528f13535aadfbdbbbb07ca8449e471e83c003ea781c966",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260816101405_mark_all_notifications_read.sql",
+      "phase": "canonical",
+      "sourceSha256": "5c2b36c1b445f02124696aa338afc279ea2bef4432d36d56b0ad59e8e352b6e6",
+      "materializedSha256": "5c2b36c1b445f02124696aa338afc279ea2bef4432d36d56b0ad59e8e352b6e6",
       "edits": []
     }
   ]

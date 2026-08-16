@@ -19,12 +19,15 @@ const readMigrationInventory = () => readdirSync(migrationDirectory)
   .sort();
 
 const files = readMigrationInventory();
-assert(files.length === 45, 'NOTIFICATION_MIGRATION_COUNT_45', 'count=' + files.length);
+assert(files.length === 46, 'NOTIFICATION_MIGRATION_COUNT_46', 'count=' + files.length);
 
 const notificationFiles = files.filter((name) => /_notification_core_backend\.sql$/.test(name));
 assert(notificationFiles.length === 1, 'ONE_NOTIFICATION_CORE_MIGRATION', notificationFiles.join(','));
 const migrationName = notificationFiles[0];
 assert(migrationName === '20260814214101_notification_core_backend.sql', 'NEXT_CANONICAL_MIGRATION_VERSION', migrationName);
+const markAllReadMigrationName = '20260816101405_mark_all_notifications_read.sql';
+assert(files.at(-1) === markAllReadMigrationName, 'MARK_ALL_READ_MIGRATION_TAIL', files.at(-1));
+const markAllReadSql = readFileSync(join(migrationDirectory, markAllReadMigrationName), 'utf8');
 
 const sql = readFileSync(join(migrationDirectory, migrationName), 'utf8');
 const tableStart = sql.indexOf('create table public.notifications');
@@ -115,6 +118,10 @@ const seenBlock = functionBlock('create function public.mark_notification_seen',
 const readBlock = functionBlock('create function public.mark_notification_read', 'create function public.mark_notifications_seen');
 const batchBlock = functionBlock('create function public.mark_notifications_seen', 'alter function public.mark_notification_seen');
 const producerBlock = functionBlock('create function private.upsert_notification_aggregate', 'create function public.mark_notification_seen');
+const markAllReadStart = markAllReadSql.indexOf('create function public.mark_all_notifications_read()');
+const markAllReadEnd = markAllReadSql.indexOf('\nalter function public.mark_all_notifications_read()', markAllReadStart);
+assert(markAllReadStart >= 0 && markAllReadEnd > markAllReadStart, 'FUNCTION_mark_all_notifications_read');
+const markAllReadBlock = markAllReadSql.slice(markAllReadStart, markAllReadEnd);
 
 for (const [label, block] of [
   ['SEEN', seenBlock],
@@ -136,6 +143,24 @@ assert(/grant execute on function public\.mark_notification_seen\(uuid\) to auth
 const notificationGrantLines = sql.split(/\r?\n/)
   .filter((line) => /grant execute on function public\.mark_notification/.test(line));
 assert(notificationGrantLines.every((line) => /to authenticated\s*;/.test(line)), 'RPC_ANON_EXECUTE_REVOKED');
+
+assert(/create function public\.mark_all_notifications_read\(\)/.test(markAllReadSql), 'MARK_ALL_READ_NO_PARAMETERS');
+assert(/returns integer/.test(markAllReadBlock), 'MARK_ALL_READ_SCALAR_RETURN');
+assert(/security definer/.test(markAllReadBlock), 'MARK_ALL_READ_SECURITY_DEFINER');
+assert(/set search_path = pg_catalog, public/.test(markAllReadBlock), 'MARK_ALL_READ_FIXED_SEARCH_PATH');
+assert(/auth\.uid\(\)/.test(markAllReadBlock), 'MARK_ALL_READ_AUTH_UID_BOUND');
+assert(/v_operation_at timestamptz := now\(\)/.test(markAllReadBlock), 'MARK_ALL_READ_STABLE_TIMESTAMP');
+assert(/update public\.notifications/.test(markAllReadBlock), 'MARK_ALL_READ_NOTIFICATION_TABLE_ONLY');
+assert(/seen_at = coalesce\(seen_at, v_operation_at\)/.test(markAllReadBlock), 'MARK_ALL_READ_SETS_SEEN');
+assert(/read_at = coalesce\(read_at, v_operation_at\)/.test(markAllReadBlock), 'MARK_ALL_READ_SETS_READ');
+assert(/updated_at = v_operation_at/.test(markAllReadBlock), 'MARK_ALL_READ_UPDATES_TIMESTAMP');
+assert(/where recipient_id = v_actor_id\s+and read_at is null/.test(markAllReadBlock), 'MARK_ALL_READ_RECIPIENT_UNREAD_SCOPE');
+assert(/get diagnostics v_count = row_count/.test(markAllReadBlock), 'MARK_ALL_READ_AFFECTED_COUNT');
+assert(!/p_recipient_id|p_notification_id|p_notification_ids/.test(markAllReadBlock), 'MARK_ALL_READ_NO_CALLER_ID');
+assert(!/\b(category|event_type|aggregation_key|actor_id|event_count|occurred_at)\s*=/.test(markAllReadBlock), 'MARK_ALL_READ_SOURCE_FIELDS_UNCHANGED');
+assert(/revoke all on function public\.mark_all_notifications_read\(\) from public, anon, authenticated, service_role/.test(markAllReadSql), 'MARK_ALL_READ_EXECUTE_REVOKED_BY_DEFAULT');
+assert(/grant execute on function public\.mark_all_notifications_read\(\) to authenticated/.test(markAllReadSql), 'MARK_ALL_READ_EXECUTE_AUTHENTICATED_ONLY');
+assert(!/grant execute on function public\.mark_all_notifications_read\(\) to (?:public|anon|service_role)/.test(markAllReadSql), 'MARK_ALL_READ_NO_UNTRUSTED_EXECUTE');
 
 assert(/security definer/.test(producerBlock), 'PRODUCER_SECURITY_DEFINER');
 assert(/set search_path = pg_catalog, public, private/.test(producerBlock), 'PRODUCER_FIXED_SEARCH_PATH');

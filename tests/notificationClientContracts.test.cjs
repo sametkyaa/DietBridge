@@ -229,6 +229,31 @@ test('seen/read mutations use only canonical RPCs and batch input stays bounded'
   assert.equal(calls.length, before);
 });
 
+test('mark all read uses one dedicated RPC without recipient input or an ID loop', async () => {
+  const calls = [];
+  let fromCalled = false;
+  supabaseClient.__setFromHandler(() => { fromCalled = true; throw new Error('direct table access is not allowed in mark-all tests'); });
+  supabaseClient.__setRpcHandler(async (name, args) => {
+    calls.push({ name, args });
+    return { data: 2, error: null };
+  });
+
+  assert.equal(await service.markAllNotificationsRead(), 2);
+  assert.deepEqual(calls, [{ name: 'mark_all_notifications_read', args: undefined }]);
+  assert.equal(fromCalled, false);
+
+  const serviceSource = fs.readFileSync(path.join(repoRoot, 'features', 'notifications', 'services', 'notificationService.ts'), 'utf8');
+  const markAllStart = serviceSource.indexOf('export const markAllNotificationsRead');
+  const markAllBlock = serviceSource.slice(markAllStart, serviceSource.indexOf('\n};', markAllStart) + 3);
+  assert.doesNotMatch(markAllBlock, /markNotification(Read|Seen)|markNotificationsSeen|notificationIds|\.from\(/);
+
+  supabaseClient.__setRpcHandler(async () => ({ data: null, error: { code: 'PGRST500', message: 'mark-all failed' } }));
+  await assert.rejects(
+    () => service.markAllNotificationsRead(),
+    (error) => error.code === 'RPC' && error.userMessage === 'Tüm bildirimler okundu olarak işaretlenemedi.',
+  );
+});
+
 test('Realtime uses the authenticated user channel, INSERT/UPDATE only, and idempotent cleanup', async () => {
   let channelRecord;
   supabaseClient.__setChannelHandler((name) => {
@@ -306,6 +331,13 @@ test('hook is data/state/realtime only and keeps Supabase access behind the serv
   assert.match(hook, /subscription\.unsubscribe\(\)/);
   assert.match(hook, /isCurrentToken/);
   assert.match(hook, /mergeNotificationPage/);
+  assert.match(hook, /markAllRead/);
+  assert.match(hook, /markAllNotificationsRead/);
+  const markAllStart = hook.indexOf('const markAllRead = useCallback');
+  const markAllBlock = hook.slice(markAllStart, hook.indexOf('\n  }, [', markAllStart));
+  assert.match(markAllBlock, /await markAllNotificationsRead\(\)/);
+  assert.match(markAllBlock, /return await refresh\(\)/);
+  assert.doesNotMatch(markAllBlock, /setUnseenCount\(0\)/);
   assert.doesNotMatch(hook, /\.from\(['"]notifications['"]\)/);
   assert.doesNotMatch(hook, /notification.*(Bell|Drawer|Card)/i);
 });

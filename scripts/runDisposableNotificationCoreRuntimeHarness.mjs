@@ -14,7 +14,8 @@ import { LOCAL_PREREQUISITE_FILE, LOCAL_PREREQUISITE_SQL } from './runDisposable
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
-const migrationName = '20260814214101_notification_core_backend.sql';
+const notificationCoreMigrationName = '20260814214101_notification_core_backend.sql';
+const markAllReadMigrationName = '20260816101405_mark_all_notifications_read.sql';
 const supabaseVersion = '2.110.0';
 const password = 'Disposable-Notification-Core-4m!';
 const projectId = 'dietbridge-notification-' + process.pid + '-' + randomUUID().slice(0, 8);
@@ -368,8 +369,8 @@ const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(sourceMigrations.length === 45, 'CANONICAL_MIGRATION_INVENTORY_45');
-  assert(sourceMigrations.at(-1) === migrationName, 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
+  assert(sourceMigrations.length === 46, 'CANONICAL_MIGRATION_INVENTORY_46');
+  assert(sourceMigrations.at(-1) === markAllReadMigrationName, 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-core-'));
   const tempRoot = join(tempParent, 'project');
@@ -381,18 +382,18 @@ const runFlows = async () => {
     configPath,
     disposableHistory: { repositoryMigrationCount: runtimeManifest.expectedHistory.total },
   };
-  assert(disposable.disposableHistory.repositoryMigrationCount === 44, 'BASELINE_MATERIALIZED_COUNT_44');
+  assert(disposable.disposableHistory.repositoryMigrationCount === 45, 'BASELINE_MATERIALIZED_COUNT_45');
   const runtimeMigrationDirectory = join(disposable.tempRoot, 'supabase', 'migrations');
-  const destinationMigration = join(runtimeMigrationDirectory, migrationName);
+  const destinationMigration = join(runtimeMigrationDirectory, notificationCoreMigrationName);
   if (existsSync(destinationMigration)) throw new Error('Disposable migration destination already exists.');
-  copyFileSync(join(migrationDirectory, migrationName), destinationMigration, 1);
+  copyFileSync(join(migrationDirectory, notificationCoreMigrationName), destinationMigration, 1);
   const prerequisitePath = join(runtimeMigrationDirectory, LOCAL_PREREQUISITE_FILE);
   writeFileSync(prerequisitePath, LOCAL_PREREQUISITE_SQL, { flag: 'wx' });
   const runtimeFiles = readdirSync(runtimeMigrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(runtimeFiles.length === 46, 'DISPOSABLE_MIGRATION_FILES_46_WITH_ONE_LOCAL_PREREQUISITE');
-  assert(runtimeFiles.includes(migrationName), 'DISPOSABLE_NEW_MIGRATION_REPLAY_45');
+  assert(runtimeFiles.length === 47, 'DISPOSABLE_MIGRATION_FILES_47_WITH_ONE_LOCAL_PREREQUISITE');
+  assert(runtimeFiles.includes(markAllReadMigrationName), 'DISPOSABLE_NEW_MIGRATION_REPLAY_46');
 
   await configureDisposableProject(disposable.configPath);
   stackStartAttempted = true;
@@ -402,8 +403,8 @@ const runFlows = async () => {
 
   runCli(disposable.tempRoot, ['db', 'reset', '--local', '--no-seed']);
   const migrationCount = countBySql('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === 46, 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'canonical=45, local-prerequisite=1');
-  pass('DISPOSABLE_CANONICAL_MIGRATION_REPLAY_45');
+  assert(migrationCount === 47, 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'canonical=46, local-prerequisite=1');
+  pass('DISPOSABLE_CANONICAL_MIGRATION_REPLAY_46');
 
   local = parseStatus(runCli(disposable.tempRoot, ['status', '--output', 'env']));
   assertLoopback(local.API_URL);
@@ -855,6 +856,71 @@ const runFlows = async () => {
     p_notification_id: dietitianNotificationId,
   });
   assertRpcError(directForeignRead, 'DIETITIAN_FOREIGN_READ_DENY');
+
+  assertNoError(await api.clientA.rpc('mark_all_notifications_read'), 'mark-all baseline reconciliation');
+  const markAllTimestamp = new Date().toISOString();
+  const markAllFixture = (recipientId, id, aggregationKey, seenAt, readAt) => ({
+    id,
+    recipient_id: recipientId,
+    category: 'chat_message',
+    event_type: 'new_message',
+    aggregation_key: aggregationKey,
+    actor_id: dietitianA.id,
+    actor_display_name: 'Disposable dietitian-a',
+    conversation_id: conversationId,
+    summary_key: 'chat_new_message',
+    event_count: 1,
+    occurred_at: markAllTimestamp,
+    seen_at: seenAt,
+    read_at: readAt,
+    created_at: markAllTimestamp,
+    updated_at: markAllTimestamp,
+  });
+  const markAllOwnUnseenId = randomUUID();
+  const markAllOwnSeenId = randomUUID();
+  const markAllOwnReadId = randomUUID();
+  const markAllForeignId = randomUUID();
+  const markAllOwnReadAt = markAllTimestamp;
+  assertNoError(await admin.from('notifications').insert([
+    markAllFixture(clientA.id, markAllOwnUnseenId, 'mark-all:own-unseen:' + markAllOwnUnseenId, null, null),
+    markAllFixture(clientA.id, markAllOwnSeenId, 'mark-all:own-seen:' + markAllOwnSeenId, markAllTimestamp, null),
+    markAllFixture(clientA.id, markAllOwnReadId, 'mark-all:own-read:' + markAllOwnReadId, markAllTimestamp, markAllOwnReadAt),
+    markAllFixture(clientB.id, markAllForeignId, 'mark-all:foreign:' + markAllForeignId, null, null),
+  ]), 'mark-all fixture insert');
+  const foreignBefore = assertNoError(await admin.from('notifications')
+    .select('id,seen_at,read_at,updated_at').eq('id', markAllForeignId).single(), 'mark-all foreign before');
+  const ownReadBefore = assertNoError(await admin.from('notifications')
+    .select('id,seen_at,read_at,updated_at').eq('id', markAllOwnReadId).single(), 'mark-all own read before');
+
+  const markAllCount = assertNoError(await api.clientA.rpc('mark_all_notifications_read'), 'mark-all own notifications');
+  assert(markAllCount === 2, 'MARK_ALL_READ_OWN_AFFECTED_COUNT');
+  const ownAfter = assertNoError(await admin.from('notifications')
+    .select('id,seen_at,read_at,updated_at').in('id', [markAllOwnUnseenId, markAllOwnSeenId, markAllOwnReadId]), 'mark-all own after');
+  const ownAfterById = new Map(ownAfter.map((row) => [row.id, row]));
+  assert(ownAfterById.get(markAllOwnUnseenId)?.seen_at !== null
+    && ownAfterById.get(markAllOwnUnseenId)?.read_at !== null, 'MARK_ALL_READ_UNSEEN_TO_READ');
+  assert(ownAfterById.get(markAllOwnSeenId)?.seen_at !== null
+    && ownAfterById.get(markAllOwnSeenId)?.read_at !== null, 'MARK_ALL_READ_SEEN_TO_READ');
+  assert(ownAfterById.get(markAllOwnReadId)?.read_at === ownReadBefore.read_at
+    && ownAfterById.get(markAllOwnReadId)?.updated_at === ownReadBefore.updated_at, 'MARK_ALL_READ_ALREADY_READ_UNCHANGED');
+  const foreignAfter = assertNoError(await admin.from('notifications')
+    .select('id,seen_at,read_at,updated_at').eq('id', markAllForeignId).single(), 'mark-all foreign after');
+  assert(foreignAfter.seen_at === foreignBefore.seen_at
+    && foreignAfter.read_at === foreignBefore.read_at
+    && foreignAfter.updated_at === foreignBefore.updated_at, 'MARK_ALL_READ_CROSS_RECIPIENT_UNCHANGED');
+  assert(assertNoError(await api.clientA.rpc('mark_all_notifications_read'), 'mark-all empty') === 0, 'MARK_ALL_READ_EMPTY_ZERO');
+  assertRpcError(await api.anonymous.rpc('mark_all_notifications_read'), 'MARK_ALL_READ_ANONYMOUS_DENY');
+
+  const rearmMessage = assertNoError(await api.dietitianA.rpc('send_chat_message', {
+    p_dietitian_client_id: relationAA.id,
+    p_client_message_id: randomUUID(),
+    p_body: 'Disposable mark-all re-arm event',
+  }), 'mark-all re-arm message');
+  messageIds.push(rearmMessage.id);
+  const rearmedNotification = await readNotification(clientA.id, chatKey, 'MARK_ALL_READ_REARM');
+  assert(rearmedNotification?.event_count === 1
+    && rearmedNotification.seen_at === null
+    && rearmedNotification.read_at === null, 'MARK_ALL_READ_NEW_EVENT_REARMS');
 
   pass('NOTIFICATION_CORE_RUNTIME_MATRIX_PASS');
 };

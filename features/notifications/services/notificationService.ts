@@ -462,6 +462,16 @@ export const markNotificationsSeen = async (notificationIds: readonly string[]):
   return data;
 };
 
+export const markAllNotificationsRead = async (): Promise<number> => {
+  await requireAuthenticatedUser('Bildirim işlemi için oturum açmanız gerekir.');
+  const { data, error } = await supabase.rpc('mark_all_notifications_read');
+  if (error) throw toNotificationServiceError(error, 'RPC', 'Tüm bildirimler okundu olarak işaretlenemedi.');
+  if (!Number.isInteger(data) || data < 0) {
+    throw new NotificationServiceError('MALFORMED', 'Toplu bildirim işlemi beklenmeyen bir yanıt döndürdü.');
+  }
+  return data;
+};
+
 const notifyRealtimeStatus = (
   status: string,
   onStatus?: (status: NotificationRealtimeStatus) => void,

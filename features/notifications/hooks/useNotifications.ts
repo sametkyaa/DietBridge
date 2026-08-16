@@ -4,6 +4,7 @@ import { isValidUuid } from '../../../shared/utils/uuid';
 import {
   getNotificationUnseenCount,
   listNotifications,
+  markAllNotificationsRead,
   markNotificationRead,
   markNotificationsSeen,
   markNotificationSeen,
@@ -46,6 +47,7 @@ export interface UseNotificationsResult {
   markSeen: (id: string) => Promise<boolean>;
   markRead: (id: string) => Promise<boolean>;
   markVisibleSeen: (ids: readonly string[]) => Promise<boolean>;
+  markAllRead: () => Promise<boolean>;
 }
 
 const toErrorState = (cause: unknown, fallback = GENERIC_REFRESH_MESSAGE): NotificationErrorState => {
@@ -309,6 +311,23 @@ export const useNotifications = (
     }
   }, [currentUserId, isCurrentToken, isReady, refresh, user?.id]);
 
+  const markAllRead = useCallback(async (): Promise<boolean> => {
+    if (!isReady || !currentUserId) {
+      setError(authErrorState(Boolean(user?.id)));
+      return false;
+    }
+    const token = guardRef.current.current();
+    if (token.userId !== currentUserId) return false;
+    try {
+      await markAllNotificationsRead();
+      if (!isCurrentToken(token)) return false;
+      return await refresh();
+    } catch (cause) {
+      if (isCurrentToken(token)) setError(toErrorState(cause, 'Tüm bildirimler okundu olarak işaretlenemedi.'));
+      return false;
+    }
+  }, [currentUserId, isCurrentToken, isReady, refresh, user?.id]);
+
   return {
     notifications,
     unseenCount,
@@ -321,5 +340,6 @@ export const useNotifications = (
     markSeen,
     markRead,
     markVisibleSeen,
+    markAllRead,
   };
 };

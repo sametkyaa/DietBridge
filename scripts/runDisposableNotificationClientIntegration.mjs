@@ -13,7 +13,8 @@ import { LOCAL_PREREQUISITE_FILE, LOCAL_PREREQUISITE_SQL } from './runDisposable
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
-const migrationName = '20260814214101_notification_core_backend.sql';
+const notificationCoreMigrationName = '20260814214101_notification_core_backend.sql';
+const markAllReadMigrationName = '20260816101405_mark_all_notifications_read.sql';
 const supabaseVersion = '2.110.0';
 const projectId = `db-notify-${process.pid}-${randomUUID().slice(0, 6)}`;
 const password = 'Disposable-Notification-Client-4m!';
@@ -111,7 +112,7 @@ const compileClient = (outputRoot) => {
 
 const run = async () => {
   const sourceMigrations = readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  assert(sourceMigrations.at(-1) === migrationName, 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
+  assert(sourceMigrations.at(-1) === markAllReadMigrationName, 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
 
   tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-client-runtime-'));
   tempRoot = join(tempParent, 'project');
@@ -121,9 +122,9 @@ const run = async () => {
     const configPath = join(tempRoot, 'supabase', 'config.toml');
     copyFileSync(join(repoRoot, 'supabase', 'config.toml'), configPath);
     const runtimeMigrationDirectory = join(tempRoot, 'supabase', 'migrations');
-    copyFileSync(join(migrationDirectory, migrationName), join(runtimeMigrationDirectory, migrationName));
+    copyFileSync(join(migrationDirectory, notificationCoreMigrationName), join(runtimeMigrationDirectory, notificationCoreMigrationName));
     writeFileSync(join(runtimeMigrationDirectory, LOCAL_PREREQUISITE_FILE), LOCAL_PREREQUISITE_SQL, { flag: 'wx' });
-    assert(manifest.expectedHistory.total === 44, 'CLIENT_RUNTIME_BASELINE_44');
+    assert(manifest.expectedHistory.total === 45, 'CLIENT_RUNTIME_BASELINE_45');
     await configureProject(configPath);
     stackStartAttempted = true;
     runCli(tempRoot, ['start']);
@@ -184,6 +185,18 @@ const run = async () => {
     assert(unread.notifications.length === 1 && unread.notifications[0].id === pageOne.notifications[0].id, 'CLIENT_RUNTIME_UNREAD_FILTER');
     await clientService.markNotificationRead(pageOne.notifications[0].id);
     assert((await clientService.listNotifications({ unreadOnly: true })).notifications.length === 0, 'CLIENT_RUNTIME_UNREAD_EMPTY_AFTER_READ');
+    const markAllFirstId = randomUUID();
+    const markAllSecondId = randomUUID();
+    assertNoError(await admin.from('notifications').insert([
+      { ...common, id: markAllFirstId, aggregation_key: `client-mark-all:${markAllFirstId}` },
+      { ...common, id: markAllSecondId, aggregation_key: `client-mark-all:${markAllSecondId}` },
+    ]), 'CLIENT_RUNTIME_MARK_ALL_FIXTURE');
+    assert(await clientService.getNotificationUnseenCount() === 2, 'CLIENT_RUNTIME_MARK_ALL_UNSEEN_BEFORE');
+    assert(await clientService.markAllNotificationsRead() === 2, 'CLIENT_RUNTIME_MARK_ALL_AFFECTED_COUNT');
+    const markedAllRows = assertNoError(await admin.from('notifications')
+      .select('id,seen_at,read_at').in('id', [markAllFirstId, markAllSecondId]), 'CLIENT_RUNTIME_MARK_ALL_CANONICAL_READ');
+    assert(markedAllRows.length === 2 && markedAllRows.every((row) => row.seen_at !== null && row.read_at !== null), 'CLIENT_RUNTIME_MARK_ALL_RECONCILED');
+    assert(await clientService.markAllNotificationsRead() === 0, 'CLIENT_RUNTIME_MARK_ALL_EMPTY');
     pass('NOTIFICATION_CLIENT_DISPOSABLE_INTEGRATION_PASS');
   } finally {
     try {
