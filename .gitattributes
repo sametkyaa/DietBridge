@@ -11,6 +11,9 @@ supabase/migrations/20260813120000_create_persistent_dietitian_notes.sql text eo
 supabase/migrations/20260814120000_appointment_slot_collision_and_booking_indexes.sql text eol=lf
 supabase/migrations/20260814130000_meal_completion_visibility.sql text eol=lf
 supabase/migrations/20260814214101_notification_core_backend.sql text eol=lf
+supabase/migrations/20260816101405_mark_all_notifications_read.sql text eol=lf
+supabase/migrations/20260816194431_appointment_reminders_backend.sql text eol=lf
+supabase/migrations/20260817120000_push_registry_outbox_backend.sql text eol=lf
 supabase/tests/disposable/*.sql text eol=lf
 tests/fixtures/*.json text eol=lf
 

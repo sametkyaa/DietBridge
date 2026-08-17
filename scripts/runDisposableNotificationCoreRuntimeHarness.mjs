@@ -17,6 +17,7 @@ const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
 const notificationCoreMigrationName = '20260814214101_notification_core_backend.sql';
 const markAllReadMigrationName = '20260816101405_mark_all_notifications_read.sql';
 const appointmentReminderMigrationName = '20260816194431_appointment_reminders_backend.sql';
+const pushRegistryMigrationName = '20260817120000_push_registry_outbox_backend.sql';
 const supabaseVersion = '2.110.0';
 const password = 'Disposable-Notification-Core-4m!';
 const projectId = 'dietbridge-notification-' + process.pid + '-' + randomUUID().slice(0, 8);
@@ -118,10 +119,16 @@ const isPortFree = (port) => new Promise((resolvePromise) => {
 });
 
 const choosePortBase = async () => {
-  const first = 56000 + (process.pid % 500);
+  const dockerPortMatches = execFileSync('docker', ['ps', '--format', '{{.Ports}}'], {
+    encoding: 'utf8',
+    timeout: 30_000,
+  }).matchAll(/(?:0\.0\.0\.0:|\[::\]:)(\d+)->/g);
+  const dockerPorts = new Set(Array.from(dockerPortMatches, (match) => Number(match[1])));
+  const first = 58000 + (process.pid % 500);
   for (let offset = 0; offset < 5000; offset += 20) {
     const base = first + offset;
     const ports = [base, base + 1, base + 2, base + 3, base + 4, base + 7, base + 9, base + 83];
+    if (ports.some((port) => dockerPorts.has(port))) continue;
     if ((await Promise.all(ports.map(isPortFree))).every(Boolean)) return base;
   }
   throw new Error('No disposable loopback port range is available.');
@@ -370,8 +377,8 @@ const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(sourceMigrations.length === 47, 'CANONICAL_MIGRATION_INVENTORY_47');
-  assert(sourceMigrations.at(-1) === appointmentReminderMigrationName, 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
+  assert(sourceMigrations.length === 48, 'CANONICAL_MIGRATION_INVENTORY_48');
+  assert(sourceMigrations.at(-1) === pushRegistryMigrationName, 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-core-'));
   const tempRoot = join(tempParent, 'project');
@@ -391,14 +398,18 @@ const runFlows = async () => {
   const appointmentReminderDestination = join(runtimeMigrationDirectory, appointmentReminderMigrationName);
   if (existsSync(appointmentReminderDestination)) throw new Error('Disposable reminder migration destination already exists.');
   copyFileSync(join(migrationDirectory, appointmentReminderMigrationName), appointmentReminderDestination, 1);
+  const pushRegistryDestination = join(runtimeMigrationDirectory, pushRegistryMigrationName);
+  if (existsSync(pushRegistryDestination)) throw new Error('Disposable Push registry migration destination already exists.');
+  copyFileSync(join(migrationDirectory, pushRegistryMigrationName), pushRegistryDestination, 1);
   const prerequisitePath = join(runtimeMigrationDirectory, LOCAL_PREREQUISITE_FILE);
   writeFileSync(prerequisitePath, LOCAL_PREREQUISITE_SQL, { flag: 'wx' });
   const runtimeFiles = readdirSync(runtimeMigrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(runtimeFiles.length === 48, 'DISPOSABLE_MIGRATION_FILES_48_WITH_ONE_LOCAL_PREREQUISITE');
+  assert(runtimeFiles.length === 49, 'DISPOSABLE_MIGRATION_FILES_49_WITH_ONE_LOCAL_PREREQUISITE');
   assert(runtimeFiles.includes(markAllReadMigrationName), 'DISPOSABLE_MARK_ALL_READ_MIGRATION_REPLAY');
   assert(runtimeFiles.includes(appointmentReminderMigrationName), 'DISPOSABLE_APPOINTMENT_REMINDER_MIGRATION_REPLAY');
+  assert(runtimeFiles.includes(pushRegistryMigrationName), 'DISPOSABLE_PUSH_REGISTRY_MIGRATION_REPLAY');
 
   await configureDisposableProject(disposable.configPath);
   stackStartAttempted = true;
@@ -408,8 +419,8 @@ const runFlows = async () => {
 
   runCli(disposable.tempRoot, ['db', 'reset', '--local', '--no-seed']);
   const migrationCount = countBySql('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === 48, 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'canonical=47, local-prerequisite=1');
-  pass('DISPOSABLE_CANONICAL_MIGRATION_REPLAY_47');
+  assert(migrationCount === 49, 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'canonical=48, local-prerequisite=1');
+  pass('DISPOSABLE_CANONICAL_MIGRATION_REPLAY_48');
 
   local = parseStatus(runCli(disposable.tempRoot, ['status', '--output', 'env']));
   assertLoopback(local.API_URL);

@@ -24,6 +24,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
 const notificationCoreMigrationName = '20260814214101_notification_core_backend.sql';
 const appointmentReminderMigrationName = '20260816194431_appointment_reminders_backend.sql';
+const pushRegistryMigrationName = '20260817120000_push_registry_outbox_backend.sql';
 const supabaseVersion = '2.110.0';
 const projectId = `appointment-reminders-${process.pid}-${randomUUID().slice(0, 8)}`;
 const password = 'Disposable-Appointment-4m!';
@@ -95,10 +96,16 @@ const isPortFree = (port) => new Promise((resolvePromise) => {
 });
 
 const choosePortBase = async () => {
-  const first = 57000 + (process.pid % 500);
+  const dockerPortMatches = execFileSync('docker', ['ps', '--format', '{{.Ports}}'], {
+    encoding: 'utf8',
+    timeout: 30_000,
+  }).matchAll(/(?:0\.0\.0\.0:|\[::\]:)(\d+)->/g);
+  const dockerPorts = new Set(Array.from(dockerPortMatches, (match) => Number(match[1])));
+  const first = 58000 + (process.pid % 500);
   for (let offset = 0; offset < 5000; offset += 20) {
     const base = first + offset;
     const ports = [base, base + 1, base + 2, base + 3, base + 4, base + 7, base + 9, base + 83];
+    if (ports.some((port) => dockerPorts.has(port))) continue;
     if ((await Promise.all(ports.map(isPortFree))).every(Boolean)) return base;
   }
   throw new Error('No disposable loopback port range is available.');
@@ -330,8 +337,8 @@ const cleanupFixtures = async () => {
 const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  assert(sourceMigrations.length === 47, 'REMINDER_CANONICAL_MIGRATION_INVENTORY_47');
-  assert(sourceMigrations.at(-1) === appointmentReminderMigrationName, 'REMINDER_CANONICAL_MIGRATION_TAIL');
+  assert(sourceMigrations.length === 48, 'REMINDER_CANONICAL_MIGRATION_INVENTORY_48');
+  assert(sourceMigrations.at(-1) === pushRegistryMigrationName, 'REMINDER_CANONICAL_MIGRATION_TAIL');
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-appointment-reminders-'));
   const tempRoot = join(tempParent, 'project');
@@ -341,10 +348,11 @@ const runFlows = async () => {
   const runtimeMigrationDirectory = join(tempRoot, 'supabase', 'migrations');
   copyFileSync(join(migrationDirectory, notificationCoreMigrationName), join(runtimeMigrationDirectory, notificationCoreMigrationName));
   copyFileSync(join(migrationDirectory, appointmentReminderMigrationName), join(runtimeMigrationDirectory, appointmentReminderMigrationName));
+  copyFileSync(join(migrationDirectory, pushRegistryMigrationName), join(runtimeMigrationDirectory, pushRegistryMigrationName));
   writeFileSync(join(runtimeMigrationDirectory, LOCAL_PREREQUISITE_FILE), LOCAL_PREREQUISITE_SQL, { flag: 'wx' });
   const runtimeFiles = readdirSync(runtimeMigrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
   assert(manifest.expectedHistory.total === 45, 'REMINDER_BASELINE_MATERIALIZED_COUNT_45');
-  assert(runtimeFiles.length === 48, 'REMINDER_DISPOSABLE_MIGRATION_FILES_48');
+  assert(runtimeFiles.length === 49, 'REMINDER_DISPOSABLE_MIGRATION_FILES_49');
 
   disposable = { tempRoot, configPath };
   await configureProject(configPath);
@@ -361,7 +369,7 @@ const runFlows = async () => {
   });
 
   const migrationCount = countSql('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === 48, 'REMINDER_SCHEMA_MIGRATION_COUNT', 'canonical=47, local-prerequisite=1');
+  assert(migrationCount === 49, 'REMINDER_SCHEMA_MIGRATION_COUNT', 'canonical=48, local-prerequisite=1');
   assert(countSql("select count(*) from public.notifications where event_type in ('reminder_24h','reminder_1h');") === 0,
     'REMINDER_NOTIFICATION_COUNT_0_AFTER_REPLAY');
 
