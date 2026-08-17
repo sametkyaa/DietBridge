@@ -70,6 +70,13 @@ const appointmentRow = (overrides = {}) => chatRow({
   ...overrides,
 });
 
+const reminderRow = (eventType, overrides = {}) => appointmentRow({
+  event_type: eventType,
+  aggregation_key: `appointment_reminder:${ids.appointment}:2026-08-16:12:30:${eventType === 'reminder_24h' ? '24h' : '1h'}`,
+  summary_key: eventType === 'reminder_24h' ? 'appointment_reminder_24h' : 'appointment_reminder_1h',
+  ...overrides,
+});
+
 const relationshipRow = (overrides = {}) => chatRow({
   id: ids.notificationC,
   category: 'relationship',
@@ -116,6 +123,16 @@ test('maps valid chat, appointment, and relationship rows into the typed client 
   assert.equal(relationship.relationshipToStatus, 'active');
 });
 
+test('accepts bounded appointment reminder events and their exact summary keys', () => {
+  const reminder24h = service.normalizeNotificationRow(reminderRow('reminder_24h'));
+  const reminder1h = service.normalizeNotificationRow(reminderRow('reminder_1h'));
+
+  assert.equal(reminder24h.eventType, 'reminder_24h');
+  assert.equal(reminder24h.summaryKey, 'appointment_reminder_24h');
+  assert.equal(reminder1h.eventType, 'reminder_1h');
+  assert.equal(reminder1h.summaryKey, 'appointment_reminder_1h');
+});
+
 test('rejects unknown or malformed notification contracts instead of silently reinterpreting them', () => {
   assert.throws(
     () => service.normalizeNotificationRow(chatRow({ category: 'future_category' })),
@@ -127,6 +144,14 @@ test('rejects unknown or malformed notification contracts instead of silently re
   );
   assert.throws(
     () => service.normalizeNotificationRow(appointmentRow({ appointment_date: '16/08/2026' })),
+    (error) => error.code === 'MALFORMED',
+  );
+  assert.throws(
+    () => service.normalizeNotificationRow(reminderRow('reminder_24h', { summary_key: 'appointment_created' })),
+    (error) => error.code === 'MALFORMED',
+  );
+  assert.throws(
+    () => service.normalizeNotificationRow(reminderRow('reminder_90m', { summary_key: 'appointment_reminder_90m' })),
     (error) => error.code === 'MALFORMED',
   );
 });

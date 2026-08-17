@@ -77,6 +77,8 @@ const CATEGORY_EVENTS: Record<NotificationCategory, Partial<Record<NotificationE
     cancelled: 'appointment_cancelled',
     assigned: 'appointment_assigned',
     removed_from_client: 'appointment_removed_from_client',
+    reminder_24h: 'appointment_reminder_24h',
+    reminder_1h: 'appointment_reminder_1h',
   },
   relationship: {
     request_pending: 'relationship_request_pending',

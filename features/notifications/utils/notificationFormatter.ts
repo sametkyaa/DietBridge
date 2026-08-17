@@ -59,6 +59,10 @@ export const formatNotificationSummary = (notification: NotificationItem): strin
           return 'Yeni bir randevu atandı.';
         case 'removed_from_client':
           return 'Randevu bildiriminiz var.';
+        case 'reminder_24h':
+          return 'Randevuya 24 saat kaldı';
+        case 'reminder_1h':
+          return 'Randevuya 1 saat kaldı';
         default:
           return 'Randevu bildiriminiz var.';
       }

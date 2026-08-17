@@ -93,6 +93,26 @@ test('formatter supports relationship, defensive appointment, and malformed fall
     'Randevunuz güncellendi.',
   );
   assert.equal(
+    formatter.formatNotificationSummary(notification({
+      category: 'appointment',
+      eventType: 'reminder_24h',
+      conversationId: null,
+      appointmentId: ids.relation,
+      summaryKey: 'appointment_reminder_24h',
+    })),
+    'Randevuya 24 saat kaldı',
+  );
+  assert.equal(
+    formatter.formatNotificationSummary(notification({
+      category: 'appointment',
+      eventType: 'reminder_1h',
+      conversationId: null,
+      appointmentId: ids.relation,
+      summaryKey: 'appointment_reminder_1h',
+    })),
+    'Randevuya 1 saat kaldı',
+  );
+  assert.equal(
     formatter.formatNotificationSummary(notification({ category: 'future', eventType: 'future' })),
     'Yeni bir bildiriminiz var.',
   );
