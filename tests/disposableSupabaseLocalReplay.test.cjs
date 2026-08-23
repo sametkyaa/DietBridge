@@ -11,6 +11,7 @@ const {
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
+const { readCanonicalRepositoryFile } = require('../scripts/readCanonicalRepositoryFile.cjs');
 const { pathToFileURL } = require('node:url');
 
 const repoRoot = join(__dirname, '..');
@@ -37,14 +38,14 @@ const runMaterializeOnly = async (options = {}) => {
   return runDisposableSupabaseLocalReplay({ materializeOnly: true, ...options });
 };
 
-test('materializes the exact 29+7 migration chain in deterministic order', async (t) => {
+test('materializes the exact current migration chain in deterministic order', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
-  assert.deepEqual(result.manifest.expectedHistory, { canonical: 29, image: 7, total: 36 });
-  assert.equal(result.manifest.files.length, 36);
-  assert.equal(result.disposableHistory.repositoryMigrationCount, 36);
+  assert.deepEqual(result.manifest.expectedHistory, { canonical: 38, image: 7, total: 45 });
+  assert.equal(result.manifest.files.length, 45);
+  assert.equal(result.disposableHistory.repositoryMigrationCount, 45);
   assert.equal(result.disposableHistory.localPrerequisiteCount, 1);
-  assert.equal(result.disposableHistory.disposableMigrationCount, 37);
+  assert.equal(result.disposableHistory.disposableMigrationCount, 46);
   assert.deepEqual(
     result.manifest.files.map((file) => file.path),
     [...result.manifest.files.map((file) => file.path)].sort(),
@@ -91,16 +92,17 @@ test('local prerequisite SQL fails closed for public, limit, MIME, and name drif
   assert.match(LOCAL_PREREQUISITE_SQL, /raise exception 'Disposable avatars bucket does not match the exact prerequisite contract\.'/);
 });
 
-test('local prerequisite SQL creates no policy, grant, function, object, or fixture state', async () => {
+test('local prerequisite SQL creates only exact legacy meal-photo policies and no grants, functions, or fixtures', async () => {
   const { LOCAL_PREREQUISITE_SQL } = await import(wrapperUrl);
-  assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /\bcreate\s+policy\b/i);
+  assert.equal((LOCAL_PREREQUISITE_SQL.match(/\bcreate\s+policy\b/gi) ?? []).length, 2);
+  assert.match(LOCAL_PREREQUISITE_SQL, /create policy "Give users access to own folder 1o5iea3_0"/i);
+  assert.match(LOCAL_PREREQUISITE_SQL, /create policy "Give users access to own folder 1o5iea3_1"/i);
   assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /\bgrant\b/i);
   assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /\bcreate\s+(or\s+replace\s+)?function\b/i);
-  assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /storage\.objects/i);
   assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /public\.(profiles|dietitian_clients)/i);
 });
 
-test('repository migration order remains unchanged inside the 37-entry disposable history', async (t) => {
+test('repository migration order remains unchanged inside the 45-entry disposable history', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
   const repositoryPaths = result.manifest.files.map((file) => file.path);
@@ -116,9 +118,14 @@ test('reports the verified source and materialized hashes', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
   for (const file of result.manifest.files) {
-    const source = readFileSync(join(repoRoot, file.path));
+    const source = readCanonicalRepositoryFile(repoRoot, file.path);
     const materialized = readFileSync(join(result.tempRoot, file.path));
-    assert.equal(sha256(source), file.sourceSha256, file.path);
+    const sourceText = source.toString('utf8').replaceAll('\r\n', '\n');
+    const sourceHashes = [
+      sha256(Buffer.from(sourceText, 'utf8')),
+      sha256(Buffer.from(sourceText.replaceAll('\n', '\r\n'), 'utf8')),
+    ];
+    assert.equal(sourceHashes.includes(file.sourceSha256), true, file.path);
     assert.equal(sha256(materialized), file.materializedSha256, file.path);
   }
 });

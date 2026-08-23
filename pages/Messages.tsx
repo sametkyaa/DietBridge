@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Bell, Search } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import ChatComposer from '../features/chat/components/ChatComposer';
 import ChatConversationList from '../features/chat/components/ChatConversationList';
 import ChatMessagePanel from '../features/chat/components/ChatMessagePanel';
@@ -16,9 +16,12 @@ import { ChatConversationListItem, ChatMessage, ChatReadState } from '../feature
 import { useAuth } from '../features/auth/context/AuthContext';
 import DietitianAvatar from '../shared/components/DietitianAvatar';
 import { env } from '../lib/env';
+import NotificationBell from '../features/notifications/components/NotificationBell';
 
 const Messages = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedConversationId = searchParams.get('conversationId');
   const { user, isInitialLoading } = useAuth();
   const {
     conversations,
@@ -46,6 +49,8 @@ const Messages = () => {
   ), [activeRelationId, conversations]);
   const {
     messages,
+    mealActivities,
+    mealActivityError,
     isLoading: isLoadingMessages,
     isLoadingOlder,
     error: messageError,
@@ -54,7 +59,11 @@ const Messages = () => {
     loadOlder,
     refetch: refetchMessages,
     mergeCommittedMessage,
-  } = useChatMessages(activeConversation?.conversationId, user?.id);
+  } = useChatMessages(activeConversation?.conversationId, user?.id, {
+    relationId: activeConversation?.relationId,
+    clientId: activeConversation?.clientId,
+    dietitianId: user?.id,
+  });
   const serverClientMessageIds = useMemo(
     () => messages.map((message) => message.clientMessageId),
     [messages],
@@ -185,17 +194,36 @@ const Messages = () => {
   });
 
   useEffect(() => {
+    if (requestedConversationId) {
+      const requestedConversation = conversations.find(
+        (conversation) => conversation.conversationId === requestedConversationId,
+      );
+      if (requestedConversation) {
+        setActiveRelationId(requestedConversation.relationId);
+        setIsMessagePanelVisible(true);
+        return;
+      }
+
+      if (!isLoading && !isInitialLoading && conversations.length > 0) {
+        setActiveRelationId(null);
+        setIsMessagePanelVisible(false);
+        setSearchParams({}, { replace: true });
+      }
+      return;
+    }
+
     setActiveRelationId((currentRelationId) => {
       if (currentRelationId && conversations.some((conversation) => conversation.relationId === currentRelationId)) {
         return currentRelationId;
       }
       return conversations[0]?.relationId ?? null;
     });
-  }, [conversations]);
+  }, [conversations, isInitialLoading, isLoading, requestedConversationId, setSearchParams]);
 
   const handleSelectConversation = (conversation: ChatConversationListItem) => {
     setActiveRelationId(conversation.relationId);
     setIsMessagePanelVisible(true);
+    if (requestedConversationId) setSearchParams({}, { replace: true });
   };
 
   const isAuthPreparing = !user && isInitialLoading;
@@ -218,10 +246,7 @@ const Messages = () => {
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
-          <button className="relative rounded-full border border-slate-200 bg-white p-2.5 text-slate-600 transition-colors hover:bg-slate-50" type="button" aria-label="Bildirimler">
-            <Bell className="h-5 w-5" aria-hidden="true" />
-            <span className="absolute right-2.5 top-2 h-2 w-2 rounded-full border border-white bg-red-500" aria-hidden="true" />
-          </button>
+          <NotificationBell />
           <button
             type="button"
             onClick={() => navigate('/profile')}
@@ -289,6 +314,8 @@ const Messages = () => {
           <ChatMessagePanel
             conversation={activeConversation}
             messages={messages}
+            mealActivities={mealActivities}
+            mealActivityError={mealActivityError}
             optimisticMessages={optimisticMessages}
             isLoading={isLoadingMessages}
             isLoadingOlder={isLoadingOlder}

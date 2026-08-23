@@ -1,35 +1,115 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { 
   CheckCircle2, 
-  MoreHorizontal, 
-  Bell, 
   Search, 
-  TrendingUp, 
-  Droplets, 
-  Flame, 
   ChevronRight, 
-  ArrowUpRight, 
   Calendar, 
-  Sparkles,
+  ClipboardList,
+  MessageCircle,
   X,
   Plus,
-  User
+  User,
+  AlertCircle,
+  Edit2,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+  ListChecks,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { TASKS } from '../../../shared/constants';
 import DietitianAvatar from '../../../shared/components/DietitianAvatar';
 import { useAppointments } from '../../appointments/context/AppointmentContext';
+import { getTodayDateKey } from '../../appointments/utils/appointmentContract';
 import { fetchDietitianClients } from '../../clients/services/clientService';
 import { Client } from '../../../shared/types';
+import { useDailyTasks } from '../hooks/useDailyTasks';
+import type { DailyTask, DailyTaskDraft, DailyTaskGroups } from '../types/dailyTask';
+import { getIstanbulDateKey, getPendingDailyTaskGroup } from '../utils/dailyTaskContract';
+import { getDashboardFocusMessage, summarizeDashboard } from '../utils/dashboardContract';
+import NotificationBell from '../../notifications/components/NotificationBell';
+
+type TaskFilter = keyof DailyTaskGroups;
+
+const emptyTaskDraft = (): DailyTaskDraft => ({
+  clientId: null,
+  title: '',
+  description: null,
+  dueDate: getIstanbulDateKey(),
+  dueTime: null,
+  priority: 'medium',
+});
+
+const TASK_FILTERS: Array<{ key: TaskFilter; label: string }> = [
+  { key: 'overdue', label: 'Geciken' },
+  { key: 'today', label: 'Bugün' },
+  { key: 'upcoming', label: 'Yaklaşan' },
+  { key: 'completed', label: 'Tamamlanan' },
+];
+
+const getClientInitials = (name: string): string => {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase('tr-TR'))
+    .join('');
+
+  return initials || '?';
+};
+
+const TaskClientAvatar: React.FC<{
+  name: string;
+  src: string | null;
+  sizeClassName: string;
+}> = ({ name, src, sizeClassName }) => {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+
+  if (!src || imageFailed) {
+    return (
+      <span
+        role="img"
+        aria-label={`${name} profil fotoğrafı yok`}
+        className={`${sizeClassName} flex shrink-0 items-center justify-center rounded-full bg-emerald-100 font-bold text-emerald-700`}
+      >
+        {getClientInitials(name)}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={name}
+      onError={() => setImageFailed(true)}
+      className={`${sizeClassName} shrink-0 rounded-full object-cover`}
+    />
+  );
+};
+
+const formatTaskDueDate = (dateKey: string): string => {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return 'Tarih belirtilmemiş';
+
+  return new Intl.DateTimeFormat('tr-TR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+};
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  // Local state to handle task completion interaction
-  const [dashboardTasks, setDashboardTasks] = useState(TASKS);
-  
   // Clients State
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
+  const [clientLoadError, setClientLoadError] = useState(false);
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,67 +117,117 @@ const DashboardPage = () => {
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Task Management State
-  const [isTaskMenuOpen, setIsTaskMenuOpen] = useState(false);
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
-  const [newTaskForm, setNewTaskForm] = useState({ title: '', clientName: '', timeInfo: '' });
-  
-  // Client Autocomplete State for Task Modal
-  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
-  const taskClientInputRef = useRef<HTMLDivElement>(null);
+  const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [taskFilter, setTaskFilter] = useState<TaskFilter>('today');
+  const [taskDraft, setTaskDraft] = useState<DailyTaskDraft>(emptyTaskDraft);
+  const taskDialogRef = useRef<HTMLDivElement>(null);
+  const taskDetailDialogRef = useRef<HTMLDivElement>(null);
+  const taskTitleInputRef = useRef<HTMLInputElement>(null);
+  const taskDetailCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const taskDialogOpenerRef = useRef<HTMLElement | null>(null);
+  const taskDetailOpenerRef = useRef<HTMLElement | null>(null);
+  const pendingTaskActionRef = useRef<string | null>(null);
+
+  const {
+    viewState: taskViewState,
+    tasks: dailyTasks,
+    groups: taskGroups,
+    mutationError: taskMutationError,
+    pendingAction: pendingTaskAction,
+    refreshDailyTasks,
+    createTask,
+    updateTask,
+    completeTask,
+    reopenTask,
+    deleteTask,
+    clearMutationError,
+  } = useDailyTasks();
+  pendingTaskActionRef.current = pendingTaskAction;
   
   // Fetch appointments from context
-  const { getAppointmentsByDate } = useAppointments();
+  const {
+    error: appointmentsError,
+    getAppointmentsByDate,
+    loading: appointmentsLoading,
+    refreshAppointments,
+  } = useAppointments();
   
   // Get today's appointments dynamically
-  const today = new Date().toISOString().split('T')[0];
-  const todaysAppointments = getAppointmentsByDate(today);
+  const today = getTodayDateKey();
+  const todaysAppointments = getAppointmentsByDate(today)
+    .filter((appointment) => appointment.status !== 'cancelled');
 
   // Fetch Clients
-  useEffect(() => {
-    const loadClients = async () => {
-      try {
-        const data = await fetchDietitianClients();
-        setClients(data);
-      } catch (error) {
-        console.error('Failed to fetch clients:', error);
-      } finally {
-        setLoadingClients(false);
-      }
-    };
-    loadClients();
+  const loadClients = useCallback(async () => {
+    setLoadingClients(true);
+    setClientLoadError(false);
+    try {
+      const data = await fetchDietitianClients();
+      setClients(data);
+    } catch (error) {
+      console.error('Failed to fetch clients:', error);
+      setClients([]);
+      setClientLoadError(true);
+    } finally {
+      setLoadingClients(false);
+    }
   }, []);
 
-  const handleCompleteTask = (id: string) => {
-    setDashboardTasks(prev => {
-      const updatedTasks = prev.map(task => 
-        task.id === id ? { ...task, isCompleted: true } : task
-      );
-      // Sort tasks: Incomplete (false) first, Completed (true) last
-      return [...updatedTasks].sort((a, b) => Number(a.isCompleted) - Number(b.isCompleted));
-    });
+  useEffect(() => {
+    void loadClients();
+  }, [loadClients]);
+
+  const openCreateTaskModal = () => {
+    taskDialogOpenerRef.current = document.activeElement as HTMLElement | null;
+    clearMutationError();
+    setEditingTask(null);
+    setTaskDraft(emptyTaskDraft());
+    setIsAddTaskModalOpen(true);
   };
 
-  const handleAddTask = (e: React.FormEvent) => {
+  const openEditTaskModal = (task: DailyTask) => {
+    taskDialogOpenerRef.current = document.activeElement as HTMLElement | null;
+    clearMutationError();
+    setEditingTask(task);
+    setTaskDraft({
+      clientId: task.clientId,
+      title: task.title,
+      description: task.description,
+      dueDate: task.dueDate,
+      dueTime: task.dueTime,
+      priority: task.priority,
+    });
+    setIsAddTaskModalOpen(true);
+  };
+
+  const openTaskDetails = (task: DailyTask) => {
+    taskDetailOpenerRef.current = document.activeElement as HTMLElement | null;
+    setSelectedTaskId(task.id);
+  };
+
+  const closeTaskDetails = () => {
+    setSelectedTaskId(null);
+  };
+
+  const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTaskForm.title) return;
-
-    // Find if the typed name matches a real client to get avatar
-    const matchedClient = clients.find(c => c.name.toLowerCase() === newTaskForm.clientName.toLowerCase());
-
-    const newTask = {
-      id: `custom-${Date.now()}`,
-      title: newTaskForm.title,
-      clientName: newTaskForm.clientName || 'Genel Görev',
-      // Use real avatar if matched, otherwise generate one
-      clientAvatar: matchedClient?.avatar || `https://ui-avatars.com/api/?name=${newTaskForm.clientName || 'Diyetisyen'}&background=random&color=fff`,
-      timeInfo: newTaskForm.timeInfo || 'Bugün',
-      isCompleted: false,
-    };
-
-    setDashboardTasks(prev => [newTask, ...prev]);
+    const result = editingTask
+      ? await updateTask(editingTask.id, taskDraft)
+      : await createTask(taskDraft);
+    if (!result.success) return;
+    const nextFilter = editingTask?.status === 'completed'
+      ? 'completed'
+      : getPendingDailyTaskGroup(taskDraft.dueDate, taskDraft.dueTime);
     setIsAddTaskModalOpen(false);
-    setNewTaskForm({ title: '', clientName: '', timeInfo: '' });
-    setIsTaskMenuOpen(false);
+    setEditingTask(null);
+    setTaskFilter(nextFilter);
+  };
+
+  const handleDeleteTask = async (task: DailyTask) => {
+    if (!window.confirm(`“${task.title}” görevi silinsin mi?`)) return;
+    await deleteTask(task.id);
   };
 
   // Filter clients for main search
@@ -105,11 +235,19 @@ const DashboardPage = () => {
     ? clients.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : [];
 
-  // Filter clients for task modal (Active clients + search match)
-  const taskClientMatches = clients.filter(c => 
-    c.status === 'Aktif' && 
-    c.name.toLowerCase().includes(newTaskForm.clientName.toLowerCase())
-  );
+  const activeTaskClients = clients.filter((client) => client.status === 'Aktif');
+  const visibleTasks = taskGroups[taskFilter];
+  const dashboardSummary = summarizeDashboard({
+    todayAppointments: todaysAppointments,
+    tasks: taskGroups,
+  });
+  const appointmentsSummaryReady = !appointmentsLoading && !appointmentsError;
+  const tasksSummaryReady = taskViewState.status === 'success';
+  const dashboardFocusMessage = appointmentsError || taskViewState.status === 'error'
+    ? 'Bugünün özeti şu anda tamamlanamadı. Verileri tekrar deneyin.'
+    : !appointmentsSummaryReady || !tasksSummaryReady
+      ? 'Bugünün özeti yükleniyor...'
+      : getDashboardFocusMessage(dashboardSummary);
 
   // Close search dropdowns when clicking outside
   useEffect(() => {
@@ -118,14 +256,91 @@ const DashboardPage = () => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsSearchOpen(false);
       }
-      // Task Client Input
-      if (taskClientInputRef.current && !taskClientInputRef.current.contains(event.target as Node)) {
-        setShowClientSuggestions(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isAddTaskModalOpen) return;
+    taskTitleInputRef.current?.focus();
+
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (pendingTaskActionRef.current === null) setIsAddTaskModalOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !taskDialogRef.current) return;
+      const focusable: HTMLElement[] = Array.from(taskDialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleDialogKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleDialogKeyDown);
+      taskDialogOpenerRef.current?.focus();
+    };
+  }, [isAddTaskModalOpen]);
+
+  const selectedTask = selectedTaskId
+    ? dailyTasks.find((task) => task.id === selectedTaskId) ?? null
+    : null;
+  const clientById = new Map<string, Client>(
+    clients.map((client): [string, Client] => [client.id, client]),
+  );
+  const selectedTaskClient = selectedTask?.clientId
+    ? clientById.get(selectedTask.clientId)
+    : undefined;
+
+  useEffect(() => {
+    if (selectedTaskId && !dailyTasks.some((task) => task.id === selectedTaskId)) {
+      setSelectedTaskId(null);
+    }
+  }, [dailyTasks, selectedTaskId]);
+
+  useEffect(() => {
+    if (!selectedTaskId) return;
+    taskDetailCloseButtonRef.current?.focus();
+
+    const handleDetailKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedTaskId(null);
+        return;
+      }
+      if (event.key !== 'Tab' || !taskDetailDialogRef.current) return;
+
+      const focusable: HTMLElement[] = Array.from(taskDetailDialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleDetailKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleDetailKeyDown);
+      taskDetailOpenerRef.current?.focus();
+    };
+  }, [selectedTaskId]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -197,10 +412,8 @@ const DashboardPage = () => {
             )}
           </div>
 
-          <button className="relative p-2.5 rounded-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
-          </button>
+          <NotificationBell />
+
           <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
             <DietitianAvatar
               alt="Profil"
@@ -210,184 +423,163 @@ const DashboardPage = () => {
         </div>
       </header>
 
+      {/* Operational summary */}
+      <section aria-labelledby="dashboard-summary-title" className="mb-8">
+        <div className="rounded-2xl border border-primary/15 bg-primary/5 p-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-primary">Bugünün odağı</p>
+            <h2 id="dashboard-summary-title" className="mt-1 text-lg font-bold text-slate-800">{dashboardFocusMessage}</h2>
+          </div>
+        </div>
+      </section>
+
       {/* Main Grid */}
       <div className="grid grid-cols-12 gap-8">
         {/* Left Column */}
         <div className="col-span-12 lg:col-span-8 space-y-8">
           
-          {/* Today's Tasks */}
-          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-slate-800">Bugünün Görevleri</h3>
-              <div className="relative">
-                <button 
-                  onClick={() => setIsTaskMenuOpen(!isTaskMenuOpen)}
-                  className="text-slate-400 hover:text-primary transition-colors p-1 rounded-full hover:bg-slate-50"
-                >
-                  <MoreHorizontal className="w-6 h-6" />
-                </button>
-                
-                {/* Task Menu Dropdown */}
-                {isTaskMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10 cursor-default" onClick={() => setIsTaskMenuOpen(false)}></div>
-                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 z-20 py-1 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
-                      <button
-                        onClick={() => {
-                          setIsAddTaskModalOpen(true);
-                          setIsTaskMenuOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 text-slate-600 font-medium flex items-center gap-2 transition-colors"
-                      >
-                        <Plus className="w-4 h-4 text-primary" /> Yeni Görev Ekle
-                      </button>
-                    </div>
-                  </>
-                )}
+          {/* Persistent Daily Tasks */}
+          <section id="daily-tasks" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">Günlük Görevler</h3>
+                <p className="mt-1 text-xs text-slate-500">Kalıcı iş listenizi yönetin.</p>
               </div>
+              <button
+                type="button"
+                onClick={openCreateTaskModal}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-primary-dark"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" /> Yeni Görev Ekle
+              </button>
             </div>
-            
-            <div className="space-y-4">
-              {dashboardTasks.map((task) => (
-                <div key={task.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors">
-                  <div className="flex items-center gap-4">
-                    <img src={task.clientAvatar} alt={task.clientName} className="w-12 h-12 rounded-full object-cover" />
-                    <div>
-                      <p className={`font-semibold ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</p>
-                      <p className="text-sm text-slate-500">
-                        {task.clientName} · <span className={!task.isCompleted && task.timeInfo.includes('kaldı') ? 'text-orange-500 font-medium' : ''}>{task.timeInfo}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => handleCompleteTask(task.id)}
-                    disabled={task.isCompleted}
-                    className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all shadow-sm ${
-                      task.isCompleted 
-                        ? 'bg-emerald-100 text-emerald-700 cursor-default flex items-center gap-2' 
-                        : 'bg-orange-50 text-orange-600 hover:bg-orange-100 hover:scale-105 active:scale-95 border border-orange-100'
-                    }`}
-                  >
-                    {task.isCompleted ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" /> Tamamlandı
-                      </>
-                    ) : 'Bekliyor'}
+
+            <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist" aria-label="Görev görünümü">
+              {TASK_FILTERS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={taskFilter === key}
+                  onClick={() => setTaskFilter(key)}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
+                    taskFilter === key
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {label} ({taskGroups[key].length})
+                </button>
+              ))}
+            </div>
+
+            {taskMutationError && (
+              <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {taskMutationError}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {taskViewState.status === 'loading' ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
+                  <Loader2 className="h-5 w-5 animate-spin" /> Görevler yükleniyor...
+                </div>
+              ) : taskViewState.status === 'error' ? (
+                <div role="alert" className="py-8 text-center">
+                  <p className="text-sm font-medium text-rose-600">{taskViewState.message}</p>
+                  <button type="button" onClick={() => void refreshDailyTasks()} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-primary">
+                    <RefreshCw className="h-4 w-4" /> Tekrar dene
                   </button>
+                </div>
+              ) : visibleTasks.length === 0 ? (
+                <div className="py-8 text-center text-sm text-slate-400">
+                  Bu görünümde görev bulunmuyor.
+                </div>
+              ) : visibleTasks.map((task) => (
+                <div key={task.id} className="flex flex-col gap-3 rounded-xl border border-slate-100 p-3 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="button"
+                    onClick={() => openTaskDetails(task)}
+                    aria-label={`${task.title} görev ayrıntılarını aç`}
+                    className="flex min-w-0 flex-1 items-center gap-4 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    {task.clientId !== null ? (
+                      <TaskClientAvatar
+                        name={task.clientName || 'Atanan danışan'}
+                        src={clientById.get(task.clientId)?.profilePhotoUrl || null}
+                        sizeClassName="h-11 w-11"
+                      />
+                    ) : (
+                      <span
+                        role="img"
+                        aria-label="Genel görev"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+                      >
+                        <ListChecks className="h-5 w-5" aria-hidden="true" />
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className={`block truncate font-semibold ${task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {task.clientName || 'Genel görev'} · {new Date(`${task.dueDate}T00:00:00`).toLocaleDateString('tr-TR')}
+                        {task.dueTime ? ` ${task.dueTime}` : ''}
+                      </span>
+                      <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        task.priority === 'high' ? 'bg-rose-50 text-rose-600' : task.priority === 'low' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'
+                      }`}>
+                        {task.priority === 'high' ? 'Yüksek' : task.priority === 'low' ? 'Düşük' : 'Orta'} öncelik
+                      </span>
+                    </span>
+                  </button>
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void (task.status === 'completed' ? reopenTask(task.id) : completeTask(task.id))}
+                      disabled={pendingTaskAction !== null}
+                      className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                    >
+                      {pendingTaskAction === `complete:${task.id}` || pendingTaskAction === `reopen:${task.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : task.status === 'completed' ? <RotateCcw className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                      {task.status === 'completed' ? 'Tekrar aç' : 'Tamamla'}
+                    </button>
+                    <button type="button" onClick={() => openEditTaskModal(task)} disabled={pendingTaskAction !== null} aria-label={`${task.title} görevini düzenle`} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-primary disabled:opacity-50">
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                    <button type="button" onClick={() => void handleDeleteTask(task)} disabled={pendingTaskAction !== null} aria-label={`${task.title} görevini sil`} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50">
+                      {pendingTaskAction === `delete:${task.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           </section>
 
-          {/* Weekly Analysis Redesigned */}
-          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
-            <div className="flex justify-between items-center mb-6 relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-50 rounded-lg">
-                   <TrendingUp className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                   <h3 className="text-lg font-bold text-slate-800">Haftalık Analiz</h3>
-                   <p className="text-xs text-slate-500 font-medium">Genel performans özeti</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => navigate('/analytics')}
-                className="text-xs font-bold text-slate-400 hover:text-primary transition-colors flex items-center gap-1"
-              >
-                 Detaylar <ChevronRight className="w-4 h-4" />
+          {/* Quick actions */}
+          <section aria-labelledby="quick-actions-title" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div className="mb-5">
+              <h3 id="quick-actions-title" className="text-xl font-bold text-slate-800">Hızlı işlemler</h3>
+              <p className="mt-1 text-xs text-slate-500">Bugünkü iş akışınıza doğrudan geçin.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <button type="button" onClick={() => navigate('/appointments')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
+                <Calendar className="h-5 w-5 text-primary" aria-hidden="true" />
+                <span className="flex-1 text-sm font-bold text-slate-700">Randevu ekle / düzenle</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
               </button>
-            </div>
-            
-            <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 relative z-10">
-              {/* Left Column: Score & Trend */}
-              <div className="flex-1 flex flex-col justify-between min-w-[200px]">
-                 <div>
-                   <div className="flex items-end gap-3 mb-1">
-                      <span className="text-4xl font-bold text-slate-800 tracking-tight">%82</span>
-                      <span className="mb-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-600 text-[10px] font-bold flex items-center gap-1">
-                        <ArrowUpRight className="w-3 h-3" /> %4 Artış
-                      </span>
-                   </div>
-                   <p className="text-xs text-slate-400 font-medium">Haftalık Uyum Skoru</p>
-                 </div>
-
-                 {/* Custom Sparkline Chart */}
-                 <div className="h-16 w-full mt-4 relative group">
-                    <svg viewBox="0 0 120 40" className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                       {/* Gradient Def */}
-                       <defs>
-                         <linearGradient id="sparklineGradient" x1="0" x2="0" y1="0" y2="1">
-                           <stop offset="0%" stopColor="#10B981" stopOpacity="0.2" />
-                           <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-                         </linearGradient>
-                       </defs>
-                       {/* Area */}
-                       <path d="M0 30 Q 20 35, 40 20 T 80 15 T 120 5 L 120 40 L 0 40 Z" fill="url(#sparklineGradient)" stroke="none" />
-                       {/* Line */}
-                       <path d="M0 30 Q 20 35, 40 20 T 80 15 T 120 5" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                       {/* Points on hover (simulated) */}
-                       <circle cx="120" cy="5" r="3" fill="#10B981" stroke="white" strokeWidth="2" />
-                    </svg>
-                    <div className="absolute top-0 right-0 -mt-6 bg-slate-800 text-white text-[10px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                       Bugün
-                    </div>
-                 </div>
-              </div>
-
-              {/* Vertical Divider (Desktop) */}
-              <div className="hidden lg:block w-px bg-slate-100 mx-2"></div>
-
-              {/* Right Column: Key Insights */}
-              <div className="flex-[1.5] grid grid-cols-2 gap-3">
-                  {/* Macro Insight */}
-                  <div className="col-span-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                     <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Makro Ortalaması</span>
-                        <span className="text-[10px] font-bold text-emerald-600 bg-white px-1.5 py-0.5 rounded border border-emerald-100 shadow-sm">İdeal</span>
-                     </div>
-                     <div className="flex h-2 w-full rounded-full overflow-hidden gap-0.5 mb-2">
-                        <div className="bg-blue-400 w-[35%]"></div>
-                        <div className="bg-orange-400 w-[45%]"></div>
-                        <div className="bg-yellow-400 w-[20%]"></div>
-                     </div>
-                     <div className="flex justify-between text-[10px] text-slate-400 font-medium">
-                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> 75g Prot</span>
-                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div> 180g Karb</span>
-                        <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div> 55g Yağ</span>
-                     </div>
-                  </div>
-
-                  {/* Water Insight */}
-                  <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 flex flex-col justify-between">
-                     <div className="flex items-center gap-1.5 mb-1 text-blue-600/80">
-                        <Droplets className="w-3.5 h-3.5" />
-                        <span className="text-[10px] font-bold uppercase">Su</span>
-                     </div>
-                     <p className="text-sm font-bold text-slate-700">2.1 Lt <span className="text-[10px] font-normal text-slate-400">/ 2.5</span></p>
-                  </div>
-
-                  {/* Calories Insight */}
-                  <div className="bg-orange-50/50 p-3 rounded-xl border border-orange-100 flex flex-col justify-between">
-                     <div className="flex items-center gap-1.5 mb-1 text-orange-600/80">
-                        <Flame className="w-3.5 h-3.5" />
-                        <span className="text-[10px] font-bold uppercase">Kalori</span>
-                     </div>
-                     <p className="text-sm font-bold text-slate-700">1850 <span className="text-[10px] font-normal text-slate-400">kcal</span></p>
-                  </div>
-              </div>
-            </div>
-
-            {/* AI Summary Footer */}
-            <div className="mt-5 pt-4 border-t border-slate-100">
-               <div className="flex items-start gap-3">
-                  <div className="mt-0.5 p-1 rounded-md bg-indigo-50 text-indigo-500 shrink-0">
-                     <Sparkles className="w-3.5 h-3.5" />
-                  </div>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                     <span className="font-bold text-slate-700">Haftalık Özet:</span> Protein alımı hedefin üzerinde ve istikrarlı. Cuma günü öğün atlama oranı yüksekti, hafta sonu su tüketimi artırılmalı.
-                  </p>
-               </div>
+              <button type="button" onClick={() => navigate('/clients')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
+                <User className="h-5 w-5 text-primary" aria-hidden="true" />
+                <span className="flex-1 text-sm font-bold text-slate-700">Danışanları yönet</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => navigate('/meal-plans')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
+                <ClipboardList className="h-5 w-5 text-primary" aria-hidden="true" />
+                <span className="flex-1 text-sm font-bold text-slate-700">Beslenme planlarını aç</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => navigate('/messages')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
+                <MessageCircle className="h-5 w-5 text-primary" aria-hidden="true" />
+                <span className="flex-1 text-sm font-bold text-slate-700">Mesajlara git</span>
+                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
+              </button>
             </div>
           </section>
         </div>
@@ -401,7 +593,20 @@ const DashboardPage = () => {
               <h3 className="text-xl font-bold text-slate-800">Bugünkü Randevular</h3>
             </div>
             
-            {todaysAppointments.length > 0 ? (
+            {appointmentsLoading ? (
+              <div className="py-6 text-center text-sm text-slate-400">Randevular yükleniyor...</div>
+            ) : appointmentsError ? (
+              <div role="alert" className="py-6 text-center">
+                <p className="text-sm text-rose-600">Bugünkü randevular yüklenemedi.</p>
+                <button
+                  type="button"
+                  onClick={() => void refreshAppointments()}
+                  className="mt-2 text-sm font-bold text-primary hover:underline"
+                >
+                  Tekrar dene
+                </button>
+              </div>
+            ) : todaysAppointments.length > 0 ? (
               <div className="space-y-6 relative">
                 {/* Timeline Line */}
                 <div className="absolute left-[3.25rem] top-2 bottom-2 w-0.5 bg-slate-100"></div>
@@ -490,96 +695,182 @@ const DashboardPage = () => {
         </div>
       </div>
 
+      {/* Task Detail Modal */}
+      {selectedTask && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div
+            ref={taskDetailDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="daily-task-detail-title"
+            className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200"
+          >
+            <div className="p-6 border-b border-slate-100 flex justify-between items-start gap-4">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wide text-primary">Görev ayrıntısı</p>
+                <h2 id="daily-task-detail-title" className="mt-1 text-xl font-bold text-slate-800 break-words">{selectedTask.title}</h2>
+              </div>
+              <button
+                ref={taskDetailCloseButtonRef}
+                type="button"
+                aria-label="Görev ayrıntısını kapat"
+                onClick={closeTaskDetails}
+                className="shrink-0 p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="flex items-center gap-3">
+                {selectedTask.clientId !== null ? (
+                  <TaskClientAvatar
+                    name={selectedTaskClient?.name || selectedTask.clientName || 'Atanan danışan'}
+                    src={selectedTaskClient?.profilePhotoUrl || null}
+                    sizeClassName="h-12 w-12"
+                  />
+                ) : (
+                  <span
+                    role="img"
+                    aria-label="Genel görev"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+                  >
+                    <ListChecks className="h-6 w-6" aria-hidden="true" />
+                  </span>
+                )}
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Atanan</p>
+                  <p className="font-semibold text-slate-800">
+                    {selectedTask.clientId === null
+                      ? 'Genel görev'
+                      : selectedTaskClient?.name || selectedTask.clientName || 'Atanan danışan'}
+                  </p>
+                </div>
+              </div>
+
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Durum</dt>
+                  <dd className="mt-1 font-semibold text-slate-800">
+                    {selectedTask.status === 'completed' ? 'Tamamlandı' : 'Bekliyor'}
+                  </dd>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Bitiş tarihi</dt>
+                  <dd className="mt-1 font-semibold text-slate-800">
+                    {formatTaskDueDate(selectedTask.dueDate)}{selectedTask.dueTime ? ` · ${selectedTask.dueTime}` : ''}
+                  </dd>
+                </div>
+              </dl>
+
+              <div>
+                <h3 className="text-sm font-bold text-slate-700">Açıklama</h3>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  {selectedTask.description || 'Açıklama eklenmemiş.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Task Modal */}
       {isAddTaskModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div ref={taskDialogRef} role="dialog" aria-modal="true" aria-labelledby="daily-task-dialog-title" className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-               <h2 className="text-xl font-bold text-slate-800">Yeni Görev Ekle</h2>
-               <button onClick={() => setIsAddTaskModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500">
+               <h2 id="daily-task-dialog-title" className="text-xl font-bold text-slate-800">{editingTask ? 'Görevi Düzenle' : 'Yeni Görev Ekle'}</h2>
+               <button type="button" aria-label="Görev penceresini kapat" onClick={() => setIsAddTaskModalOpen(false)} disabled={pendingTaskAction !== null} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 disabled:opacity-50">
                   <X className="w-5 h-5" />
                </button>
             </div>
             
-            <form onSubmit={handleAddTask} className="p-6 space-y-5">
+            <form onSubmit={handleTaskSubmit} className="p-6 space-y-5">
+               {taskMutationError && (
+                 <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {taskMutationError}
+                 </div>
+               )}
                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Görev Başlığı</label>
+                  <label htmlFor="daily-task-title" className="text-sm font-bold text-slate-700">Görev Başlığı</label>
                   <input 
+                    id="daily-task-title"
+                    ref={taskTitleInputRef}
                     type="text"
                     required
+                    maxLength={160}
                     placeholder="Örn: Haftalık raporu hazırla..."
-                    value={newTaskForm.title}
-                    onChange={(e) => setNewTaskForm({...newTaskForm, title: e.target.value})}
+                    value={taskDraft.title}
+                    onChange={(e) => setTaskDraft({ ...taskDraft, title: e.target.value })}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
                   />
-               </div>
-
-               {/* Client Selection Dropdown / Input Hybrid */}
-               <div className="space-y-1.5 relative" ref={taskClientInputRef}>
-                  <label className="text-sm font-bold text-slate-700">İlgili Danışan (Opsiyonel)</label>
-                  <div className="relative">
-                    <input 
-                      type="text"
-                      placeholder="Danışan adı yazın veya seçin..."
-                      value={newTaskForm.clientName}
-                      onChange={(e) => {
-                        setNewTaskForm({...newTaskForm, clientName: e.target.value});
-                        setShowClientSuggestions(true);
-                      }}
-                      onFocus={() => setShowClientSuggestions(true)}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                    />
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  </div>
-
-                  {/* Autocomplete Dropdown */}
-                  {showClientSuggestions && taskClientMatches.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-20 max-h-48 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-                      {taskClientMatches.map(client => (
-                        <button
-                          key={client.id}
-                          type="button"
-                          onClick={() => {
-                            setNewTaskForm({...newTaskForm, clientName: client.name});
-                            setShowClientSuggestions(false);
-                          }}
-                          className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
-                        >
-                          <img src={client.avatar} alt={client.name} className="w-6 h-6 rounded-full object-cover" />
-                          <div className="flex-1">
-                             <p className="text-sm font-medium text-slate-700">{client.name}</p>
-                             <p className="text-[10px] text-slate-400">{client.goal}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                </div>
 
                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-slate-700">Zaman / Bitiş</label>
-                  <input 
-                    type="text"
-                    placeholder="Örn: Bugün 14:00"
-                    value={newTaskForm.timeInfo}
-                    onChange={(e) => setNewTaskForm({...newTaskForm, timeInfo: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+                  <label htmlFor="daily-task-description" className="text-sm font-bold text-slate-700">Açıklama (Opsiyonel)</label>
+                  <textarea
+                    id="daily-task-description"
+                    rows={3}
+                    maxLength={2000}
+                    value={taskDraft.description || ''}
+                    onChange={(e) => setTaskDraft({ ...taskDraft, description: e.target.value || null })}
+                    className="w-full resize-none px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
                   />
+               </div>
+
+               <div className="space-y-1.5">
+                  <label htmlFor="daily-task-client" className="text-sm font-bold text-slate-700">İlgili Danışan (Opsiyonel)</label>
+                  <select
+                    id="daily-task-client"
+                    value={taskDraft.clientId || ''}
+                    onChange={(e) => setTaskDraft({ ...taskDraft, clientId: e.target.value || null })}
+                    disabled={loadingClients || clientLoadError}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm disabled:opacity-60"
+                  >
+                    <option value="">Genel görev</option>
+                    {activeTaskClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                  </select>
+                  {loadingClients && <p className="text-xs text-slate-500">Aktif danışanlar yükleniyor...</p>}
+                  {clientLoadError && <p role="alert" className="text-xs text-rose-600">Danışanlar yüklenemedi; yalnız genel görev kaydedilebilir.</p>}
+               </div>
+
+               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                 <div className="space-y-1.5">
+                   <label htmlFor="daily-task-date" className="text-sm font-bold text-slate-700">Bitiş Tarihi</label>
+                   <input id="daily-task-date" type="date" required value={taskDraft.dueDate} onChange={(e) => setTaskDraft({ ...taskDraft, dueDate: e.target.value })} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />
+                 </div>
+                 <div className="space-y-1.5">
+                   <label htmlFor="daily-task-time" className="text-sm font-bold text-slate-700">Saat (Opsiyonel)</label>
+                   <input id="daily-task-time" type="time" value={taskDraft.dueTime || ''} onChange={(e) => setTaskDraft({ ...taskDraft, dueTime: e.target.value || null })} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />
+                 </div>
+               </div>
+
+               <div className="space-y-1.5">
+                  <label htmlFor="daily-task-priority" className="text-sm font-bold text-slate-700">Öncelik</label>
+                  <select id="daily-task-priority" value={taskDraft.priority} onChange={(e) => setTaskDraft({ ...taskDraft, priority: e.target.value as DailyTaskDraft['priority'] })} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm">
+                    <option value="low">Düşük</option>
+                    <option value="medium">Orta</option>
+                    <option value="high">Yüksek</option>
+                  </select>
                </div>
 
                <div className="pt-2 flex gap-3">
                   <button 
                     type="button" 
                     onClick={() => setIsAddTaskModalOpen(false)}
-                    className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors text-sm"
+                    disabled={pendingTaskAction !== null}
+                    className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors text-sm disabled:opacity-50"
                   >
                      İptal
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors text-sm"
+                    disabled={pendingTaskAction !== null}
+                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors text-sm disabled:opacity-60"
                   >
-                     Ekle
+                     {pendingTaskAction === 'create' || pendingTaskAction?.startsWith('update:') ? (
+                       <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Kaydediliyor</span>
+                     ) : editingTask ? 'Güncelle' : 'Ekle'}
                   </button>
                </div>
             </form>

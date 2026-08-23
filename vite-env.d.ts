@@ -3,7 +3,6 @@
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string;
   readonly VITE_SUPABASE_ANON_KEY: string;
-  readonly VITE_ENABLE_MOCK_DATA?: string;
   readonly VITE_ENABLE_CHAT_IMAGES?: string;
 }
 

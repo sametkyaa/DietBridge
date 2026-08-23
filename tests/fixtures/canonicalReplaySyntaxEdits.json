@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 29,
+  "expectedCanonicalCount": 38,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2786,6 +2786,69 @@
       "phase": "canonical",
       "sourceSha256": "4b4d56c99a77d7887d592abff5d9eaa779702294780d50575b54579c1a49ac81",
       "materializedSha256": "4b4d56c99a77d7887d592abff5d9eaa779702294780d50575b54579c1a49ac81",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260807115919_mvp_security_hardening_reconciliation.sql",
+      "phase": "canonical",
+      "sourceSha256": "37c4e62967a1cf680901534bfa6ff7852f87c0c3c80ff5b2449f288097e8eeb3",
+      "materializedSha256": "37c4e62967a1cf680901534bfa6ff7852f87c0c3c80ff5b2449f288097e8eeb3",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260810055845_mvp3_meal_photo_lifecycle_closure.sql",
+      "phase": "canonical",
+      "sourceSha256": "4e0f6e16b100e46c17b5f05bd45d14b425811d457314ae41f2f5c1888e560ab0",
+      "materializedSha256": "4e0f6e16b100e46c17b5f05bd45d14b425811d457314ae41f2f5c1888e560ab0",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260810074910_mvp3_real_storage_upload_policy_correction.sql",
+      "phase": "canonical",
+      "sourceSha256": "64fa954081f542e9e7893461e5f51f5dab22f0390a8d0917ca48a48e47064dc9",
+      "materializedSha256": "64fa954081f542e9e7893461e5f51f5dab22f0390a8d0917ca48a48e47064dc9",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260811103909_create_persistent_dashboard_daily_tasks.sql",
+      "phase": "canonical",
+      "sourceSha256": "32160e12b6485890cb184156dfbb087393c09bd120eb8991e77869046bdf967f",
+      "materializedSha256": "32160e12b6485890cb184156dfbb087393c09bd120eb8991e77869046bdf967f",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260812090000_mvp7_subscription_plans_and_client_limits.sql",
+      "phase": "canonical",
+      "sourceSha256": "623033e5e4e61498c5f1f48b94fe00d9269bae908291a87b8bca831d775c111b",
+      "materializedSha256": "623033e5e4e61498c5f1f48b94fe00d9269bae908291a87b8bca831d775c111b",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260813120000_create_persistent_dietitian_notes.sql",
+      "phase": "canonical",
+      "sourceSha256": "c90574ac319d443652bd2ffaaccdf03a91b3396223554de719cc0603dce4e865",
+      "materializedSha256": "c90574ac319d443652bd2ffaaccdf03a91b3396223554de719cc0603dce4e865",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260814120000_appointment_slot_collision_and_booking_indexes.sql",
+      "phase": "canonical",
+      "sourceSha256": "b6cac7366eee09e262f13ca4bcd284633641d0fa60d49ea2b0e9002ca89e7c03",
+      "materializedSha256": "b6cac7366eee09e262f13ca4bcd284633641d0fa60d49ea2b0e9002ca89e7c03",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260814130000_meal_completion_visibility.sql",
+      "phase": "canonical",
+      "sourceSha256": "1e6a44079b6507aa3528f13535aadfbdbbbb07ca8449e471e83c003ea781c966",
+      "materializedSha256": "1e6a44079b6507aa3528f13535aadfbdbbbb07ca8449e471e83c003ea781c966",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260816101405_mark_all_notifications_read.sql",
+      "phase": "canonical",
+      "sourceSha256": "5c2b36c1b445f02124696aa338afc279ea2bef4432d36d56b0ad59e8e352b6e6",
+      "materializedSha256": "5c2b36c1b445f02124696aa338afc279ea2bef4432d36d56b0ad59e8e352b6e6",
       "edits": []
     }
   ]

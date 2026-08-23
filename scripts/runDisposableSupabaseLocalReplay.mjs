@@ -18,6 +18,11 @@ const scriptPath = fileURLToPath(import.meta.url);
 const defaultRepoRoot = resolve(dirname(scriptPath), '..');
 const SUPABASE_CLI_VERSION = '2.110.0';
 const TEMP_PREFIX = 'dietbridge-supabase-replay-';
+const ISOLATED_PHASE2_MIGRATIONS = new Set([
+  '20260814214101_notification_core_backend.sql',
+  '20260816194431_appointment_reminders_backend.sql',
+  '20260817120000_push_registry_outbox_backend.sql',
+]);
 export const LOCAL_PREREQUISITE_FILE = '20260728155959_disposable_avatar_bucket_prerequisite.sql';
 export const LOCAL_PREREQUISITE_SQL = `-- Local-only disposable prerequisite. Never add this file to repository migrations.
 begin;
@@ -75,9 +80,55 @@ begin
 end
 $$;
 
+do $$
+declare
+  v_mime_types text[];
+begin
+  select array_agg(mime_type order by mime_type)
+    into v_mime_types
+    from storage.buckets as b,
+         unnest(b.allowed_mime_types) as mime_type
+   where b.id = 'meal-photos';
+
+  if not exists (select 1 from storage.buckets where id = 'meal-photos') then
+    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    values (
+      'meal-photos', 'meal-photos', false, 5242880,
+      array['image/jpeg', 'image/png', 'image/webp']::text[]
+    );
+  elsif not exists (
+    select 1 from storage.buckets
+     where id = 'meal-photos' and name = 'meal-photos' and public is false
+       and file_size_limit = 5242880 and cardinality(allowed_mime_types) = 3
+  ) or v_mime_types is distinct from array['image/jpeg', 'image/png', 'image/webp']::text[] then
+    raise exception 'Disposable meal-photos bucket does not match the exact prerequisite contract.';
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+     where schemaname = 'storage' and tablename = 'objects'
+       and policyname = 'Give users access to own folder 1o5iea3_0'
+  ) then
+    create policy "Give users access to own folder 1o5iea3_0"
+      on storage.objects for select to public
+      using (bucket_id = 'meal-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+     where schemaname = 'storage' and tablename = 'objects'
+       and policyname = 'Give users access to own folder 1o5iea3_1'
+  ) then
+    create policy "Give users access to own folder 1o5iea3_1"
+      on storage.objects for insert to public
+      with check (bucket_id = 'meal-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+  end if;
+end
+$$;
+
 commit;
 `;
-export const LOCAL_PREREQUISITE_SHA256 = 'd1fd43ec73bc21073c9169f7aa5f42e624c9f936f65f2f67ba2ec3aeeceaba3e';
+export const LOCAL_PREREQUISITE_SHA256 = 'e6741394959079305695116104c26027be19ba8c57af0584d646c96688388d5e';
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
@@ -100,15 +151,17 @@ const assertExternalTempPath = ({ repoRoot, tempRoot }) => {
 };
 
 const assertManifestMatchesSourceInventory = ({ repoRoot, runtimeManifest }) => {
-  if (runtimeManifest.expectedHistory?.canonical !== 29
+  if (runtimeManifest.expectedHistory?.canonical !== 38
       || runtimeManifest.expectedHistory?.image !== 7
-      || runtimeManifest.expectedHistory?.total !== 36
-      || runtimeManifest.files?.length !== 36) {
-    throw new Error('Unexpected disposable migration inventory; expected 29 canonical and 7 image migrations.');
+      || runtimeManifest.expectedHistory?.total !== 45
+      || runtimeManifest.files?.length !== 45) {
+    throw new Error('Unexpected disposable migration inventory; expected 38 canonical and 7 image migrations.');
   }
 
   const sourcePaths = readdirSync(join(repoRoot, 'supabase', 'migrations'), { withFileTypes: true })
-    .filter((entry) => entry.isFile() && /^\d+_.+\.sql$/.test(entry.name))
+    .filter((entry) => entry.isFile()
+      && /^\d+_.+\.sql$/.test(entry.name)
+      && !ISOLATED_PHASE2_MIGRATIONS.has(entry.name))
     .map((entry) => `supabase/migrations/${entry.name}`)
     .sort();
   const materializedPaths = runtimeManifest.files.map(({ path }) => path);
@@ -160,7 +213,7 @@ const assertDisposableMigrationInventory = ({ repositoryPaths, tempRoot, localPr
   if (localIndex === -1 || avatarPolicyIndex !== localIndex + 1) {
     throw new Error('Local prerequisite must appear immediately before the avatar policy migration.');
   }
-  if (repositoryPaths.length !== 36 || disposablePaths.length !== 37) {
+  if (repositoryPaths.length !== 45 || disposablePaths.length !== 46) {
     throw new Error(`Unexpected repository/disposable counts: ${repositoryPaths.length}/${disposablePaths.length}`);
   }
   return {
@@ -194,7 +247,9 @@ const localOnlyEnvironment = (environment) => {
 
 const npxInvocation = (supabaseArgs) => {
   if (process.platform !== 'win32') return { command: 'npx', args: supabaseArgs };
-  const npxCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+  const npxCli = process.env.npm_execpath
+    ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
+    : join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
   if (!existsSync(npxCli)) {
     throw new Error(`Pinned local npx CLI entry point is unavailable: ${npxCli}`);
   }

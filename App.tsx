@@ -15,15 +15,16 @@ import DashboardPage from './features/dashboard/pages/DashboardPage';
 import ClientsPage from './features/clients/pages/ClientsPage';
 import SettingsPage from './features/settings/pages/SettingsPage';
 import ClientDetails from './pages/ClientDetails'; 
+import MealTracking from './pages/MealTracking';
 import Appointments from './pages/Appointments'; 
 import Messages from './pages/Messages'; 
 import Recipes from './pages/Recipes'; 
 import RecipeDetails from './pages/RecipeDetails'; 
 import Analytics from './pages/Analytics'; 
 import MealPlans from './pages/MealPlans'; 
-import Notes from './pages/Notes'; 
 import DietitianProfilePage from './features/dietitians/pages/DietitianProfilePage';
 import EditProfilePage from './features/dietitians/pages/EditProfilePage';
+import NotesPage from './features/notes/pages/NotesPage';
 
 const App = () => {
   return (
@@ -44,12 +45,13 @@ const App = () => {
                 <Route path="/appointments" element={<Appointments />} />
                 <Route path="/clients" element={<ClientsPage />} />
                 <Route path="/clients/:id" element={<ClientDetails />} />
+                <Route path="/clients/:id/meal-tracking" element={<MealTracking />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/meal-plans" element={<MealPlans />} />
                 <Route path="/messages" element={<Messages />} />
+                <Route path="/notes" element={<NotesPage />} />
                 <Route path="/recipes" element={<Recipes />} />
                 <Route path="/recipes/:id" element={<RecipeDetails />} />
-                <Route path="/notes" element={<Notes />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/profile" element={<DietitianProfilePage />} />
                 <Route path="/profile/edit" element={<EditProfilePage />} />

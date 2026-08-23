@@ -341,6 +341,30 @@ export const fetchDietitianClients = async (): Promise<Client[]> => {
   return result.clients;
 };
 
+/**
+ * Resolves a relationship identity supplied by a notification into a client
+ * detail id. The authenticated dietitian and active relationship are both
+ * required; a notification URL is never treated as authorization.
+ */
+export const resolveClientIdByRelationId = async (relationId: string): Promise<string | null> => {
+  if (!isValidUuid(relationId)) return null;
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user?.id || !isValidUuid(user.id)) return null;
+
+  const { data, error } = await supabase
+    .from('dietitian_clients')
+    .select('client_id, status')
+    .eq('id', relationId)
+    .eq('dietitian_id', user.id)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || data.status !== 'active' || !isValidUuid(data.client_id)) return null;
+  return data.client_id;
+};
+
 export const fetchActiveDietitianClientList = async (): Promise<ClientListResult> => {
   const result = await fetchDietitianClientList(['active']);
   if (result.status === 'error') return result;
@@ -1004,6 +1028,7 @@ export type ClientConnectionRequestStatus =
   | 'requested'
   | 'already_pending'
   | 'already_active'
+  | 'limit_reached'
   | 'unavailable';
 
 export type AddClientResult =
@@ -1024,6 +1049,7 @@ export const parseClientConnectionRequestStatus = (
     case 'requested':
     case 'already_pending':
     case 'already_active':
+    case 'limit_reached':
     case 'unavailable':
       return value;
     default:

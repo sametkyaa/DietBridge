@@ -70,6 +70,22 @@ const SOURCES = [
   'features/recipes/services/recipeService.ts',
   'features/recipes/utils/filterRecipes.ts',
   'features/clients/utils/measurementContract.ts',
+  'features/appointments/utils/appointmentContract.ts',
+  'features/appointments/services/appointmentService.ts',
+  'features/dashboard/types/dailyTask.ts',
+  'features/dashboard/utils/dailyTaskContract.ts',
+  'features/dashboard/utils/dashboardContract.ts',
+  'features/dashboard/services/dailyTaskService.ts',
+  'features/notes/types/note.ts',
+  'features/notes/utils/noteContract.ts',
+  'features/notes/services/noteService.ts',
+  'features/analytics/types/analytics.ts',
+  'features/analytics/utils/waterContract.ts',
+  'features/analytics/utils/analyticsContract.ts',
+  'features/analytics/services/analyticsService.ts',
+  'features/subscriptions/types/subscription.ts',
+  'features/subscriptions/services/subscriptionService.ts',
+  'shared/utils/avatarUrl.ts',
   'shared/utils/uuid.ts',
   'features/chat/types/chat.ts',
   'features/chat/types/chatImage.ts',
@@ -81,9 +97,16 @@ const SOURCES = [
   'features/chat/utils/chatImageUploadReducer.ts',
   'features/chat/utils/chatImageUploadResources.ts',
   'features/chat/utils/chatImageUiState.ts',
+  'features/chat/utils/chatScrollLifecycle.ts',
+  'features/chat/types/mealActivity.ts',
+  'features/chat/utils/mealActivity.ts',
   'features/chat/services/chatService.ts',
+  'features/chat/services/mealActivityService.ts',
   'features/chat/services/chatImageService.ts',
   'features/chat/services/chatImageReadService.ts',
+  'features/meal-tracking/types/mealTracking.ts',
+  'features/meal-tracking/utils/mealTrackingContract.ts',
+  'features/meal-tracking/services/mealTrackingService.ts',
 ];
 
 const EXPECTED_OUTPUTS = [
@@ -94,6 +117,22 @@ const EXPECTED_OUTPUTS = [
   'features/recipes/services/recipeService.js',
   'features/recipes/utils/filterRecipes.js',
   'features/clients/utils/measurementContract.js',
+  'features/appointments/utils/appointmentContract.js',
+  'features/appointments/services/appointmentService.js',
+  'features/dashboard/types/dailyTask.js',
+  'features/dashboard/utils/dailyTaskContract.js',
+  'features/dashboard/utils/dashboardContract.js',
+  'features/dashboard/services/dailyTaskService.js',
+  'features/notes/types/note.js',
+  'features/notes/utils/noteContract.js',
+  'features/notes/services/noteService.js',
+  'features/analytics/types/analytics.js',
+  'features/analytics/utils/waterContract.js',
+  'features/analytics/utils/analyticsContract.js',
+  'features/analytics/services/analyticsService.js',
+  'features/subscriptions/types/subscription.js',
+  'features/subscriptions/services/subscriptionService.js',
+  'shared/utils/avatarUrl.js',
   'shared/utils/uuid.js',
   'features/chat/types/chat.js',
   'features/chat/types/chatImage.js',
@@ -105,9 +144,16 @@ const EXPECTED_OUTPUTS = [
   'features/chat/utils/chatImageUploadReducer.js',
   'features/chat/utils/chatImageUploadResources.js',
   'features/chat/utils/chatImageUiState.js',
+  'features/chat/utils/chatScrollLifecycle.js',
+  'features/chat/types/mealActivity.js',
+  'features/chat/utils/mealActivity.js',
   'features/chat/services/chatService.js',
+  'features/chat/services/mealActivityService.js',
   'features/chat/services/chatImageService.js',
   'features/chat/services/chatImageReadService.js',
+  'features/meal-tracking/types/mealTracking.js',
+  'features/meal-tracking/utils/mealTrackingContract.js',
+  'features/meal-tracking/services/mealTrackingService.js',
 ];
 
 const SUPABASE_CLIENT_STUB = `'use strict';
@@ -206,8 +252,7 @@ fs.readFileSync = (file, ...args) => {
 };
 `, 'utf8');
 
-const testRun = spawnSync(process.execPath, [
-  '--test',
+const testFiles = [
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
@@ -215,9 +260,44 @@ const testRun = spawnSync(process.execPath, [
   join(repoRoot, 'tests', 'chatImageUploadContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageOwnershipContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageUiContracts.test.cjs'),
+  join(repoRoot, 'tests', 'chatScrollLifecycle.test.cjs'),
   join(repoRoot, 'tests', 'disposableReplayMaterializer.test.cjs'),
   join(repoRoot, 'tests', 'disposableSupabaseLocalReplay.test.cjs'),
   join(repoRoot, 'tests', 'measurementContracts.test.cjs'),
+  join(repoRoot, 'tests', 'appointmentContracts.test.cjs'),
+  join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs'),
+  join(repoRoot, 'tests', 'dashboardClosureContracts.test.cjs'),
+  join(repoRoot, 'tests', 'analyticsContracts.test.cjs'),
+  join(repoRoot, 'tests', 'waterSharedContract.test.cjs'),
+  join(repoRoot, 'tests', 'subscriptionContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mvp9MockCleanupContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mvp10SharedContractContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mealTrackingContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mealActivityContracts.test.cjs'),
+  join(repoRoot, 'tests', 'dietitianProfilePresentation.test.cjs'),
+  join(repoRoot, 'tests', 'noteContracts.test.cjs'),
+];
+const selectedTestFiles = process.argv.includes('--appointments-only')
+  ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
+  : process.argv.includes('--chat-only')
+    ? testFiles.filter((file) => /chat(?:Contracts|Image|ScrollLifecycle)/i.test(file))
+  : process.argv.includes('--daily-tasks-only')
+    ? [join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs')]
+  : process.argv.includes('--notes-only')
+    ? [join(repoRoot, 'tests', 'noteContracts.test.cjs')]
+    : process.argv.includes('--analytics-only')
+      ? [join(repoRoot, 'tests', 'analyticsContracts.test.cjs')]
+      : process.argv.includes('--water-only')
+        ? [join(repoRoot, 'tests', 'waterSharedContract.test.cjs')]
+      : process.argv.includes('--subscriptions-only')
+        ? [join(repoRoot, 'tests', 'subscriptionContracts.test.cjs')]
+      : process.argv.includes('--profile-only')
+        ? [join(repoRoot, 'tests', 'dietitianProfilePresentation.test.cjs')]
+    : testFiles;
+
+const testRun = spawnSync(process.execPath, [
+  '--test',
+  ...selectedTestFiles,
 ], {
   cwd: repoRoot,
   env: {

@@ -1,69 +1,241 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Calendar as CalendarIcon, 
+  CalendarDays,
   Clock, 
   MapPin, 
   Video, 
   Phone, 
   Plus, 
-  Search, 
   X, 
   User, 
-  Check,
+  List,
   ChevronLeft,
   ChevronRight,
-  MoreVertical,
-  Trash2
+  Trash2,
+  Edit2,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { useAppointments } from '../features/appointments/context/AppointmentContext';
-import { CLIENTS, USER_AVATAR } from '../constants';
-import { Appointment, Client } from '../types';
+import { fetchActiveDietitianClientList } from '../features/clients/services/clientService';
+import {
+  APPOINTMENT_DURATIONS,
+  APPOINTMENT_TYPES,
+  AppointmentDraft,
+  CALENDAR_WEEKDAY_LABELS,
+  addCalendarDays,
+  addCalendarMonths,
+  createAppointmentDraft,
+  formatDateKey,
+  formatMonthKey,
+  getMonthCalendarDays,
+  getMonthKey,
+  getMonthKeyFromDateKey,
+  getTodayDateKey,
+  sortAppointmentsChronologically,
+} from '../features/appointments/utils/appointmentContract';
+import { APPOINTMENT_SLOT_CONFLICT_ERROR } from '../features/appointments/services/appointmentService';
+import { Appointment, Client } from '../shared/types';
+
+type ClientState =
+  | { status: 'loading'; clients: Client[] }
+  | { status: 'success'; clients: Client[] }
+  | { status: 'error'; clients: Client[]; message: string };
+
+interface SameWeekWarningState {
+  count: number;
+  draft: AppointmentDraft;
+  appointmentId?: string;
+}
 
 const Appointments = () => {
-  const navigate = useNavigate();
-  const { appointments, addAppointment, deleteAppointment } = useAppointments();
+  const {
+    appointments,
+    loading,
+    error,
+    mutationError,
+    pendingAction,
+    refreshAppointments,
+    addAppointment,
+    updateAppointment,
+    deleteAppointment,
+    checkAppointmentBooking,
+    clearMutationError,
+  } = useAppointments();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateKey());
+  const [visibleMonth, setVisibleMonth] = useState<string>(() => getMonthKey());
+  const [clientState, setClientState] = useState<ClientState>({ status: 'loading', clients: [] });
+  const [dayDetailDate, setDayDetailDate] = useState<string | null>(null);
+  const [sameWeekWarning, setSameWeekWarning] = useState<SameWeekWarningState | null>(null);
+  const [bookingCheckError, setBookingCheckError] = useState<string | null>(null);
+  const [slotConflict, setSlotConflict] = useState(false);
+  const [isCheckingBooking, setIsCheckingBooking] = useState(false);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const bookingCheckRef = useRef(false);
+  const submissionRef = useRef(false);
 
-  // Form State
-  const [formData, setFormData] = useState({
-    clientId: '',
-    title: '',
-    date: new Date().toISOString().split('T')[0],
-    time: '09:00',
-    duration: '30dk',
-    type: 'Görüntülü Görüşme' as Appointment['type']
-  });
+  const [formData, setFormData] = useState<AppointmentDraft>(() => createAppointmentDraft());
 
-  const selectedClientForForm = CLIENTS.find(c => c.id === formData.clientId);
+  const loadClients = useCallback(async () => {
+    setClientState((current) => ({ status: 'loading', clients: current.clients }));
+    const result = await fetchActiveDietitianClientList();
+    if (result.status === 'error') {
+      setClientState({ status: 'error', clients: [], message: result.userMessage });
+      return;
+    }
+    setClientState({ status: 'success', clients: result.clients });
+  }, []);
 
-  // Group appointments by date
-  const appointmentsByDate = appointments.filter(a => a.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time));
+  useEffect(() => {
+    void loadClients();
+  }, [loadClients]);
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.clientId || !formData.title) return;
+  const activeClients = clientState.clients;
 
-    const client = CLIENTS.find(c => c.id === formData.clientId);
-    
-    const newAppointment: Appointment = {
-      id: Date.now().toString(), // Temporary ID, DB will assign real one but context handles it
-      clientId: formData.clientId,
-      clientName: client?.name || 'Bilinmeyen Danışan',
-      clientAvatar: client?.avatar,
-      title: formData.title,
-      date: formData.date,
-      time: formData.time,
-      duration: formData.duration,
-      type: formData.type,
-      status: 'upcoming'
-    };
+  const selectedClientForForm = activeClients.find((client) => client.id === formData.clientId);
 
-    addAppointment(newAppointment);
+  const appointmentsByDate = useMemo(() => sortAppointmentsChronologically(
+    appointments.filter((appointment) => appointment.date === selectedDate),
+  ), [appointments, selectedDate]);
+
+  const calendarDays = useMemo(() => getMonthCalendarDays(visibleMonth), [visibleMonth]);
+
+  const appointmentsByCalendarDate = useMemo(() => {
+    const grouped = new Map<string, Appointment[]>();
+    appointments.forEach((appointment) => {
+      const current = grouped.get(appointment.date) ?? [];
+      current.push(appointment);
+      grouped.set(appointment.date, sortAppointmentsChronologically(current));
+    });
+    return grouped;
+  }, [appointments]);
+
+  const dayDetailAppointments = useMemo(() => (
+    dayDetailDate ? appointmentsByCalendarDate.get(dayDetailDate) ?? [] : []
+  ), [appointmentsByCalendarDate, dayDetailDate]);
+
+  const appointmentsInVisibleMonth = useMemo(() => appointments
+    .filter((appointment) => appointment.date.startsWith(visibleMonth)), [appointments, visibleMonth]);
+
+  const openCreateModal = (date?: string) => {
+    const nextDate = typeof date === 'string' ? date : selectedDate;
+    clearMutationError();
+    setBookingCheckError(null);
+    setSlotConflict(false);
+    setSameWeekWarning(null);
+    setDayDetailDate(null);
+    setEditingAppointment(null);
+    setSelectedDate(nextDate);
+    setVisibleMonth(getMonthKeyFromDateKey(nextDate) ?? visibleMonth);
+    setFormData(createAppointmentDraft(nextDate));
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
     setIsModalOpen(false);
-    // Reset form slightly but keep date
-    setFormData({ ...formData, title: '', clientId: '' });
+    setEditingAppointment(null);
+    setSameWeekWarning(null);
+    setBookingCheckError(null);
+    setSlotConflict(false);
+    setFormData(createAppointmentDraft());
+  };
+
+  const openEditModal = (appointment: Appointment) => {
+    clearMutationError();
+    setBookingCheckError(null);
+    setSlotConflict(false);
+    setSameWeekWarning(null);
+    setDayDetailDate(null);
+    setSelectedDate(appointment.date);
+    setVisibleMonth(getMonthKeyFromDateKey(appointment.date) ?? visibleMonth);
+    setEditingAppointment(appointment);
+    setFormData({
+      clientId: appointment.clientId,
+      title: appointment.title,
+      date: appointment.date,
+      time: appointment.time,
+      duration: appointment.duration,
+      type: appointment.type,
+    });
+    setIsModalOpen(true);
+  };
+
+  const persistForm = async (draft: AppointmentDraft, appointmentId?: string) => {
+    if (submissionRef.current) return false;
+    submissionRef.current = true;
+    setIsSubmittingForm(true);
+    try {
+      const result = appointmentId
+        ? await updateAppointment(appointmentId, draft)
+        : await addAppointment(draft);
+      if (!result.success) return false;
+
+      setSelectedDate(draft.date);
+      setVisibleMonth(getMonthKeyFromDateKey(draft.date) ?? visibleMonth);
+      setIsModalOpen(false);
+      setEditingAppointment(null);
+      setSameWeekWarning(null);
+      setFormData(createAppointmentDraft(draft.date));
+      return true;
+    } finally {
+      submissionRef.current = false;
+      setIsSubmittingForm(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pendingAction !== null || bookingCheckRef.current || submissionRef.current) return;
+
+    const draft = { ...formData };
+    const appointmentId = editingAppointment?.id;
+    bookingCheckRef.current = true;
+    setIsCheckingBooking(true);
+    setBookingCheckError(null);
+    setSlotConflict(false);
+    clearMutationError();
+    try {
+      const check = await checkAppointmentBooking(draft, appointmentId);
+      if (!check.success) {
+        setBookingCheckError(check.message);
+        return;
+      }
+      if (check.value.slotConflict) {
+        setSlotConflict(true);
+        return;
+      }
+      if (check.value.sameWeekCount > 0) {
+        setSameWeekWarning({ count: check.value.sameWeekCount, draft, appointmentId });
+        return;
+      }
+      await persistForm(draft, appointmentId);
+    } finally {
+      bookingCheckRef.current = false;
+      setIsCheckingBooking(false);
+    }
+  };
+
+  const confirmSameWeekWarning = () => {
+    if (!sameWeekWarning || pendingAction !== null || submissionRef.current) return;
+    const pendingSubmission = sameWeekWarning;
+    setSameWeekWarning(null);
+    void persistForm(pendingSubmission.draft, pendingSubmission.appointmentId);
+  };
+
+  const openDayDetail = (event: React.MouseEvent, date: string) => {
+    event.stopPropagation();
+    setSelectedDate(date);
+    setDayDetailDate(date);
+  };
+
+  const handleDelete = async (appointment: Appointment) => {
+    if (!window.confirm(`"${appointment.title}" randevusunu silmek istediğinize emin misiniz?`)) return;
+    await deleteAppointment(appointment.id);
   };
 
   const getStatusColor = (type: string) => {
@@ -84,12 +256,23 @@ const Appointments = () => {
     }
   };
 
-  // Simple date navigator
   const changeDate = (days: number) => {
-    const date = new Date(selectedDate);
-    date.setDate(date.getDate() + days);
-    setSelectedDate(date.toISOString().split('T')[0]);
+    const nextDate = addCalendarDays(selectedDate, days);
+    if (!nextDate) return;
+    setSelectedDate(nextDate);
+    setVisibleMonth(getMonthKeyFromDateKey(nextDate) ?? visibleMonth);
   };
+
+  const changeMonth = (months: number) => {
+    const nextMonth = addCalendarMonths(visibleMonth, months);
+    if (!nextMonth) return;
+    setVisibleMonth(nextMonth);
+    setSelectedDate(`${nextMonth}-01`);
+  };
+
+  const upcomingAppointments = useMemo(() => appointments
+    .filter((appointment) => appointment.date > selectedDate)
+    .sort((left, right) => `${left.date}T${left.time}`.localeCompare(`${right.date}T${right.time}`)), [appointments, selectedDate]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto min-h-screen">
@@ -100,7 +283,8 @@ const Appointments = () => {
           <p className="text-slate-500 mt-1">Takviminizi ve görüşmelerinizi yönetin.</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => openCreateModal()}
+          disabled={clientState.status === 'loading' || clientState.status === 'error'}
           className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-medium shadow-sm transition-all active:scale-95"
         >
           <Plus className="w-5 h-5" />
@@ -108,7 +292,198 @@ const Appointments = () => {
         </button>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {(error || mutationError || clientState.status === 'error') && (
+        <div role="alert" className="mb-6 flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {mutationError || error || (clientState.status === 'error' ? clientState.message : '')}
+          </span>
+          <div className="flex gap-2">
+            {error && (
+              <button type="button" onClick={() => void refreshAppointments()} className="rounded-lg border border-rose-200 px-3 py-2 font-semibold hover:bg-rose-100">
+                Randevuları tekrar dene
+              </button>
+            )}
+            {clientState.status === 'error' && (
+              <button type="button" onClick={() => void loadClients()} className="rounded-lg border border-rose-200 px-3 py-2 font-semibold hover:bg-rose-100">
+                Danışanları tekrar dene
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="group" aria-label="Randevu görünümü">
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            aria-pressed={viewMode === 'list'}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <List className="h-4 w-4" /> Liste
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('calendar')}
+            aria-pressed={viewMode === 'calendar'}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${viewMode === 'calendar' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <CalendarDays className="h-4 w-4" /> Takvim
+          </button>
+        </div>
+      </div>
+
+      {viewMode === 'calendar' ? (
+        <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm md:p-6" aria-label="Aylık randevu takvimi">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold capitalize text-slate-800">{formatMonthKey(visibleMonth)}</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {loading
+                  ? 'Randevular yükleniyor...'
+                  : error
+                    ? 'Randevular gösterilemiyor.'
+                    : appointmentsInVisibleMonth.length === 0
+                  ? 'Bu ay planlanmış randevu yok.'
+                  : `${appointmentsInVisibleMonth.length} randevu planlandı.`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => changeMonth(-1)}
+                className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+                aria-label="Önceki ay"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibleMonth(getMonthKey())}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Bu ay
+              </button>
+              <button
+                type="button"
+                onClick={() => changeMonth(1)}
+                className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+                aria-label="Sonraki ay"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex min-h-[24rem] items-center justify-center gap-2 text-sm font-medium text-slate-500" role="status">
+              <Loader2 className="h-5 w-5 animate-spin" /> Randevular yükleniyor...
+            </div>
+          ) : error ? (
+            <div className="flex min-h-[24rem] flex-col items-center justify-center text-center">
+              <p className="text-sm font-medium text-rose-600">Randevular gösterilemiyor.</p>
+              <button type="button" onClick={() => void refreshAppointments()} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-primary">
+                <RefreshCw className="h-4 w-4" /> Tekrar dene
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-7 border-b border-l border-slate-200" role="grid" aria-label={`${formatMonthKey(visibleMonth)} randevu günleri`}>
+                {CALENDAR_WEEKDAY_LABELS.map((weekday) => (
+                  <div key={weekday} className="border-r border-t border-slate-200 bg-slate-50 px-2 py-3 text-center text-xs font-bold uppercase tracking-wide text-slate-500">
+                    {weekday}
+                  </div>
+                ))}
+                {calendarDays.map((day) => {
+                  const dayAppointments = appointmentsByCalendarDate.get(day.date) ?? [];
+                  const isSelected = selectedDate === day.date;
+                  const isToday = getTodayDateKey() === day.date;
+                  return (
+                    <div
+                      key={day.date}
+                      className={`min-h-[8.5rem] border-r border-t border-slate-200 p-1.5 sm:min-h-[10rem] ${day.isCurrentMonth ? 'bg-white' : 'bg-slate-50/70'}`}
+                      role="gridcell"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openCreateModal(day.date)}
+                        className={`mb-1 flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors ${isSelected ? 'bg-primary text-white' : isToday ? 'border-2 border-primary text-primary' : day.isCurrentMonth ? 'text-slate-700 hover:bg-slate-100' : 'text-slate-400 hover:bg-slate-100'}`}
+                        aria-label={`${formatDateKey(day.date)} tarihinde randevu oluştur`}
+                      >
+                        {day.day}
+                      </button>
+                      <div className="space-y-1">
+                        {dayAppointments.slice(0, 2).map((appointment) => (
+                          <button
+                            key={appointment.id}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openEditModal(appointment);
+                            }}
+                            disabled={pendingAction !== null}
+                            className={`block w-full truncate rounded-md border px-1.5 py-1 text-left text-[11px] leading-tight transition-colors hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 ${getStatusColor(appointment.type)}`}
+                            title={`${appointment.time} ${appointment.clientName} — ${appointment.title}`}
+                          >
+                            <span className="block truncate font-bold">{appointment.clientName}</span>
+                            <span className="block truncate">{appointment.title}</span>
+                            <span className="block text-[10px] font-semibold opacity-80">{appointment.time}</span>
+                          </button>
+                        ))}
+                        {dayAppointments.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={(event) => openDayDetail(event, day.date)}
+                            className="block w-full truncate px-1.5 text-left text-[11px] font-semibold text-primary hover:underline"
+                            aria-label={`${formatDateKey(day.date)} günü için ${dayAppointments.length - 2} randevu daha göster`}
+                          >
+                            +{dayAppointments.length - 2} randevu daha
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {selectedDate && (
+                <div className="mt-6 border-t border-slate-100 pt-5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="font-bold text-slate-800">{formatDateKey(selectedDate)}</h3>
+                    <button
+                      type="button"
+                      onClick={() => openCreateModal(selectedDate)}
+                      disabled={clientState.status !== 'success'}
+                      className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline disabled:opacity-50"
+                    >
+                      <Plus className="h-4 w-4" /> Oluştur
+                    </button>
+                  </div>
+                  {appointmentsByDate.length === 0 ? (
+                    <p className="text-sm text-slate-500">Bu tarihte randevu yok.</p>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {appointmentsByDate.map((appointment) => (
+                        <button
+                          key={appointment.id}
+                          type="button"
+                          onClick={() => openEditModal(appointment)}
+                          className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-left hover:border-primary/30 hover:bg-primary/5"
+                        >
+                          <span className="font-bold text-slate-800">{appointment.time}</span>
+                          <span className="ml-2 text-sm font-semibold text-slate-700">{appointment.clientName}</span>
+                          <span className="mt-1 block text-xs text-slate-500">{appointment.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      ) : (
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         
         {/* Left: Calendar & Mini Calendar (Simulated) */}
         <div className="space-y-6">
@@ -117,10 +492,10 @@ const Appointments = () => {
                 <button onClick={() => changeDate(-1)} className="p-2 hover:bg-slate-50 rounded-full text-slate-500"><ChevronLeft className="w-5 h-5" /></button>
                 <div className="text-center">
                    <h3 className="font-bold text-slate-800 text-lg">
-                      {new Date(selectedDate).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric', day: 'numeric' })}
+                       {formatDateKey(selectedDate)}
                    </h3>
                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">
-                      {new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' })}
+                      {formatDateKey(selectedDate, { weekday: 'long' })}
                    </p>
                 </div>
                 <button onClick={() => changeDate(1)} className="p-2 hover:bg-slate-50 rounded-full text-slate-500"><ChevronRight className="w-5 h-5" /></button>
@@ -128,12 +503,23 @@ const Appointments = () => {
              
              {/* Simple List View for the selected date */}
              <div className="space-y-3">
-                {appointmentsByDate.length > 0 ? (
+                {loading ? (
+                  <div className="flex items-center justify-center gap-2 py-12 text-sm font-medium text-slate-500">
+                    <Loader2 className="h-5 w-5 animate-spin" /> Randevular yükleniyor...
+                  </div>
+                ) : error ? (
+                  <div className="py-12 text-center">
+                    <p className="text-sm font-medium text-rose-600">Randevular gösterilemiyor.</p>
+                    <button type="button" onClick={() => void refreshAppointments()} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-primary">
+                      <RefreshCw className="h-4 w-4" /> Tekrar dene
+                    </button>
+                  </div>
+                ) : appointmentsByDate.length > 0 ? (
                   appointmentsByDate.map((apt) => (
                     <div key={apt.id} className="group flex gap-4 p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all relative">
                        <div className="flex flex-col items-center min-w-[3rem]">
                           <span className="font-bold text-slate-800">{apt.time}</span>
-                          <span className="text-[10px] text-slate-400">{apt.duration}</span>
+                          <span className="text-[10px] text-slate-400">{apt.duration} dk</span>
                        </div>
                        <div className="w-1 rounded-full bg-slate-200 group-hover:bg-primary transition-colors"></div>
                        <div className="flex-1">
@@ -145,13 +531,26 @@ const Appointments = () => {
                           </div>
                        </div>
                        
-                       <button 
-                         onClick={() => deleteAppointment(apt.id)}
-                         className="absolute top-2 right-2 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                         title="İptal Et"
-                       >
-                         <Trash2 className="w-4 h-4" />
-                       </button>
+                       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-all group-hover:opacity-100 group-focus-within:opacity-100">
+                         <button
+                           type="button"
+                           onClick={() => openEditModal(apt)}
+                           disabled={pendingAction !== null}
+                           className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-primary disabled:opacity-50"
+                           aria-label={`${apt.title} randevusunu düzenle`}
+                         >
+                           <Edit2 className="h-4 w-4" />
+                         </button>
+                         <button
+                           type="button"
+                           onClick={() => void handleDelete(apt)}
+                           disabled={pendingAction !== null}
+                           className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                           aria-label={`${apt.title} randevusunu sil`}
+                         >
+                           {pendingAction === `delete:${apt.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                         </button>
+                       </div>
                     </div>
                   ))
                 ) : (
@@ -160,7 +559,7 @@ const Appointments = () => {
                         <CalendarIcon className="w-8 h-8" />
                      </div>
                      <p className="text-slate-500 font-medium">Bu tarihte randevu yok.</p>
-                     <button onClick={() => setIsModalOpen(true)} className="text-primary text-sm font-bold mt-2 hover:underline">Oluştur</button>
+                     <button onClick={() => openCreateModal()} disabled={clientState.status !== 'success'} className="text-primary text-sm font-bold mt-2 hover:underline disabled:opacity-50">Oluştur</button>
                   </div>
                 )}
              </div>
@@ -204,16 +603,14 @@ const Appointments = () => {
            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
               <h3 className="font-bold text-slate-800 mb-6">Yaklaşan Diğer Randevular</h3>
               <div className="space-y-4">
-                 {appointments
-                   .filter(a => new Date(a.date) > new Date(selectedDate)) // Future from selected
-                   .sort((a,b) => new Date(a.date + 'T' + a.time).getTime() - new Date(b.date + 'T' + b.time).getTime())
+                 {upcomingAppointments
                    .slice(0, 5)
                    .map(apt => (
                       <div key={apt.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100">
                          <div className="flex items-center gap-4">
                             <div className="bg-white p-3 rounded-lg border border-slate-200 text-center min-w-[4rem]">
-                               <p className="text-xs text-slate-500 uppercase font-bold">{new Date(apt.date).toLocaleDateString('tr-TR', { month: 'short' })}</p>
-                               <p className="text-xl font-bold text-slate-800">{new Date(apt.date).getDate()}</p>
+                               <p className="text-xs text-slate-500 uppercase font-bold">{formatDateKey(apt.date, { month: 'short' })}</p>
+                               <p className="text-xl font-bold text-slate-800">{formatDateKey(apt.date, { day: 'numeric' })}</p>
                             </div>
                             <div>
                                <h4 className="font-bold text-slate-800">{apt.title}</h4>
@@ -226,26 +623,124 @@ const Appointments = () => {
                       </div>
                    ))
                  }
-                 {appointments.filter(a => new Date(a.date) > new Date(selectedDate)).length === 0 && (
+                 {upcomingAppointments.length === 0 && (
                     <p className="text-slate-400 text-sm text-center py-4">Gelecek planlı randevu bulunmuyor.</p>
                  )}
               </div>
            </div>
         </div>
       </div>
+      )}
 
-      {/* CREATE MODAL */}
+      {dayDetailDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="appointment-day-detail-title"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 p-5">
+              <div>
+                <h2 id="appointment-day-detail-title" className="text-lg font-bold capitalize text-slate-800">
+                  {formatDateKey(dayDetailDate, { weekday: 'long', day: 'numeric', month: 'long' })}
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">Günün tüm randevuları</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDayDetailDate(null)}
+                aria-label="Gün detayını kapat"
+                className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[min(28rem,70vh)] space-y-2 overflow-y-auto p-5">
+              {dayDetailAppointments.map((appointment) => (
+                <button
+                  key={appointment.id}
+                  type="button"
+                  onClick={() => openEditModal(appointment)}
+                  disabled={pendingAction !== null}
+                  className="block w-full rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span className="block text-sm font-bold text-slate-800">{appointment.clientName}</span>
+                  <span className="mt-0.5 block truncate text-sm text-slate-600">{appointment.title}</span>
+                  <span className="mt-1 block text-xs font-semibold text-slate-500">{appointment.time} · {appointment.duration} dk</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sameWeekWarning && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="same-week-warning-title"
+          >
+            <h2 id="same-week-warning-title" className="text-lg font-bold text-slate-800">Haftalık randevu uyarısı</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Bu danışanın bu hafta zaten {sameWeekWarning.count} randevusu bulunuyor. Yine de yeni bir randevu oluşturmak istiyor musunuz?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setSameWeekWarning(null)}
+                disabled={isSubmittingForm || pendingAction !== null}
+                className="min-h-11 rounded-xl border border-slate-200 px-4 font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={confirmSameWeekWarning}
+                disabled={isSubmittingForm || pendingAction !== null}
+                className="min-h-11 rounded-xl bg-primary px-4 font-semibold text-white hover:bg-primary-dark disabled:opacity-50"
+              >
+                {isSubmittingForm ? 'Kaydediliyor...' : 'Yine de oluştur'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE / EDIT MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div
+            className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="appointment-dialog-title"
+          >
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-               <h2 className="text-xl font-bold text-slate-800">Yeni Randevu Oluştur</h2>
-               <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500">
+               <h2 id="appointment-dialog-title" className="text-xl font-bold text-slate-800">{editingAppointment ? 'Randevuyu Düzenle' : 'Yeni Randevu Oluştur'}</h2>
+               <button type="button" onClick={closeModal} disabled={pendingAction !== null || isCheckingBooking || isSubmittingForm} aria-label="Randevu penceresini kapat" className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 disabled:opacity-50">
                   <X className="w-5 h-5" />
                </button>
             </div>
             
-            <form onSubmit={handleCreate} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                {mutationError && (
+                  <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {mutationError}
+                  </div>
+                )}
+                {slotConflict && (
+                  <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {APPOINTMENT_SLOT_CONFLICT_ERROR}
+                  </div>
+                )}
+                {bookingCheckError && (
+                  <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {bookingCheckError}
+                  </div>
+                )}
                {/* Client Selection */}
                <div className="space-y-1.5">
                   <label className="text-sm font-bold text-slate-700">Danışan Seçimi</label>
@@ -257,18 +752,20 @@ const Appointments = () => {
                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary appearance-none"
                      >
                         <option value="">Seçiniz...</option>
-                        {CLIENTS.map(c => (
-                           <option key={c.id} value={c.id}>{c.name}</option>
+                        {activeClients.map(client => (
+                           <option key={client.id} value={client.id}>{client.name}</option>
                         ))}
                      </select>
                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   </div>
                   {selectedClientForForm && (
                      <div className="flex items-center gap-2 mt-2 bg-emerald-50 p-2 rounded-lg border border-emerald-100">
-                        <img src={selectedClientForForm.avatar} className="w-6 h-6 rounded-full" />
+                        <img src={selectedClientForForm.profilePhotoUrl || selectedClientForForm.avatar} alt="" className="w-6 h-6 rounded-full object-cover" />
                         <span className="text-xs font-medium text-emerald-700">{selectedClientForForm.goal} Hedefi</span>
                      </div>
                   )}
+                  {clientState.status === 'loading' && <p className="mt-2 text-xs text-slate-500">Aktif danışanlar yükleniyor...</p>}
+                  {clientState.status === 'success' && activeClients.length === 0 && <p className="mt-2 text-xs text-amber-700">Randevu oluşturulabilecek aktif danışan yok.</p>}
                </div>
 
                {/* Title */}
@@ -288,11 +785,11 @@ const Appointments = () => {
                <div className="space-y-1.5">
                   <label className="text-sm font-bold text-slate-700">Görüşme Türü</label>
                   <div className="grid grid-cols-3 gap-2">
-                     {['Görüntülü Görüşme', 'Yüzyüze', 'Telefon Görüşmesi'].map((type) => (
+                     {APPOINTMENT_TYPES.map((type) => (
                         <button
                           key={type}
                           type="button"
-                          onClick={() => setFormData({...formData, type: type as any})}
+                          onClick={() => setFormData({...formData, type})}
                           className={`px-2 py-3 rounded-xl text-xs font-bold border transition-all ${
                              formData.type === type 
                              ? 'bg-primary text-white border-primary shadow-sm' 
@@ -334,29 +831,34 @@ const Appointments = () => {
                   <label className="text-sm font-bold text-slate-700">Süre</label>
                   <select
                      value={formData.duration}
-                     onChange={(e) => setFormData({...formData, duration: e.target.value})}
+                     onChange={(e) => setFormData({...formData, duration: Number(e.target.value)})}
                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   >
-                     <option value="15dk">15 Dakika</option>
-                     <option value="30dk">30 Dakika</option>
-                     <option value="45dk">45 Dakika</option>
-                     <option value="60dk">1 Saat</option>
+                     {APPOINTMENT_DURATIONS.map((duration) => (
+                       <option key={duration} value={duration}>{duration === 60 ? '1 Saat' : `${duration} Dakika`}</option>
+                     ))}
                   </select>
                </div>
 
                <div className="pt-4 flex gap-3">
                   <button 
-                    type="button" 
-                    onClick={() => setIsModalOpen(false)}
+                    type="button"
+                     onClick={closeModal}
+                     disabled={pendingAction !== null || isCheckingBooking || isSubmittingForm}
                     className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors"
                   >
                      İptal
                   </button>
                   <button 
-                    type="submit"
-                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors"
+                     type="submit"
+                     disabled={pendingAction !== null || isCheckingBooking || isSubmittingForm || clientState.status !== 'success' || activeClients.length === 0}
+                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                     Randevu Oluştur
+                     {isCheckingBooking ? (
+                       <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Kontrol ediliyor</span>
+                     ) : isSubmittingForm || pendingAction === 'create' || pendingAction?.startsWith('update:') ? (
+                       <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Kaydediliyor</span>
+                     ) : editingAppointment ? 'Randevuyu Güncelle' : 'Randevu Oluştur'}
                   </button>
                </div>
             </form>

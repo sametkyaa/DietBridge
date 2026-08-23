@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchChatMessages } from '../services/chatService';
+import {
+  fetchMealActivities,
+  getMealActivityUserMessage,
+  subscribeToMealActivityChanges,
+} from '../services/mealActivityService';
+import { mergeMealActivities } from '../utils/mealActivity';
+import type { MealActivity } from '../types/mealActivity';
 import { ChatMessage, ChatMessageCursor, ChatServiceError } from '../types/chat';
 
 const CHAT_HISTORY_LOAD_ERROR = 'Mesaj geçmişi yüklenemedi.';
@@ -39,11 +46,23 @@ interface ChatMessagesRefetchOptions {
   preserveMessages?: boolean;
 }
 
+interface ChatMealActivityContext {
+  relationId?: string | null;
+  clientId?: string | null;
+  dietitianId?: string | null;
+}
+
 export const useChatMessages = (
   conversationId?: string | null,
   currentUserId?: string,
+  activityContext?: ChatMealActivityContext,
 ) => {
+  const activityRelationId = activityContext?.relationId ?? null;
+  const activityClientId = activityContext?.clientId ?? null;
+  const activityDietitianId = activityContext?.dietitianId ?? null;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [mealActivities, setMealActivities] = useState<MealActivity[]>([]);
+  const [mealActivityError, setMealActivityError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +97,8 @@ export const useChatMessages = (
         setLoadOlderError(null);
         setNextCursor(null);
         setDisplayContextKey(null);
+        setMealActivities([]);
+        setMealActivityError(null);
       }
       return;
     }
@@ -90,15 +111,43 @@ export const useChatMessages = (
       setLoadOlderError(null);
       if (!preserveMessages) setNextCursor(null);
       setDisplayContextKey(contextKey);
+      if (!preserveMessages) {
+        setMealActivities([]);
+        setMealActivityError(null);
+      }
     }
 
     try {
-      const page = await fetchChatMessages(conversationId, currentUserId);
+      const activityPromise = activityRelationId && activityClientId && activityDietitianId
+        ? fetchMealActivities({
+          relationId: activityRelationId,
+          conversationId,
+          clientId: activityClientId,
+          dietitianId: activityDietitianId,
+          currentUserId,
+        })
+        : Promise.resolve([] as MealActivity[]);
+      const [pageResult, activityResult] = await Promise.allSettled([
+        fetchChatMessages(conversationId, currentUserId),
+        activityPromise,
+      ]);
+      if (pageResult.status === 'rejected') throw pageResult.reason;
       if (!mountedRef.current || generation !== requestGenerationRef.current) return;
+      const page = pageResult.value;
       setMessages((currentMessages) => (
         preserveMessages ? mergeMessages([...page.messages, ...currentMessages]) : mergeMessages(page.messages)
       ));
       setNextCursor(page.nextCursor);
+      if (activityResult.status === 'fulfilled') {
+        setMealActivities((currentActivities) => (
+          preserveMessages
+            ? mergeMealActivities(currentActivities, activityResult.value)
+            : mergeMealActivities([], activityResult.value)
+        ));
+        setMealActivityError(null);
+      } else {
+        setMealActivityError(getMealActivityUserMessage(activityResult.reason));
+      }
     } catch (cause) {
       if (!mountedRef.current || generation !== requestGenerationRef.current) return;
       setError(getSafeErrorMessage(cause, CHAT_HISTORY_LOAD_ERROR));
@@ -108,11 +157,23 @@ export const useChatMessages = (
         setIsLoading(false);
       }
     }
-  }, [conversationId, currentUserId]);
+  }, [activityClientId, activityDietitianId, activityRelationId, conversationId, currentUserId]);
 
   useEffect(() => {
     void refetch();
   }, [refetch]);
+
+  useEffect(() => {
+    if (!activityClientId || !activityDietitianId) return undefined;
+    const subscription = subscribeToMealActivityChanges({
+      clientId: activityClientId,
+      dietitianId: activityDietitianId,
+      onChange: () => void refetch({ preserveMessages: true }),
+    });
+    return () => {
+      void subscription.unsubscribe();
+    };
+  }, [activityClientId, activityDietitianId, refetch]);
 
   const loadOlder = useCallback(async () => {
     if (
@@ -164,6 +225,8 @@ export const useChatMessages = (
     isLoadingOlder: isCurrentContext ? isLoadingOlder : false,
     error: isCurrentContext ? error : null,
     loadOlderError: isCurrentContext ? loadOlderError : null,
+    mealActivities: isCurrentContext ? mealActivities : [],
+    mealActivityError: isCurrentContext ? mealActivityError : null,
     hasMore: isCurrentContext && nextCursor !== null,
     loadOlder,
     refetch,

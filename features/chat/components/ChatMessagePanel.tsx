@@ -9,16 +9,26 @@ import React, {
 import { ArrowLeft, Check, CheckCheck, MoreVertical } from "lucide-react";
 import { OptimisticChatMessage } from "../hooks/useChatComposer";
 import { ChatConversationListItem, ChatMessage } from "../types/chat";
+import type { MealActivity } from "../types/mealActivity";
 import { getChatReceiptState } from "../utils/receipts";
 import { ChatClientAvatar } from "./ChatConversationList";
 import ChatImageBubble from "./ChatImageBubble";
 import ChatImageViewer from "./ChatImageViewer";
 import { useChatImageUrls } from "../hooks/useChatImageUrls";
+import { useMealActivityPhotoUrls } from "../hooks/useMealActivityPhotoUrls";
+import ChatMealActivity from "./ChatMealActivity";
 import { getChatImageBubbleLabel } from "../utils/chatImageUiState";
+import {
+  shouldFollowLatestChat,
+  shouldAdjustInitialChatLayout,
+  shouldPositionInitialChat,
+} from "../utils/chatScrollLifecycle";
 
 interface ChatMessagePanelProps {
   conversation: ChatConversationListItem | null;
   messages: ChatMessage[];
+  mealActivities: MealActivity[];
+  mealActivityError: string | null;
   optimisticMessages: OptimisticChatMessage[];
   isLoading: boolean;
   isLoadingOlder: boolean;
@@ -43,6 +53,7 @@ interface ScrollAnchor {
 
 type TimelineMessage =
   | { key: string; createdAt: string; type: "server"; message: ChatMessage }
+  | { key: string; createdAt: string; type: "activity"; activity: MealActivity }
   | {
       key: string;
       createdAt: string;
@@ -254,6 +265,8 @@ const OptimisticChatMessageBubble: React.FC<{
 const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
   conversation,
   messages,
+  mealActivities,
+  mealActivityError,
   optimisticMessages,
   isLoading,
   isLoadingOlder,
@@ -275,11 +288,22 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
     retry: retryImage,
     empty: emptyImageState,
   } = useChatImageUrls(conversation?.conversationId, messages);
+  const {
+    states: mealActivityPhotoStates,
+    empty: emptyMealActivityPhotoState,
+  } = useMealActivityPhotoUrls(mealActivities);
   const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
-  useEffect(() => setViewerMessageId(null), [conversation?.conversationId]);
+  const [viewerActivityId, setViewerActivityId] = useState<string | null>(null);
+  useEffect(() => {
+    setViewerMessageId(null);
+    setViewerActivityId(null);
+  }, [conversation?.conversationId]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pendingOlderAnchorRef = useRef<ScrollAnchor | null>(null);
   const lastTimelineKeyRef = useRef<string | null>(null);
+  const initialPositionedConversationIdRef = useRef<string | null>(null);
+  const initialLayoutAdjustedConversationIdRef = useRef<string | null>(null);
+  const messageContentRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const [messagePendingDeletion, setMessagePendingDeletion] =
     useState<ChatMessage | null>(null);
@@ -296,6 +320,14 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
       type: "server",
       message,
     }));
+    mealActivities.forEach((activity) => {
+      items.push({
+        key: `activity:${activity.id}`,
+        createdAt: activity.createdAt,
+        type: "activity",
+        activity,
+      });
+    });
     for (const message of optimisticMessages)
       if (!serverClientMessageIds.has(message.clientMessageId))
         items.push({
@@ -309,7 +341,7 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
         left.createdAt.localeCompare(right.createdAt) ||
         left.key.localeCompare(right.key),
     );
-  }, [messages, optimisticMessages]);
+  }, [mealActivities, messages, optimisticMessages]);
   const latestTimelineKey = timeline.at(-1)?.key ?? null;
   const incomingMessagesById = useMemo(
     () =>
@@ -320,10 +352,20 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
       ),
     [messages],
   );
+  const hasPendingImageLayout = messages.some((message) => (
+    message.messageKind === "image" && imageStates[message.id] === undefined
+  )) || messages.some((message) => (
+    message.messageKind === "image" && imageStates[message.id]?.loading === true
+  )) || mealActivities.some((activity) => (
+    activity.photoPath !== null
+    && mealActivityPhotoStates[activity.id]?.loading === true
+  ));
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     pendingOlderAnchorRef.current = null;
     lastTimelineKeyRef.current = null;
+    initialPositionedConversationIdRef.current = null;
+    initialLayoutAdjustedConversationIdRef.current = null;
     isNearBottomRef.current = true;
   }, [conversationId]);
   useLayoutEffect(() => {
@@ -334,6 +376,44 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
       anchor.scrollTop + (container.scrollHeight - anchor.scrollHeight);
     pendingOlderAnchorRef.current = null;
   }, [isLoadingOlder, timeline]);
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!shouldPositionInitialChat({
+      conversationId,
+      isLoading,
+      latestTimelineKey,
+      hasPendingImageLayout,
+      hasPendingOlderLoad: Boolean(pendingOlderAnchorRef.current),
+      positionedConversationId: initialPositionedConversationIdRef.current,
+    }) || !container) return;
+
+    container.scrollTop = container.scrollHeight;
+    initialPositionedConversationIdRef.current = conversationId;
+    lastTimelineKeyRef.current = latestTimelineKey;
+  }, [conversationId, hasPendingImageLayout, isLoading, latestTimelineKey, timeline]);
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    const content = messageContentRef.current;
+    if (!container || !content || typeof ResizeObserver === "undefined") return undefined;
+
+    const observer = new ResizeObserver(() => {
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+      const shouldAdjust = shouldAdjustInitialChatLayout({
+        conversationId,
+        positionedConversationId: initialPositionedConversationIdRef.current,
+        distanceFromBottom,
+        adjustedConversationId: initialLayoutAdjustedConversationIdRef.current,
+        isNearBottom: isNearBottomRef.current,
+      });
+      if (!shouldAdjust) return;
+
+      container.scrollTop = container.scrollHeight;
+      initialLayoutAdjustedConversationIdRef.current = conversationId;
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [conversationId, timeline.length]);
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (
@@ -343,14 +423,17 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
       pendingOlderAnchorRef.current
     )
       return;
-    if (
-      lastTimelineKeyRef.current === null ||
-      (lastTimelineKeyRef.current !== latestTimelineKey &&
-        isNearBottomRef.current)
-    )
+    if (shouldFollowLatestChat({
+      conversationId,
+      latestTimelineKey,
+      previousTimelineKey: lastTimelineKeyRef.current,
+      isNearBottom: isNearBottomRef.current,
+      hasPendingOlderLoad: Boolean(pendingOlderAnchorRef.current),
+      positionedConversationId: initialPositionedConversationIdRef.current,
+    }))
       container.scrollTop = container.scrollHeight;
     lastTimelineKeyRef.current = latestTimelineKey;
-  }, [isLoading, latestTimelineKey]);
+  }, [conversationId, isLoading, latestTimelineKey]);
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container || typeof IntersectionObserver === "undefined")
@@ -496,7 +579,7 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
           className="min-h-0 flex-1 overflow-y-auto bg-slate-50/30 p-4 sm:p-6"
           aria-live="polite"
         >
-          <div className="space-y-3">
+          <div ref={messageContentRef} className="space-y-3">
             {hasMore && (
               <div className="text-center">
                 <button
@@ -528,7 +611,14 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
               </div>
             )}
             {timeline.map((item) =>
-              item.type === "server" ? (
+              item.type === "activity" ? (
+                <ChatMealActivity
+                  key={item.key}
+                  activity={item.activity}
+                  photoState={mealActivityPhotoStates[item.activity.id] ?? emptyMealActivityPhotoState}
+                  onOpenPhoto={() => setViewerActivityId(item.activity.id)}
+                />
+              ) : item.type === "server" ? (
                 <ChatMessageBubble
                   key={item.key}
                   message={item.message}
@@ -551,6 +641,11 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
           </div>
         </div>
       )}
+      {mealActivityError && (
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
+          {mealActivityError}
+        </div>
+      )}
       {receiptError && (
         <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
           {receiptError}
@@ -566,6 +661,18 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
               url={imageState.url}
               caption={getChatImageBubbleLabel(message)}
               onClose={() => setViewerMessageId(null)}
+            />
+          ) : null;
+        })()}
+      {viewerActivityId &&
+        (() => {
+          const activity = mealActivities.find((item) => item.id === viewerActivityId);
+          const photoState = activity ? mealActivityPhotoStates[activity.id] : null;
+          return activity && photoState?.url ? (
+            <ChatImageViewer
+              url={photoState.url}
+              caption={`${activity.mealTitle} fotoğrafı`}
+              onClose={() => setViewerActivityId(null)}
             />
           ) : null;
         })()}

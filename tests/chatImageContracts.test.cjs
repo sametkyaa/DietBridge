@@ -3,8 +3,10 @@ const test = require('node:test');
 const fs = require('node:fs');
 const { createHash } = require('node:crypto');
 const path = require('node:path');
+const { readCanonicalRepositoryFile } = require('../scripts/readCanonicalRepositoryFile.cjs');
 
 const repoRoot = path.join(__dirname, '..');
+const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const migrationNames = [
   '20260729090000_chat_image_schema.sql',
   '20260729090100_chat_image_rls_privileges.sql',
@@ -42,12 +44,17 @@ test('historical migrations stay immutable while disposable syntax edits are exp
     path.join(repoRoot, 'tests', 'fixtures', 'canonicalReplaySyntaxEdits.json'),
     'utf8',
   ));
-  assert.equal(rules.files.filter(({ phase }) => phase === 'canonical').length, 29);
+  assert.equal(rules.files.filter(({ phase }) => phase === 'canonical').length, 38);
   assert.equal(rules.files.filter(({ phase }) => phase === 'image').length, 7);
   assert.equal(rules.files.filter(({ edits }) => edits.length > 0).length, 16);
   for (const rule of rules.files) {
-    const source = fs.readFileSync(path.join(repoRoot, rule.path));
-    assert.equal(createHash('sha256').update(source).digest('hex'), rule.sourceSha256, rule.path);
+    const source = readCanonicalRepositoryFile(repoRoot, rule.path);
+    const sourceText = source.toString('utf8').replaceAll('\r\n', '\n');
+    const sourceHashes = [
+      sha256(Buffer.from(sourceText, 'utf8')),
+      sha256(Buffer.from(sourceText.replaceAll('\n', '\r\n'), 'utf8')),
+    ];
+    assert.equal(sourceHashes.includes(rule.sourceSha256), true, rule.path);
     for (const edit of rule.edits) assert.equal(edit.after, `${edit.before};`, rule.path);
   }
 

@@ -1,75 +1,217 @@
-import React, { createContext, useContext, useState, useEffect, PropsWithChildren } from 'react';
+import React, {
+  createContext,
+  PropsWithChildren,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Appointment } from '../../../shared/types';
-import { fetchAppointments, createAppointment, deleteAppointmentService } from '../services/appointmentService';
+import { useAuth } from '../../auth/context/AuthContext';
+import {
+  AppointmentBookingCheck,
+  AppointmentServiceError,
+  checkAppointmentBooking as checkAppointmentBookingService,
+  createAppointment,
+  deleteAppointmentService,
+  fetchAppointments,
+  updateAppointment as updateAppointmentService,
+} from '../services/appointmentService';
+import {
+  AppointmentDraft,
+  sortAppointmentsChronologically,
+} from '../utils/appointmentContract';
 
 interface AppointmentContextType {
   appointments: Appointment[];
   loading: boolean;
-  addAppointment: (appointment: Appointment) => Promise<void>;
-  deleteAppointment: (id: string) => Promise<void>;
+  error: string | null;
+  mutationError: string | null;
+  pendingAction: string | null;
+  refreshAppointments: () => Promise<boolean>;
+  addAppointment: (draft: AppointmentDraft) => Promise<AppointmentMutationResult>;
+  updateAppointment: (id: string, draft: AppointmentDraft) => Promise<AppointmentMutationResult>;
+  deleteAppointment: (id: string) => Promise<AppointmentMutationResult>;
+  checkAppointmentBooking: (
+    draft: AppointmentDraft,
+    appointmentId?: string,
+  ) => Promise<AppointmentBookingCheckResult>;
+  clearMutationError: () => void;
   getAppointmentsByDate: (date: string) => Appointment[];
 }
+
+export type AppointmentMutationResult =
+  | { success: false }
+  | { success: true; refreshSucceeded: boolean };
+
+export type AppointmentBookingCheckResult =
+  | { success: true; value: AppointmentBookingCheck }
+  | { success: false; message: string };
 
 const AppointmentContext = createContext<AppointmentContextType>({
   appointments: [],
   loading: false,
-  addAppointment: async () => {},
-  deleteAppointment: async () => {},
+  error: null,
+  mutationError: null,
+  pendingAction: null,
+  refreshAppointments: async () => false,
+  addAppointment: async () => ({ success: false }),
+  updateAppointment: async () => ({ success: false }),
+  deleteAppointment: async () => ({ success: false }),
+  checkAppointmentBooking: async () => ({
+    success: false,
+    message: 'Randevu kaydedilemedi. Lütfen tekrar deneyin.',
+  }),
+  clearMutationError: () => {},
   getAppointmentsByDate: () => [],
 });
 
+const getUserMessage = (error: unknown, fallback: string) => (
+  error instanceof AppointmentServiceError ? error.userMessage : fallback
+);
+
 export const AppointmentProvider = ({ children }: PropsWithChildren) => {
+  const { accessState, user } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const pendingActionRef = useRef<string | null>(null);
+  const requestVersion = useRef(0);
 
-  // Load appointments from Supabase on mount
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      const data = await fetchAppointments();
-      setAppointments(data);
+  const isAllowed = accessState.status === 'allowed' && Boolean(user?.id);
+
+  const refreshAppointments = useCallback(async () => {
+    if (!isAllowed) {
+      requestVersion.current += 1;
+      setAppointments([]);
+      setError(null);
       setLoading(false);
-    };
-    loadData();
-  }, []);
-
-  const addAppointment = async (appointment: Appointment) => {
-    // Optimistic update (optional) or wait for DB
-    // Here we wait for DB to ensure data consistency
-    const savedAppointment = await createAppointment(appointment);
-    
-    if (savedAppointment) {
-      setAppointments((prev) => [...prev, savedAppointment]);
-    } else {
-      // Fallback for offline/demo mode if DB fails
-      console.warn("Veritabanına kayıt başarısız, yerel gösterim yapılıyor.");
-      setAppointments((prev) => [...prev, appointment]);
+      return false;
     }
-  };
 
-  const deleteAppointment = async (id: string) => {
-    const success = await deleteAppointmentService(id);
-    if (success) {
-      setAppointments((prev) => prev.filter((a) => a.id !== id));
-    } else {
-      // If it's a mock ID or a temporary local ID (timestamp), still remove it from UI
-      // UUIDs are 36 chars. Timestamps are usually 13 chars.
-      // If deletion failed on DB (e.g. invalid UUID error), and ID is not a UUID, it's likely a local-only item.
-      if (id.startsWith('mock-') || id.length !== 36) {
-         setAppointments((prev) => prev.filter((a) => a.id !== id));
+    const requestId = ++requestVersion.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchAppointments();
+      if (requestId !== requestVersion.current) return false;
+      setAppointments(data);
+      return true;
+    } catch (loadError) {
+      if (requestId !== requestVersion.current) return false;
+      setAppointments([]);
+      setError(getUserMessage(loadError, 'Randevular yüklenemedi. Lütfen tekrar deneyin.'));
+      return false;
+    } finally {
+      if (requestId === requestVersion.current) setLoading(false);
+    }
+  }, [isAllowed]);
+
+  useEffect(() => {
+    void refreshAppointments();
+    return () => {
+      requestVersion.current += 1;
+    };
+  }, [refreshAppointments, user?.id]);
+
+  const runMutation = useCallback(async (
+    actionKey: string,
+    mutation: () => Promise<unknown>,
+    fallbackMessage: string,
+  ) => {
+    if (pendingActionRef.current) return { success: false } as AppointmentMutationResult;
+    pendingActionRef.current = actionKey;
+    setPendingAction(actionKey);
+    setMutationError(null);
+    try {
+      await mutation();
+      const refreshSucceeded = await refreshAppointments();
+      if (!refreshSucceeded) {
+        setMutationError('İşlem tamamlandı ancak liste yenilenemedi. Lütfen tekrar deneyin.');
+      }
+      return { success: true, refreshSucceeded } as AppointmentMutationResult;
+    } catch (mutationFailure) {
+      setMutationError(getUserMessage(mutationFailure, fallbackMessage));
+      return { success: false } as AppointmentMutationResult;
+    } finally {
+      if (pendingActionRef.current === actionKey) {
+        pendingActionRef.current = null;
+        setPendingAction(null);
       }
     }
-  };
+  }, [refreshAppointments]);
 
-  const getAppointmentsByDate = (date: string) => {
-    return appointments.filter((a) => a.date === date).sort((a, b) => a.time.localeCompare(b.time));
-  };
+  const addAppointment = useCallback((draft: AppointmentDraft) => runMutation(
+    'create',
+    () => createAppointment(draft),
+    'Randevu kaydedilemedi. Lütfen tekrar deneyin.',
+  ), [runMutation]);
 
-  return (
-    <AppointmentContext.Provider value={{ appointments, loading, addAppointment, deleteAppointment, getAppointmentsByDate }}>
-      {children}
-    </AppointmentContext.Provider>
-  );
+  const updateAppointment = useCallback((id: string, draft: AppointmentDraft) => runMutation(
+    `update:${id}`,
+    () => updateAppointmentService(id, draft),
+    'Randevu güncellenemedi. Lütfen tekrar deneyin.',
+  ), [runMutation]);
+
+  const deleteAppointment = useCallback((id: string) => runMutation(
+    `delete:${id}`,
+    () => deleteAppointmentService(id),
+    'Randevu silinemedi. Lütfen tekrar deneyin.',
+  ), [runMutation]);
+
+  const checkAppointmentBooking = useCallback(async (
+    draft: AppointmentDraft,
+    appointmentId?: string,
+  ): Promise<AppointmentBookingCheckResult> => {
+    try {
+      const value = await checkAppointmentBookingService(draft, appointmentId);
+      return { success: true, value };
+    } catch (checkError) {
+      return {
+        success: false,
+        message: getUserMessage(checkError, 'Randevu kaydedilemedi. Lütfen tekrar deneyin.'),
+      };
+    }
+  }, []);
+
+  const getAppointmentsByDate = useCallback((date: string) => (
+    sortAppointmentsChronologically(
+      appointments.filter((appointment) => appointment.date === date),
+    )
+  ), [appointments]);
+
+  const value = useMemo<AppointmentContextType>(() => ({
+    appointments,
+    loading,
+    error,
+    mutationError,
+    pendingAction,
+    refreshAppointments,
+    addAppointment,
+    updateAppointment,
+    deleteAppointment,
+    checkAppointmentBooking,
+    clearMutationError: () => setMutationError(null),
+    getAppointmentsByDate,
+  }), [
+    addAppointment,
+    appointments,
+    checkAppointmentBooking,
+    deleteAppointment,
+    error,
+    getAppointmentsByDate,
+    loading,
+    mutationError,
+    pendingAction,
+    refreshAppointments,
+    updateAppointment,
+  ]);
+
+  return <AppointmentContext.Provider value={value}>{children}</AppointmentContext.Provider>;
 };
 
 export const useAppointments = () => useContext(AppointmentContext);

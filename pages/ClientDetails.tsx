@@ -821,7 +821,7 @@ const ClientDetails = () => {
   const hasDailyLogs = recentLogs.length > 0;
   const hasWaterData = recordedWaterValues.length > 0;
   const waterAvg = hasWaterData
-    ? (recordedWaterValues.reduce((sum, value) => sum + value, 0) / recordedWaterValues.length / 1000).toFixed(1)
+    ? (recordedWaterValues.reduce((sum, value) => sum + value, 0) / recordedWaterValues.length).toFixed(1)
     : null;
   const waterAverageLabel = recordedWaterValues.length === 1
     ? 'Son Kayıt'
@@ -831,8 +831,8 @@ const ClientDetails = () => {
   const waterData = recentLogs.map(log => {
       const d = new Date(log.date);
       return {
-          val: typeof log.water_intake === 'number'
-            ? parseFloat((log.water_intake / 1000).toFixed(1))
+        val: typeof log.water_intake === 'number'
+            ? parseFloat(log.water_intake.toFixed(1))
             : null,
           day: dayNames[d.getDay()] || '-'
       };
@@ -889,6 +889,14 @@ const ClientDetails = () => {
                           className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                         >
                             Planı Düzenle
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/clients/${client.id}/meal-tracking`)}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                        >
+                            <Utensils className="h-4 w-4 text-primary" aria-hidden="true" />
+                            Öğün Takibi
                         </button>
                         <button 
                           onClick={() => handleRemoveClient(client.relationId)}

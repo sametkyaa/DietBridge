@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Phone, BookOpen, Award, Clock, FileText, Edit, LogOut, ArrowUpRight, Camera, Trash2, Loader2 } from 'lucide-react';
+import { User, Mail, Phone, BookOpen, Award, Clock, Edit, LogOut, Camera, Trash2, Loader2 } from 'lucide-react';
 import { getCurrentDietitianProfile, removeDietitianAvatar, uploadDietitianAvatar } from '../services/dietitianService';
 import { DietitianProfile } from '../../../shared/types';
 import { USER_AVATAR } from '../../../shared/constants';
@@ -249,26 +249,6 @@ const DietitianProfilePage = () => {
               <p className="text-slate-600 leading-relaxed whitespace-pre-line">
                  {profile.bio || 'Henüz bir biyografi eklenmemiş.'}
               </p>
-           </div>
-
-           {/* Diploma */}
-           <div className="bg-white rounded-2xl p-8 border border-slate-100 shadow-sm">
-              <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                 <FileText className="w-5 h-5 text-emerald-600" /> Diploma
-              </h3>
-              <div className="relative group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 max-w-sm">
-                 <img src={profile.diploma_url} alt="Diploma" className="w-full h-auto object-cover opacity-90 transition-opacity hover:opacity-100" />
-                 <a 
-                   href={profile.diploma_url} 
-                   target="_blank" 
-                   rel="noopener noreferrer"
-                   className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                 >
-                    <div className="px-4 py-2 bg-white rounded-lg text-sm font-bold text-slate-800 flex items-center gap-2">
-                       Görüntüle <ArrowUpRight className="w-4 h-4" />
-                    </div>
-                 </a>
-              </div>
            </div>
 
         </div>
