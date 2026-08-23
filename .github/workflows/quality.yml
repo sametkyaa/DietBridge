@@ -29,12 +29,6 @@ jobs:
     steps:
       - name: Checkout Web
         uses: actions/checkout@v4
-      - name: Checkout canonical Mobile contract source
-        uses: actions/checkout@v4
-        with:
-          repository: sametkyaa/DietBridge-Mobile
-          ref: main
-          path: _mobile
       - name: Use Node.js 24
         uses: actions/setup-node@v4
         with:
@@ -46,6 +40,12 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+      - name: Checkout canonical Mobile contract source
+        uses: actions/checkout@v4
+        with:
+          repository: sametkyaa/DietBridge-Mobile
+          ref: main
+          path: _mobile
       - name: Unit and contract tests
         run: npm run test
       - name: Production build
