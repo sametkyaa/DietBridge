@@ -67,12 +67,19 @@ const materializeFile = (repoRoot, file) => {
   if (sourceHash !== file.sourceSha256) {
     const sourceText = sourceBytes.toString('utf8');
     const withoutCrlf = sourceText.replaceAll('\r\n', '');
-    if (!withoutCrlf.includes('\r')) {
-      const lfBytes = Buffer.from(sourceText.replaceAll('\r\n', '\n'), 'utf8');
-      const lfHash = sha256(lfBytes);
-      if (lfHash === file.sourceSha256) {
-        sourceBytes = lfBytes;
-        sourceHash = lfHash;
+    if (withoutCrlf.includes('\r')) {
+      throw new Error(`Bare carriage return rejected for ${file.path}`);
+    }
+    const normalizedLf = sourceText.replaceAll('\r\n', '\n');
+    for (const candidate of [
+      Buffer.from(normalizedLf, 'utf8'),
+      Buffer.from(normalizedLf.replaceAll('\n', '\r\n'), 'utf8'),
+    ]) {
+      const candidateHash = sha256(candidate);
+      if (candidateHash === file.sourceSha256) {
+        sourceBytes = candidate;
+        sourceHash = candidateHash;
+        break;
       }
     }
   }

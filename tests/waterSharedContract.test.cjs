@@ -9,8 +9,11 @@ const buildDir = process.env.MEAL_PLAN_CONTRACT_BUILD_DIR;
 if (!buildDir) throw new Error('MEAL_PLAN_CONTRACT_BUILD_DIR is required; run via `npm run test`.');
 
 const readWeb = (relativePath) => fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
+const mobileRepoRoot = process.env.DIETBRIDGE_MOBILE_REPO
+  ? path.resolve(process.env.DIETBRIDGE_MOBILE_REPO)
+  : path.join(__dirname, '..', '..', 'DietBridge-Mobile-MVP10');
 const readMobile = (relativePath) => fs.readFileSync(
-  path.join(__dirname, '..', '..', 'DietBridge-Mobile-MVP10', relativePath),
+  path.join(mobileRepoRoot, relativePath),
   'utf8',
 );
 

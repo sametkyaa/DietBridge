@@ -7,6 +7,10 @@ const path = require('node:path');
 
 const repoRoot = path.join(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
+const mobileRepoRoot = process.env.DIETBRIDGE_MOBILE_REPO
+  ? path.resolve(process.env.DIETBRIDGE_MOBILE_REPO)
+  : path.join(repoRoot, '..', 'DietBridge-Mobile-MVP10');
+const readMobile = (relativePath) => fs.readFileSync(path.join(mobileRepoRoot, relativePath), 'utf8');
 
 const inventory = read('docs/MVP10_SHARED_CONTRACT_INVENTORY.md');
 const baseline = read('supabase/migrations/20260713000001_production_public_baseline.sql');
@@ -15,7 +19,7 @@ const weeklyPlanRpc = read('supabase/migrations/20260724063211_persist_recipe_me
 const measurementAlignment = read('supabase/migrations/20260801090000_align_measurements_with_mobile.sql');
 const sharedHarness = read('scripts/runDisposableMvp10SharedContractHarness.mjs');
 const waterSharedContract = read('tests/waterSharedContract.test.cjs');
-const mobileWaterTracker = read('../DietBridge-Mobile-MVP10/apps/mobile/src/features/clients/components/dashboard/WaterTrackerCard.js');
+const mobileWaterTracker = readMobile('apps/mobile/src/features/clients/components/dashboard/WaterTrackerCard.js');
 
 test('MVP-10 inventory records the canonical Web/Mobile repositories and closure flows', () => {
   for (const marker of [
@@ -79,7 +83,7 @@ test('MVP-10 daily water contract stays in persisted liters across Web and Mobil
 });
 
 test('Mobile appointments remain read-only and subscription UI remains absent', () => {
-  const mobileFeatures = fs.readdirSync(path.join(repoRoot, '..', 'DietBridge-Mobile-MVP10', 'apps/mobile/src/features'));
+  const mobileFeatures = fs.readdirSync(path.join(mobileRepoRoot, 'apps/mobile/src/features'));
   assert.equal(mobileFeatures.includes('appointments'), true);
   assert.equal(mobileFeatures.includes('subscriptions'), false);
   assert.match(inventory, /read-only appointment list\/detail service surface/i);

@@ -19,6 +19,7 @@ env:
   TZ: Europe/Istanbul
   VITE_SUPABASE_URL: http://127.0.0.1:54321
   VITE_SUPABASE_ANON_KEY: ci-static-build-placeholder
+  DIETBRIDGE_MOBILE_REPO: ${{ github.workspace }}/_mobile
 
 jobs:
   web-quality:
@@ -26,8 +27,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Checkout Web
         uses: actions/checkout@v4
+      - name: Checkout canonical Mobile contract source
+        uses: actions/checkout@v4
+        with:
+          repository: sametkyaa/DietBridge-Mobile
+          ref: main
+          path: _mobile
       - name: Use Node.js 24
         uses: actions/setup-node@v4
         with:

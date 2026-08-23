@@ -43,6 +43,24 @@ test('materializer creates the exact current migration copies and an external ma
   }
 });
 
+test('materializer preserves the allowlisted bytes across LF and CRLF checkouts', async (t) => {
+  const parent = makeTemp('dietbridge-materializer-eol-');
+  const fakeRoot = join(parent, 'repo');
+  const outputRoot = join(parent, 'output');
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  cpSync(join(repoRoot, 'supabase', 'migrations'), join(fakeRoot, 'supabase', 'migrations'), { recursive: true });
+  mkdirSync(join(fakeRoot, 'tests', 'fixtures'), { recursive: true });
+  cpSync(rulesPath, join(fakeRoot, 'tests', 'fixtures', 'canonicalReplaySyntaxEdits.json'));
+  const target = join(fakeRoot, 'supabase', 'migrations', '20260713000000_staging_default_table_privileges.sql');
+  writeFileSync(target, readFileSync(target, 'utf8').replaceAll('\r\n', '\n'));
+
+  const { materializeDisposableReplay } = await import(scriptUrl);
+  const runtime = materializeDisposableReplay({ repoRoot: fakeRoot, outputRoot });
+  const file = runtime.files.find(({ path }) => path.endsWith('20260713000000_staging_default_table_privileges.sql'));
+  assert.equal(file.sourceSha256, '7d56d97b111215f274492a1be3fac4c9ddc411c50a5240702120ed9e3e037508');
+  assert.equal(sha256(readFileSync(join(outputRoot, file.path))), file.materializedSha256);
+});
+
 test('canonical reader preserves LF-pinned hashes on stale and fresh checkouts', () => {
   const { readCanonicalRepositoryFile } = require('../scripts/readCanonicalRepositoryFile.cjs');
   const relativePath = join('supabase', 'migrations', '20260807115919_mvp_security_hardening_reconciliation.sql');

@@ -120,7 +120,12 @@ test('reports the verified source and materialized hashes', async (t) => {
   for (const file of result.manifest.files) {
     const source = readCanonicalRepositoryFile(repoRoot, file.path);
     const materialized = readFileSync(join(result.tempRoot, file.path));
-    assert.equal(sha256(source), file.sourceSha256, file.path);
+    const sourceText = source.toString('utf8').replaceAll('\r\n', '\n');
+    const sourceHashes = [
+      sha256(Buffer.from(sourceText, 'utf8')),
+      sha256(Buffer.from(sourceText.replaceAll('\n', '\r\n'), 'utf8')),
+    ];
+    assert.equal(sourceHashes.includes(file.sourceSha256), true, file.path);
     assert.equal(sha256(materialized), file.materializedSha256, file.path);
   }
 });
