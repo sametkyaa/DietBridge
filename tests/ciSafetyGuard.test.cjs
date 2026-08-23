@@ -24,4 +24,3 @@ test('CI safety guard requires loopback for disposable targets', async () => {
   );
   assert.equal(assertCiSafeEnvironment({ SUPABASE_URL: 'http://127.0.0.1:54321' }, { requireLoopback: true }), true);
 });
-

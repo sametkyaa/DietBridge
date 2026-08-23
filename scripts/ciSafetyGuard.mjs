@@ -37,4 +37,3 @@ export const assertCiSafeEnvironment = (
 export const ciSafetyConstants = Object.freeze({
   productionProjectRef: PRODUCTION_PROJECT_REF,
 });
-

@@ -33,4 +33,3 @@ for (const harness of harnesses) {
 }
 
 process.stdout.write('BACKEND_INTEGRATION_GATE_PASS\n');
-

@@ -28,4 +28,3 @@ for (const args of commands) {
 }
 
 process.stdout.write('WEB_CONTRACT_TEST_GATE_PASS\n');
-

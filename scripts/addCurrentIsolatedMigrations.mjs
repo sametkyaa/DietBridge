@@ -19,4 +19,3 @@ export const addCurrentIsolatedMigrations = ({ repoRoot, tempRoot }) => {
   if (count !== 49) throw new Error(`Current disposable migration count must be 49, received ${count}.`);
   return { canonical: 48, localPrerequisite: 1, total: count };
 };
-

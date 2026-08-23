@@ -73,4 +73,3 @@ test('approved dietitian restores session, reads a persisted client profile, and
   await expect(page).toHaveURL(/\/login$/);
   expect(fatalErrors).toEqual([]);
 });
-
