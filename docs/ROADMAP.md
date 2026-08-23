@@ -1,6 +1,6 @@
 # DietBridge — MVP Closure Roadmap
 
-> Son uzlaştırma: 2026-08-07. Bu bölüm bundan sonraki aktif çalışma planıdır. Aşağıdaki `Historical Production Roadmap` bölümü geçmiş yürütme kaydını korur; tarihsel durum cümleleri güncel görev seçimi veya release kararı değildir.
+> Son uzlaştırma: 2026-08-23. Bu bölüm bundan sonraki aktif çalışma planıdır. Aşağıdaki `Historical Production Roadmap` bölümü geçmiş yürütme kaydını korur; tarihsel durum cümleleri güncel görev seçimi veya release kararı değildir.
 
 ## 1. MVP-0 sonucu ve kapsam dondurma kararı
 
@@ -94,15 +94,15 @@ Bu tablo 2026-08-07 tarihli repository kanıtına dayanır. Runtime veya product
 | Analytics | `MVP / REAL-DATA IMPLEMENTATION NOT STARTED` | Aktif web route hardcoded seriler ve sahte loading kullanıyor |
 | Subscription | `NOT STARTED` | Product/provider/schema/enforcement/checkout akışı yok |
 | Web/Mobile Contract | `PARTIAL` | Meal, measurement, recipe ve chat contract çalışmaları var; tek migration authority kararı henüz resmileştirilmedi |
-| CI | `PARTIAL` | `typecheck`, `lint`, `test`, `build` scriptleri var; `.github` CI workflow'u yok, test kapsamı dar |
-| Release | `BLOCKED` | Security, daily logs, meal release closure, appointments, tasks, analytics, subscription, CI ve RC kapıları açık |
+| CI | `COMPLETED — 2026-08-23` | Web/Mobile GitHub Actions, disposable backend/browser katmanları ve protected required checks gerçek PR koşularında PASS |
+| Release | `NOT STARTED — MVP-11 CLOSED` | MVP-12 release-candidate hazırlığı ve yayın onayı henüz başlatılmadı |
 
 ### Repository uzlaştırma notları
 
 - Aktif zincir `index.html → index.tsx → App.tsx`; dashboard, clients, analytics, meal plans, messages, recipes, appointments ve profile route'ları buradan yüklenir.
 - Eski roadmap'in chat'i sabit `CONVERSATIONS` ile bekliyor göstermesi güncel değildir. Chat + image uygulanmış ve tarihsel Aşama 6 kapanış kaydı da bunu doğrular.
 - Eski roadmap'in Recipes alanını tümüyle mock göstermesi güncel değildir. Liste/CRUD/image gerçek backend'e geçmiştir; legacy detail route nedeniyle release verification açık tutulur.
-- Eski roadmap'in “yalnız dev/build/preview var; lockfile/lint/test yok” envanteri güncel değildir. Web `package.json` artık `typecheck`, `lint`, `test`, `build` scriptlerini ve lockfile'ı içerir; CI workflow'u yine yoktur.
+- Eski roadmap'in “yalnız dev/build/preview var; lockfile/lint/test veya CI yok” envanteri güncel değildir. Web ve Mobile canonical kalite scriptlerine, lockfile'lara, GitHub Actions workflow'larına ve protected required checks'e sahiptir.
 - Aşama 5 satırının `Bekliyor` olması güncel değildir. Implementation tamamlanmış, release verification beklemektedir.
 - Production security bütünü geçmiş Aşama 3 kapanışıyla otomatik olarak tamam sayılmaz; güncel Security Advisor bulguları ayrıca yeniden sınıflandırılacaktır.
 
@@ -227,13 +227,17 @@ Schema ownership, migration authority, table/RPC contracts, Storage paths, `dail
 
 ### MVP-11 — CI / Automated Quality Gate
 
-Mevcut scriptlerle hedef sıra:
+**Durum:** `COMPLETED — 2026-08-23`. Web PR #17 üzerinde `Web Quality Gate`, `Backend Integration Gate` ve `Critical E2E Gate`; Mobile protected PR'larında `Mobile Quality Gate` gerçek GitHub Actions runner'larında geçmiştir. İki `main` branch'i strict required checks ve PR zorunluluğuyla korunur; başarısız veya pending check merge'i engeller.
+
+Canonical Web sıra:
 
 ```text
 npm ci → typecheck → lint → test → build
 ```
 
 CI kritik test kapsamı auth, ownership, appointments, tasks, analytics calculations, meals, chat ve subscription limits alanlarını içerir.
+
+Browser E2E, unauthenticated access, client-role rejection, pending/rejected dietitian, approved login/session restore, persisted client/profile read ve logout akışlarını disposable Supabase üzerinde doğrular. Daha geniş plan/meal, appointment, Chat/image, subscription/limit, reminder ve Push matrisi deterministic backend/service katmanında tutulur. CI Production secret/verisi kullanmaz ve Production'a yazmaz.
 
 ### MVP-12 — Production Release Candidate
 
@@ -657,9 +661,9 @@ Bu alanlar gerçek veriyle çalışmıyorsa production kapsamından çıkarılma
 - **Kabul kriterleri:** `npm ci`, typecheck, lint, test ve build başarılı; CI başarısızsa merge engellenir; production secret/veri kullanılmaz.
 - **Manuel doğrulama:** CI logları ve kritik E2E tekrarları.
 - **Teslim çıktıları:** Test paketleri, CI pipeline ve kalite raporu.
-- **Durum:** Bekliyor.
+- **Durum:** Tamamlandı — 2026-08-23. Web/Mobile required checks, disposable backend/browser matrisi ve merge-blocking branch protection gerçek GitHub PR'larında PASS.
 
-Kritik E2E senaryoları: diyetisyen kayıt/giriş; client rol reddi; onaysız diyetisyen; danışan ekleme/profil; plan ve öğün CRUD; mesaj/görsel; randevu CRUD; abonelik; paket limiti; logout/session restore.
+Kritik browser E2E senaryoları: unauthenticated redirect; client rol reddi; pending/rejected diyetisyen; approved login/session restore; persisted danışan/profil okuma; logout. Plan/öğün, mesaj/görsel, randevu, abonelik/paket limiti, reminder ve Push davranışları disposable backend/service matrisindedir.
 
 ### Aşama 12 — Production yayın hazırlığı
 
@@ -785,7 +789,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 8 | Abonelik | Bekliyor | `codex/subscriptions` |  |  |  |
 | 9 | Mock temizliği | Bekliyor | `codex/mock-cleanup` |  |  |  |
 | 10 | Repository temizliği | Bekliyor | `codex/repository-cleanup` |  |  |  |
-| 11 | Test ve kalite | Bekliyor | `codex/quality-baseline` |  |  |  |
+| 11 | Test ve kalite | Tamamlandı | `codex/quality-baseline` | 2026-08-23 | 2026-08-23 | Web/Mobile Actions, disposable backend/browser kapıları ve protected required checks PASS |
 | 12 | Yayın hazırlığı | Bekliyor | `codex/release-preparation` |  |  |  |
 | 13 | Yayın sonrası doğrulama | Bekliyor | `codex/post-release-validation` |  |  |  |
 
@@ -793,6 +797,7 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 
 | Tarih | Aşama | Değişiklik | Durum | İlgili branch/PR |
 |---|---|---|---|---|
+| 2026-08-23 | Aşama 11 | Web/Mobile automated quality gates, disposable backend/browser coverage ve protected required checks kapatıldı | Tamamlandı | `codex/quality-baseline`, Web PR #17, Mobile PR #8/#9 |
 | 2026-07-12 | Aşama 0 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu | Tamamlandı | `codex/project-governance` |
 | 2026-07-12 | Aşama 1 | Teknik temel, lockfile, lint, typecheck ve environment standardizasyonu hazırlandı | İncelemeye hazır | codex/project-foundation |
 | 2026-07-12 | Aşama 1 | Node.js 24 LTS altında npm ci, typecheck, lint ve production build doğrulandı | Tamamlandı | `codex/project-foundation` |

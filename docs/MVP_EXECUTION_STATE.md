@@ -1,13 +1,13 @@
 # DietBridge MVP Execution State
 
 Current Gate:
-MVP-10 — Web / Mobile Shared Contract Closure
+MVP-11 — CI / Automated Quality Gate
 
 Status:
-MVP-10 — COMPLETE (2026-08-13) — Web/Mobile shared contract closure, final water contract correction, read-only production verification and sealed security review PASS; STOPPED BEFORE MVP-11
+MVP-11 — COMPLETE (2026-08-23) — Web/Mobile automated quality gates, disposable backend/browser coverage, protected required checks and controlled GitHub integration PASS; STOPPED BEFORE MVP-12
 
 Last Verified Base Commit:
-Web source checkpoint `6d7396186c95f574dbf4ffbc8020e3ebe2b60283` (`fix: correct MVP-10 water contract`); final closure documentation is recorded in the follow-up local checkpoint.
+Web full-CI source checkpoint `17d9b1af6db24c47a502c3763ae30601befab72c`; Mobile protected `main` checkpoint `11df76e59e708f979f8a96dcd308e407e1b5c05c`. Final MVP-11 documentation and Web workflow deduplication are recorded in the follow-up closure checkpoint.
 
 MVP-4 Checkpoint:
 This document is included in the verified local MVP-4 checkpoint commit.
@@ -27,6 +27,21 @@ Completed Gates:
 - MVP-8 — COMPLETE (2026-08-12); operational dashboard closure and local/runtime/security gates PASS
 - MVP-9 — COMPLETE (2026-08-12); mock/local cleanup, full Web gates and independent diff review PASS
 - MVP-10 — COMPLETE (2026-08-12); Web/Mobile shared contract closure, disposable runtime matrix, full quality gates and independent security reviews PASS; stopped before MVP-11
+- MVP-11 — COMPLETE (2026-08-23); real GitHub Actions, disposable backend/browser coverage and protected required checks PASS; stopped before MVP-12
+
+MVP-11 CI / Automated Quality Gate:
+- Dedicated isolated worktrees: Web `C:\dev\DietBridge-Web-MVP11`, Mobile `C:\dev\DietBridge-Mobile-MVP11`; branch `codex/quality-baseline` in each repository. The user's dirty Web worktree was not modified.
+- Web canonical commands: `npm ci`, `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, `npm run test:backend`, and `npm run test:e2e`. Core coverage is 288/288 plus CI guard 3/3, Notification client/UI contracts 13/13 and 8/8, and Push static contracts.
+- Mobile canonical commands: `npm ci`, `npm run typecheck`, `npm run lint`, `npm run test`, `npm run expo:config`, `npm run export:android`, and `npm run export:ios`. Active-source typecheck PASS; lint PASS with 0 errors / 44 existing warnings; full discovery 266/266; both platform exports PASS.
+- Web GitHub Actions checks: `Web Quality Gate`, `Backend Integration Gate`, and `Critical E2E Gate`. Full PR run `32628761136` PASS at source checkpoint `17d9b1af6db24c47a502c3763ae30601befab72c`.
+- Mobile GitHub Actions check: `Mobile Quality Gate`. Protected PR #8 integrated the quality baseline; protected follow-up PR #9 integrated branch-run deduplication. Mobile canonical `main` is `11df76e59e708f979f8a96dcd308e407e1b5c05c` at this checkpoint.
+- Critical browser E2E is deterministic and non-Production: unauthenticated redirect, client-role rejection, pending/rejected dietitian blocking, approved login/session restore, persisted client/profile read, and logout. Plan/meal, appointment, Chat/image, subscription/limit, reminder and Push invariants remain in the lower-flake disposable backend/service layer.
+- Backend integration replays 48 canonical migrations plus one local-only prerequisite and covers Notification Core, appointments, meal visibility/completion, subscriptions, reminders, Push registry/outbox and Web/Mobile shared contracts. Fixture, Auth, relationship, Storage/queue, Docker and temp residue checks pass.
+- `main` branch protection is enabled in both repositories. Web requires all three Web checks; Mobile requires `Mobile Quality Gate`; strict checks and PRs are required, admins are enforced, force-push and deletion are disabled. A pending Backend check was observed to set Web PR #17 to `mergeable_state=blocked`.
+- CI uses Node.js 24, npm lockfiles, read-only workflow tokens, per-job timeouts, branch-scoped concurrency and failure-only Playwright artifacts. Feature branches run through PR events; protected `main` reruns on push.
+- No Production database/Auth/Storage/RLS mutation, migration, synthetic Production account, secret/Vault/cron change or deployment occurred. All test actors and writes were limited to disposable loopback Supabase stacks with cleanup.
+- Dependency findings remain explicit non-blocking debt: Web 5 high advisories; Mobile 27 advisories (1 low, 10 moderate, 15 high, 1 critical). Safe lockfile dry-runs produced no compatible repair; no forced or major framework upgrade was applied. Focused workflow security review found 0 P0/P1.
+- Final boundary: MVP-11 is closed. MVP-12 release preparation, deployment/public launch and Push 6C.2+ are not started.
 
 MVP-9 Mock / Local Cleanup:
 - Dedicated branch: `codex/mvp9-mock-cleanup`; base checkpoint `8dea423` (`feat: close MVP-8 dashboard closure`).

@@ -53,7 +53,7 @@ npm run export:ios
 - Web repository: `Critical E2E Gate`
 - Mobile repository: `Mobile Quality Gate`
 
-Workflow token yetkisi `contents: read` ile sınırlıdır. `pull_request_target` kullanılmaz. Yeni commit aynı PR/branch için eski koşumu iptal eder; her job timeout'ludur. Playwright trace/screenshot yalnız hata halinde, sentetik fixture'larla ve yedi gün tutulur.
+Workflow token yetkisi `contents: read` ile sınırlıdır. `pull_request_target` kullanılmaz. Feature branch'ler yalnız PR event'inde çalışır; protected `main` push sonrasında yeniden doğrulanır. Yeni commit aynı PR/branch için eski koşumu iptal eder; her job timeout'ludur. Playwright trace/screenshot yalnız hata halinde, sentetik fixture'larla ve yedi gün tutulur.
 
 ## Bilinen non-blocking debt
 
