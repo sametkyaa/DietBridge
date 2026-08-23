@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 
 import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalReplay.mjs';
+import { addCurrentIsolatedMigrations } from './addCurrentIsolatedMigrations.mjs';
 
 /**
  * MVP-7 disposable runtime harness.
@@ -28,7 +29,9 @@ const SUPABASE_VERSION = '2.110.0';
 const PASSWORD = 'Disposable-MVP7-Only-7c!';
 const MVP7_MIGRATION_FILE = '20260812090000_mvp7_subscription_plans_and_client_limits.sql';
 const projectId = `dietbridge-mvp7-${process.pid}-${randomUUID().slice(0, 8)}`;
-const npxCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+const npxCli = process.env.npm_execpath
+  ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
+  : join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
 const actorIds = [];
 const relationshipIds = [];
 let disposable;
@@ -213,6 +216,7 @@ const trackRel = async (dietitian, client, label) => {
 try {
   try {
     disposable = await runDisposableSupabaseLocalReplay({ materializeOnly: true, keepTemp: true });
+    addCurrentIsolatedMigrations({ repoRoot, tempRoot: disposable.tempRoot });
   } catch (error) {
     const retainedPath = /; disposable workdir retained at (.+)$/.exec(error instanceof Error ? error.message : '');
     if (retainedPath) retainedMaterializationTempParent = dirname(retainedPath[1]);
@@ -245,7 +249,7 @@ try {
   const legacyDiet = await createActor('legacy-dietitian', 'dietitian');
   await verifyDietitian(legacyDiet, 'approved');
   renameSync(deferredMvp7MigrationPath, mvp7MigrationPath);
-  cli(['migration', 'up', '--local']);
+  cli(['migration', 'up', '--local', '--include-all']);
   // `migration up` applies the SQL after PostgREST has started. Refresh the
   // disposable schema cache before the first REST read of the new tables;
   // this is local harness plumbing only and does not modify migration history.

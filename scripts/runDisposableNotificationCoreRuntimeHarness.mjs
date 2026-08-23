@@ -21,7 +21,9 @@ const pushRegistryMigrationName = '20260817120000_push_registry_outbox_backend.s
 const supabaseVersion = '2.110.0';
 const password = 'Disposable-Notification-Core-4m!';
 const projectId = 'dietbridge-notification-' + process.pid + '-' + randomUUID().slice(0, 8);
-const npxCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+const npxCli = process.env.npm_execpath
+  ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
+  : join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
 
 const actorIds = [];
 const relationshipIds = [];

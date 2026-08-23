@@ -247,7 +247,9 @@ const localOnlyEnvironment = (environment) => {
 
 const npxInvocation = (supabaseArgs) => {
   if (process.platform !== 'win32') return { command: 'npx', args: supabaseArgs };
-  const npxCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+  const npxCli = process.env.npm_execpath
+    ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
+    : join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
   if (!existsSync(npxCli)) {
     throw new Error(`Pinned local npx CLI entry point is unavailable: ${npxCli}`);
   }

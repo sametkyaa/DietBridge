@@ -28,7 +28,9 @@ const pushRegistryMigrationName = '20260817120000_push_registry_outbox_backend.s
 const supabaseVersion = '2.110.0';
 const projectId = `appointment-reminders-${process.pid}-${randomUUID().slice(0, 8)}`;
 const password = 'Disposable-Appointment-4m!';
-const npxCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+const npxCli = process.env.npm_execpath
+  ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
+  : join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
 
 const actorIds = [];
 const relationshipIds = [];

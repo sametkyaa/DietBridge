@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 
 import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalReplay.mjs';
+import { addCurrentIsolatedMigrations } from './addCurrentIsolatedMigrations.mjs';
 
 // MVP-10 only: every mutation in this runner is guarded to a disposable
 // loopback Supabase stack. It must never be pointed at a hosted project.
@@ -16,7 +17,9 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SUPABASE_VERSION = '2.110.0';
 const PASSWORD = 'Disposable-MVP10-Only-4m!';
 const projectId = `dietbridge-mvp10-${process.pid}-${randomUUID().slice(0, 8)}`;
-const npxCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+const npxCli = process.env.npm_execpath
+  ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
+  : join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
 const PLAN_DATE = '2026-08-10';
 const MEASURED_AT = '2026-08-11';
 const actorIds = [];
@@ -367,6 +370,7 @@ const runFlows = async () => {
 try {
   try {
     disposable = await runDisposableSupabaseLocalReplay({ materializeOnly: true, keepTemp: true });
+    addCurrentIsolatedMigrations({ repoRoot, tempRoot: disposable.tempRoot });
   } catch (error) {
     const retainedPath = /; disposable workdir retained at (.+)$/.exec(error instanceof Error ? error.message : '');
     if (retainedPath) retainedMaterializationTempParent = dirname(retainedPath[1]);
@@ -382,7 +386,7 @@ try {
   stackStarted = true;
   pass('DISPOSABLE_LOCAL_STACK_STARTED', `project=${projectId}`);
   cli(['db', 'reset', '--local', '--no-seed']);
-  pass('DISPOSABLE_41_MIGRATION_REPLAY');
+  pass('DISPOSABLE_48_MIGRATION_REPLAY');
   local = parseStatus(cli(['status', '--output', 'env']));
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_GUARD', local.API_URL);
   assert(/^postgresql:\/\/postgres:[^@]+@(?:127\.0\.0\.1|localhost):\d+\/postgres$/.test(local.DB_URL ?? ''), 'LOOPBACK_DB_GUARD');

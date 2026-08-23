@@ -8,12 +8,15 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalReplay.mjs';
+import { addCurrentIsolatedMigrations } from './addCurrentIsolatedMigrations.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SUPABASE_VERSION = '2.110.0';
 const PASSWORD = 'Disposable-MealVisibility-4m!';
 const projectId = `dietbridge-meal-${process.pid}-${randomUUID().slice(0, 8)}`;
-const npxCli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+const npxCli = process.env.npm_execpath
+  ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
+  : join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
 const WEEK_START = '2026-08-10';
 const TODAY = '2026-08-14';
 const YESTERDAY = '2026-08-13';
@@ -491,12 +494,13 @@ const runFlows = async () => {
 
 try {
   disposable = await runDisposableSupabaseLocalReplay({ materializeOnly: true, keepTemp: true });
+  addCurrentIsolatedMigrations({ repoRoot, tempRoot: disposable.tempRoot });
   await configureDisposableProject(disposable.configPath);
   stackStartAttempted = true;
   runCli(disposable.tempRoot, ['start']);
   pass('DISPOSABLE_LOCAL_STACK_STARTED', `project=${projectId}`);
   runCli(disposable.tempRoot, ['db', 'reset', '--local', '--no-seed']);
-  pass('DISPOSABLE_FULL_MIGRATION_REPLAY', '44 canonical migrations + local prerequisite');
+  pass('DISPOSABLE_FULL_MIGRATION_REPLAY', '48 canonical migrations + local prerequisite');
   local = parseStatus(runCli(disposable.tempRoot, ['status', '--output', 'env']));
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_GUARD', local.API_URL);
   assert(Boolean(local.ANON_KEY && local.SERVICE_ROLE_KEY), 'LOCAL_KEYS_PRESENT');
