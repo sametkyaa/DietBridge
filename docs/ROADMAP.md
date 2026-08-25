@@ -1,6 +1,6 @@
 # DietBridge — MVP Closure Roadmap
 
-> Son uzlaştırma: 2026-08-23. Bu bölüm bundan sonraki aktif çalışma planıdır. Aşağıdaki `Historical Production Roadmap` bölümü geçmiş yürütme kaydını korur; tarihsel durum cümleleri güncel görev seçimi veya release kararı değildir.
+> Son uzlaştırma: 2026-08-25. Bu bölüm bundan sonraki aktif çalışma planıdır. Aşağıdaki `Historical Production Roadmap` bölümü geçmiş yürütme kaydını korur; tarihsel durum cümleleri güncel görev seçimi veya release kararı değildir.
 
 ## 1. MVP-0 sonucu ve kapsam dondurma kararı
 
@@ -95,7 +95,7 @@ Bu tablo 2026-08-07 tarihli repository kanıtına dayanır. Runtime veya product
 | Subscription | `NOT STARTED` | Product/provider/schema/enforcement/checkout akışı yok |
 | Web/Mobile Contract | `PARTIAL` | Meal, measurement, recipe ve chat contract çalışmaları var; tek migration authority kararı henüz resmileştirilmedi |
 | CI | `COMPLETED — 2026-08-23` | Web/Mobile GitHub Actions, disposable backend/browser katmanları ve protected required checks gerçek PR koşularında PASS |
-| Release | `NOT STARTED — MVP-11 CLOSED` | MVP-12 release-candidate hazırlığı ve yayın onayı henüz başlatılmadı |
+| Release | `MVP-12 CLOSED — MVP-13 NOT STARTED` | Web/Mobile RC kaynakları protected PR/main CI ile doğrulandı; deployment/public launch ve Push 6C.2+ başlatılmadı |
 
 ### Repository uzlaştırma notları
 
@@ -241,28 +241,17 @@ Browser E2E, unauthenticated access, client-role rejection, pending/rejected die
 
 ### MVP-12 — Production Release Candidate
 
-Ayrı staging zorunlu değildir. Pre-launch production üzerinde yalnız test/developer hesaplarıyla kontrollü, temizlenebilir fixture kullanılarak şu E2E smoke uygulanır:
+**Durum:** `CLOSED — 2026-08-25`.
 
-1. dietitian signup/login
-2. verification/role
-3. client relation
-4. client profile
-5. measurement
-6. daily log
-7. meal plan
-8. mobile meal completion
-9. recipe
-10. chat
-11. image
-12. appointment
-13. daily task
-14. analytics
-15. subscription
-16. client limit
-17. session restore
-18. logout
+Production read-only schema/RLS/RPC/Storage/Auth/cron/log/advisor denetimi, Web/Mobile dependency triage, tüm local kalite kapıları, protected PR check'leri ve final `main` CI koşuları PASS. P0/P1 blocker sayısı 0; Production DB/Auth/Storage/migration yazması, synthetic Production kullanıcı ve deployment sayısı 0'dır. Exact RC commit'leri repository başına `mvp-12-rc` tag'iyle kilitlenir.
+
+Canonical 48 migration ile Production 47-history farkının tek substantive kuyruğu Push registry/outbox migration'ıdır. Mobile EAS project ID olmadan token/RPC öncesi fail-closed kaldığından bu fark `INTENTIONALLY DEFERRED WITH PUSH 6C.2+` olarak kabul edilmiştir. Push 6C.2+, provider/dispatcher, App Store/Google Play ve public launch başlatılmamıştır.
+
+Kontrollü launch önkoşulları `docs/MVP13_LAUNCH_CHECKLIST.md` içindedir. Free plan restore/PITR varsayılmaz; launch öncesi fresh private logical backup + disposable restore veya ayrı onaylı recovery planı gerekir.
 
 ### MVP-13 — Public Launch / Post-Launch Validation
+
+**Durum:** `NOT STARTED`. Push 6C.2+ `PAUSED`.
 
 Public launch öncesinde backup/restore readiness, migration parity, Auth configuration, RLS, Storage, Edge Functions, payment webhook, environment variables, domain/redirects, monitoring ve rollback runbook son kez kontrol edilir. Ardından public user acquisition açılır. Launch sonrasında production doğrudan geliştirme/test ortamı olarak kullanılmaz.
 
@@ -790,13 +779,14 @@ Proje aşağıdaki koşullar birlikte sağlandığında production açısından 
 | 9 | Mock temizliği | Bekliyor | `codex/mock-cleanup` |  |  |  |
 | 10 | Repository temizliği | Bekliyor | `codex/repository-cleanup` |  |  |  |
 | 11 | Test ve kalite | Tamamlandı | `codex/quality-baseline` | 2026-08-23 | 2026-08-23 | Web/Mobile Actions, disposable backend/browser kapıları ve protected required checks PASS |
-| 12 | Yayın hazırlığı | Bekliyor | `codex/release-preparation` |  |  |  |
-| 13 | Yayın sonrası doğrulama | Bekliyor | `codex/post-release-validation` |  |  |  |
+| 12 | Yayın hazırlığı | `CLOSED` | `codex/mvp12-release-candidate` | 2026-08-25 | 2026-08-25 | Production read-only audit, dependency hardening, protected Web PR #18 / Mobile PR #10, final main CI ve RC lock PASS |
+| 13 | Yayın sonrası doğrulama | `NOT STARTED` | `codex/post-release-validation` |  |  | Kontrollü launch checklist'i hazır; deployment/public launch ve Push 6C.2+ PAUSED |
 
 ## 11. Değişiklik günlüğü
 
 | Tarih | Aşama | Değişiklik | Durum | İlgili branch/PR |
 |---|---|---|---|---|
+| 2026-08-25 | Aşama 12 | Production read-only RC audit, blocker closure, dependency hardening, protected merges/final CI ve exact RC locking tamamlandı; MVP-13/Push 6C.2+ başlatılmadı | `CLOSED` | `codex/mvp12-release-candidate`, Web PR #18, Mobile PR #10 |
 | 2026-08-23 | Aşama 11 | Web/Mobile automated quality gates, disposable backend/browser coverage ve protected required checks kapatıldı | Tamamlandı | `codex/quality-baseline`, Web PR #17, Mobile PR #8/#9 |
 | 2026-07-12 | Aşama 0 | `AGENTS.md` ve `docs/ROADMAP.md` oluşturuldu | Tamamlandı | `codex/project-governance` |
 | 2026-07-12 | Aşama 1 | Teknik temel, lockfile, lint, typecheck ve environment standardizasyonu hazırlandı | İncelemeye hazır | codex/project-foundation |

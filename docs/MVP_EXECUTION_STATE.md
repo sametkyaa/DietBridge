@@ -1,13 +1,13 @@
 # DietBridge MVP Execution State
 
 Current Gate:
-MVP-11 — CI / Automated Quality Gate
+MVP-12 — Production Release Candidate
 
 Status:
-MVP-11 — COMPLETE (2026-08-23) — Web/Mobile automated quality gates, disposable backend/browser coverage, protected required checks and controlled GitHub integration PASS; STOPPED BEFORE MVP-12
+MVP-12 — CLOSED (2026-08-25) — Production read-only audit, blocker triage, dependency hardening, full local/CI gates, protected PR merges and exact RC locking PASS; MVP-13 NOT STARTED; Push 6C.2+ PAUSED
 
 Last Verified Base Commit:
-Web full-CI source checkpoint `17d9b1af6db24c47a502c3763ae30601befab72c`; Mobile protected `main` checkpoint `11df76e59e708f979f8a96dcd308e407e1b5c05c`. Final MVP-11 documentation and Web workflow deduplication are recorded in the follow-up closure checkpoint.
+Web release-source `main` checkpoint `ef00b1121121ba4a43b240ad80d208da3f19044d`; Mobile final protected `main` / RC checkpoint `11d3ff513e8938247ea69b21da5b019f0b4b8c09`. The final Web closeout merge is locked by the source-controlled annotated tag `mvp-12-rc`; its exact target is reported in the final closure report because a commit cannot embed its own SHA.
 
 MVP-4 Checkpoint:
 This document is included in the verified local MVP-4 checkpoint commit.
@@ -28,6 +28,20 @@ Completed Gates:
 - MVP-9 — COMPLETE (2026-08-12); mock/local cleanup, full Web gates and independent diff review PASS
 - MVP-10 — COMPLETE (2026-08-12); Web/Mobile shared contract closure, disposable runtime matrix, full quality gates and independent security reviews PASS; stopped before MVP-11
 - MVP-11 — COMPLETE (2026-08-23); real GitHub Actions, disposable backend/browser coverage and protected required checks PASS; stopped before MVP-12
+- MVP-12 — CLOSED (2026-08-25); Production read-only audit, P0/P1 blocker count 0, dependency hardening, protected PR/main CI and RC lock PASS; MVP-13 not started
+
+MVP-12 Production Release Candidate Closure:
+- Dedicated isolated worktrees: Web `C:\dev\DietBridge-Web-MVP12`, Mobile `C:\dev\DietBridge-Mobile-MVP12`. The user's pre-existing dirty Web worktree was not modified. Implementation branch: `codex/mvp12-release-candidate`; documentation closeout branch: `codex/mvp12-release-candidate-closeout`.
+- Protected merges: Web PR #18 merged to release-source SHA `ef00b1121121ba4a43b240ad80d208da3f19044d`; Mobile PR #10 merged to final SHA `11d3ff513e8938247ea69b21da5b019f0b4b8c09`. Web PR run `32829530157`, Web release-source `main` run `32830855319`, Mobile corrected PR run `32830194278` and Mobile final `main` run `32830406661` PASS. The first Mobile PR run `32829530517` exposed an npm 11.17 lockfile portability mismatch; the lock was regenerated with the CI npm version, locally revalidated and the corrected run passed.
+- Local gates: Web typecheck PASS; lint 0 errors / 21 existing warnings; tests 288/288 plus CI, Notification and UI contract suites PASS; production build PASS; disposable Backend Integration Gate PASS; critical browser E2E 4/4 PASS. Mobile npm 11.17 clean install, Expo dependency check, typecheck, lint 0 errors / 44 existing warnings, 266/266 tests, public Expo config and Android/iOS exports PASS.
+- Dependency result: Web `npm audit` 0. Mobile critical findings reduced from 1 to 0; nine high records remain transitively in Expo SDK 54's Metro `image-size` and PostCSS build-time chains. Their supported repair requires a major Expo upgrade and is accepted P2 debt; no `npm audit fix --force` or broad dependency modernization was used.
+- Production Supabase audit was read-only. Project `kagvxhyvxxypspdxcuxz` was `ACTIVE_HEALTHY`; 33/33 public tables had RLS; no anon table policy/grant or anon executable SECURITY DEFINER path was found; all public/private definers pinned `search_path`; five Storage buckets were private; cron had 864/864 successful runs in the sampled 24 hours; aggregate orphan/duplicate invariants were zero; no customer row content was read.
+- Canonical repository inventory is 48 migrations, ending at `20260817120000_push_registry_outbox_backend.sql`; Production history contains 47 entries. The appointment-reminder migration is present through the reconciled Production history alias `20260817084531` and matching objects/cron. The sole substantive missing tail is Push registry/outbox; Mobile has no EAS project ID and fails closed with `configuration_missing` before token/RPC work, so this migration is `INTENTIONALLY DEFERRED WITH PUSH 6C.2+`, not an MVP-12 blocker.
+- Production advisors were triaged as non-blocking P2/intentional debt: two server-only cleanup queues with RLS and no policies/grants; mutable non-definer `set_updated_at`; `pg_net` in public; authenticated Data API/RPC exposure protected by RLS/`auth.uid()`; leaked-password protection disabled; performance initplan/index/permissive-policy notices. P0 = 0, P1 = 0.
+- Recovery boundary: the Free plan does not provide an assumed managed restore/PITR path. A fresh private logical backup plus disposable restore, or separately approved plan/PITR readiness, is mandatory in `docs/MVP13_LAUNCH_CHECKLIST.md` before controlled launch. Database backups do not cover Storage object payloads or all project settings.
+- Security review was focused and manual. Broad Codex Security scan: `NOT RUN`. No committed service-role/database/provider secret or active mock/fake-success release blocker was identified.
+- Production mutation counters: database writes 0; migration/history writes 0; Auth writes 0; Storage writes 0; synthetic Production users 0; deployment/public launch 0. No migration was created or run. No real customer data was accessed.
+- Final boundary: `MVP-12 CLOSED`; `MVP-13 NOT STARTED`; `Push 6C.2+ PAUSED`. The `mvp-12-rc` tags lock the exact final Web and Mobile RC commits after protected closeout CI.
 
 MVP-11 CI / Automated Quality Gate:
 - Dedicated isolated worktrees: Web `C:\dev\DietBridge-Web-MVP11`, Mobile `C:\dev\DietBridge-Mobile-MVP11`; branch `codex/quality-baseline` in each repository. The user's dirty Web worktree was not modified.
