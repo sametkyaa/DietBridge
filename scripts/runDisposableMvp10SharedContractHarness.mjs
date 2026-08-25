@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -98,6 +99,39 @@ const parseStatus = (value) => Object.fromEntries(value.split(/\r?\n/)
   .map((match) => [match[1], match[2]]));
 
 const wait = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+
+const findFreeLoopbackPort = () => new Promise((resolvePort, rejectPort) => {
+  const server = createServer();
+  server.once('error', rejectPort);
+  server.listen(0, '127.0.0.1', () => {
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : null;
+    server.close((closeError) => {
+      if (closeError) rejectPort(closeError);
+      else if (port) resolvePort(port);
+      else rejectPort(new Error('Unable to allocate a disposable loopback port.'));
+    });
+  });
+});
+
+const applyDisposablePorts = async (configText) => {
+  const ports = await Promise.all(Array.from({ length: 8 }, () => findFreeLoopbackPort()));
+  const portMap = new Map([
+    [54321, ports[0]],
+    [54322, ports[1]],
+    [54320, ports[2]],
+    [54329, ports[3]],
+    [54323, ports[4]],
+    [54324, ports[5]],
+    [54327, ports[6]],
+  ]);
+  return configText
+    .replace(/^port\s*=\s*(\d+)$/gm, (line, value) => {
+      const replacement = portMap.get(Number(value));
+      return replacement ? `port = ${replacement}` : line;
+    })
+    .replace(/^inspector_port\s*=\s*8083$/m, `inspector_port = ${ports[7]}`);
+};
 
 const deleteAuthActor = async (id) => {
   let lastError = null;
@@ -379,7 +413,10 @@ try {
 
   const configText = readFileSync(disposable.configPath, 'utf8');
   assert(/^project_id\s*=\s*"[^"]+"/m.test(configText), 'DISPOSABLE_CONFIG_PROJECT_ID_PRESENT');
-  writeFileSync(disposable.configPath, configText.replace(/^project_id\s*=\s*"[^"]+"/m, `project_id = "${projectId}"`), 'utf8');
+  const disposableConfig = await applyDisposablePorts(
+    configText.replace(/^project_id\s*=\s*"[^"]+"/m, `project_id = "${projectId}"`),
+  );
+  writeFileSync(disposable.configPath, disposableConfig, 'utf8');
 
   stackStartAttempted = true;
   cli(['start']);

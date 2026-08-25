@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:net';
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -94,6 +95,51 @@ const parseStatus = (value) => Object.fromEntries(value.split(/\r?\n/)
   .map((line) => line.match(/^([A-Z_]+)="(.*)"$/))
   .filter(Boolean)
   .map((match) => [match[1], match[2]]));
+
+const findFreeLoopbackPort = () => new Promise((resolvePort, rejectPort) => {
+  const server = createServer();
+  server.once('error', rejectPort);
+  server.listen(0, '127.0.0.1', () => {
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : null;
+    server.close((closeError) => {
+      if (closeError) rejectPort(closeError);
+      else if (port) resolvePort(port);
+      else rejectPort(new Error('Unable to allocate a disposable loopback port.'));
+    });
+  });
+});
+
+const allocateDisposablePorts = async () => {
+  const ports = await Promise.all(Array.from({ length: 8 }, () => findFreeLoopbackPort()));
+  return {
+    api: ports[0],
+    db: ports[1],
+    shadow: ports[2],
+    pooler: ports[3],
+    studio: ports[4],
+    smtp: ports[5],
+    analytics: ports[6],
+    functionsInspector: ports[7],
+  };
+};
+
+const applyDisposablePorts = (configText, ports) => {
+  const portMap = new Map([
+    [54321, ports.api],
+    [54322, ports.db],
+    [54320, ports.shadow],
+    [54329, ports.pooler],
+    [54323, ports.studio],
+    [54324, ports.smtp],
+    [54327, ports.analytics],
+    [8083, ports.functionsInspector],
+  ]);
+  return configText.replace(/^port\s*=\s*(\d+)$/gm, (line, value) => {
+    const replacement = portMap.get(Number(value));
+    return replacement ? `port = ${replacement}` : line;
+  });
+};
 
 const anonymousClient = () => createClient(local.API_URL, local.ANON_KEY, {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -222,7 +268,8 @@ try {
     if (retainedPath) retainedMaterializationTempParent = dirname(retainedPath[1]);
     throw error;
   }
-  const configText = readFileSync(disposable.configPath, 'utf8');
+  const ports = await allocateDisposablePorts();
+  const configText = applyDisposablePorts(readFileSync(disposable.configPath, 'utf8'), ports);
   assert(/^project_id\s*=\s*"[^"]+"/m.test(configText), 'DISPOSABLE_CONFIG_PROJECT_ID_PRESENT');
   writeFileSync(disposable.configPath, configText.replace(/^project_id\s*=\s*"[^"]+"/m, `project_id = "${projectId}"`), 'utf8');
 

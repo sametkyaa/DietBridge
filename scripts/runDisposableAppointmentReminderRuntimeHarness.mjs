@@ -91,40 +91,46 @@ const parseStatus = (value) => Object.fromEntries(
     .map((match) => [match[1], match[2]]),
 );
 
-const isPortFree = (port) => new Promise((resolvePromise) => {
+const findFreeLoopbackPort = () => new Promise((resolvePort, rejectPort) => {
   const server = createServer();
-  server.once('error', () => resolvePromise(false));
-  server.listen(port, '127.0.0.1', () => server.close(() => resolvePromise(true)));
+  server.once('error', rejectPort);
+  server.listen(0, '127.0.0.1', () => {
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : null;
+    server.close((closeError) => {
+      if (closeError) rejectPort(closeError);
+      else if (port) resolvePort(port);
+      else rejectPort(new Error('Unable to allocate a disposable loopback port.'));
+    });
+  });
 });
 
-const choosePortBase = async () => {
-  const dockerPortMatches = execFileSync('docker', ['ps', '--format', '{{.Ports}}'], {
-    encoding: 'utf8',
-    timeout: 30_000,
-  }).matchAll(/(?:0\.0\.0\.0:|\[::\]:)(\d+)->/g);
-  const dockerPorts = new Set(Array.from(dockerPortMatches, (match) => Number(match[1])));
-  const first = 58000 + (process.pid % 500);
-  for (let offset = 0; offset < 5000; offset += 20) {
-    const base = first + offset;
-    const ports = [base, base + 1, base + 2, base + 3, base + 4, base + 7, base + 9, base + 83];
-    if (ports.some((port) => dockerPorts.has(port))) continue;
-    if ((await Promise.all(ports.map(isPortFree))).every(Boolean)) return base;
-  }
-  throw new Error('No disposable loopback port range is available.');
+const allocateDisposablePorts = async () => {
+  const ports = await Promise.all(Array.from({ length: 8 }, () => findFreeLoopbackPort()));
+  return {
+    api: ports[0],
+    db: ports[1],
+    shadow: ports[2],
+    pooler: ports[3],
+    studio: ports[4],
+    smtp: ports[5],
+    analytics: ports[6],
+    functionsInspector: ports[7],
+  };
 };
 
 const configureProject = async (configPath) => {
-  const base = await choosePortBase();
+  const ports = await allocateDisposablePorts();
   const config = readFileSync(configPath, 'utf8')
     .replace(/^project_id\s*=\s*"[^"]+"$/m, `project_id = "${projectId}"`)
-    .replace(/^port\s*=\s*54321$/m, `port = ${base}`)
-    .replace(/^port\s*=\s*54322$/m, `port = ${base + 1}`)
-    .replace(/^shadow_port\s*=\s*54320$/m, `shadow_port = ${base + 2}`)
-    .replace(/^port\s*=\s*54329$/m, `port = ${base + 9}`)
-    .replace(/^port\s*=\s*54323$/m, `port = ${base + 3}`)
-    .replace(/^port\s*=\s*54324$/m, `port = ${base + 4}`)
-    .replace(/^port\s*=\s*54327$/m, `port = ${base + 7}`)
-    .replace(/^inspector_port\s*=\s*8083$/m, `inspector_port = ${base + 83}`);
+    .replace(/^port\s*=\s*54321$/m, `port = ${ports.api}`)
+    .replace(/^port\s*=\s*54322$/m, `port = ${ports.db}`)
+    .replace(/^shadow_port\s*=\s*54320$/m, `shadow_port = ${ports.shadow}`)
+    .replace(/^port\s*=\s*54329$/m, `port = ${ports.pooler}`)
+    .replace(/^port\s*=\s*54323$/m, `port = ${ports.studio}`)
+    .replace(/^port\s*=\s*54324$/m, `port = ${ports.smtp}`)
+    .replace(/^port\s*=\s*54327$/m, `port = ${ports.analytics}`)
+    .replace(/^inspector_port\s*=\s*8083$/m, `inspector_port = ${ports.functionsInspector}`);
   writeFileSync(configPath, config, 'utf8');
 };
 

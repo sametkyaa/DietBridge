@@ -19,6 +19,7 @@ npm run test:e2e
 
 - `npm run test`: unit/source/service/auth, Notification UI/client/core ve Push registry sözleşmeleri.
 - `npm run test:backend`: 48 canonical migration + bir local prerequisite replay; Notification, Chat, appointment collision/reminder, meal completion, subscription limit, Push outbox ve Web/Mobile shared-contract runtime matrisleri.
+- Disposable runtime harness'leri aynı makinedeki ilgisiz Supabase stack'lerine dokunmadan ayrı loopback portları ayırır; sabit `54322` portuna bağımlı değildir.
 - `npm run test:e2e`: disposable Supabase üzerinde unauthenticated access, client-role rejection, pending/rejected dietitian, approved login/session restore, kalıcı client/profile read ve logout.
 - Plan/meal CRUD, appointment CRUD/collision, Chat/image authorization, subscription/limit ve reminder/Push güvenlik invariant'ları browser yerine daha deterministik disposable backend/service katmanında korunur.
 
@@ -57,4 +58,4 @@ Workflow token yetkisi `contents: read` ile sınırlıdır. `pull_request_target
 
 ## Bilinen non-blocking debt
 
-Lint mevcut kaynakta error üretmez; tarihsel warning'ler blocker değildir ve toplu format/refactor MVP-11 kapsamı dışındadır. `npm audit` merge blocker değildir: Expo SDK/Metro zincirindeki bulgular major SDK yükseltmesi gerektirdiğinden ayrı dependency-upgrade aşamasında ele alınır; `npm audit fix --force` kullanılmaz.
+Lint mevcut kaynakta error üretmez; tarihsel warning'ler blocker değildir ve toplu format/refactor release-candidate kapsamı dışındadır. MVP-12'de Web React Router ve build/lint transitifleri güvenli patch'lere yükseltilmiş, Web `npm audit` sonucu 0 olmuştur. Mobile kritik bulguları güvenli SDK 54/transitif patch'lerle 0'a indirilmiştir; kalan dokuz high kaydı Expo SDK 54'ün yalnız repository-controlled build girdilerini işleyen Metro `image-size` ve PostCSS zincirinden türemektedir. Bunların desteklenen çözümü major Expo SDK yükseltmesidir ve kontrollü dependency-upgrade aşamasına ertelenmiştir. `npm audit fix --force` kullanılmaz.
