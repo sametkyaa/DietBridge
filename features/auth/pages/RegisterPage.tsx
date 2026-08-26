@@ -356,7 +356,7 @@ const RegisterPage = () => {
                  />
                </div>
                <label htmlFor="confirm-license" className="text-sm text-slate-600">
-                 Lisanslı bir diyetisyen olduğumu, verdiğim bilgilerin doğruluğunu ve <a href="#" className="text-emerald-700 font-bold hover:underline">Kullanım Koşulları</a>'nı kabul ediyorum.
+                 Lisanslı bir diyetisyen olduğumu, verdiğim bilgilerin doğruluğunu ve <a href="https://dietbridge.com.tr/kullanim-kosullari" target="_blank" rel="noopener noreferrer" className="text-emerald-700 font-bold hover:underline">Kullanım Koşulları</a>'nı kabul ediyorum.
                </label>
             </div>
 

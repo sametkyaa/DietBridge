@@ -10,6 +10,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const commands = [
   ['scripts/runMealPlanContractTests.mjs'],
   ['--test', 'tests/ciSafetyGuard.test.cjs'],
+  ['--test', 'tests/registerTermsLinkContracts.test.cjs'],
   ['scripts/runNotificationCoreContractTests.mjs'],
   ['scripts/runNotificationClientContractTests.mjs'],
   ['scripts/runNotificationUiContractTests.mjs'],
