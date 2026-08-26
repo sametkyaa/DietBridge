@@ -14,6 +14,7 @@ const harnesses = [
   'scripts/runDisposableSubscriptionRuntimeHarness.mjs',
   'scripts/runDisposableAppointmentReminderRuntimeHarness.mjs',
   'scripts/runDisposablePushRegistryRuntimeHarness.mjs',
+  'scripts/runDisposableProductAdminRuntimeHarness.mjs',
   'scripts/runDisposableMvp10SharedContractHarness.mjs',
 ];
 

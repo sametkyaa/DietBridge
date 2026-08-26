@@ -5,10 +5,19 @@ import { APP_LOGO } from '../../../shared/constants';
 import { ArrowRight, Mail, Lock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
+const getSafeReturnPath = (state: unknown): string => {
+  if (!state || typeof state !== 'object') return '/';
+  const candidate = (state as { from?: unknown }).from;
+  return typeof candidate === 'string' && candidate.startsWith('/') && !candidate.startsWith('//')
+    ? candidate
+    : '/';
+};
+
 const LoginPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn, accessState, authError } = useAuth();
+  const returnPath = getSafeReturnPath(location.state);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,9 +33,9 @@ const LoginPage = () => {
 
   useEffect(() => {
     if (['allowed', 'pending', 'rejected', 'blocked_missing_role', 'blocked_missing_dietitian_profile', 'access_error'].includes(accessState.status)) {
-      navigate('/', { replace: true });
+      navigate(returnPath, { replace: true });
     }
-  }, [accessState.status, navigate]);
+  }, [accessState.status, navigate, returnPath]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

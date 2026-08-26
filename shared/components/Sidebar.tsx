@@ -9,11 +9,16 @@ import {
   MessageSquare,
   FileEdit,
   Settings,
-  Calendar
+  Calendar,
+  ShieldCheck,
 } from 'lucide-react';
 import { APP_LOGO } from '../constants';
+import { useAuth } from '../../features/auth/context/AuthContext';
+import { usePlatformAdminAccess } from '../../features/admin/hooks/usePlatformAdminAccess';
 
 const Sidebar = () => {
+  const { accessState } = useAuth();
+  const adminAccess = usePlatformAdminAccess({ enabled: accessState.status === 'allowed' });
   const navItems = [
     { icon: LayoutDashboard, label: 'Kontrol Paneli', path: '/' },
     { icon: Calendar, label: 'Randevular', path: '/appointments' },
@@ -25,6 +30,9 @@ const Sidebar = () => {
     { icon: FileEdit, label: 'Notlar', path: '/notes' },
     { icon: Settings, label: 'Ayarlar', path: '/settings' },
   ];
+  const visibleNavItems = adminAccess.status === 'authorized'
+    ? [...navItems, { icon: ShieldCheck, label: 'Yönetim', path: '/admin' }]
+    : navItems;
 
   // Subset for mobile bottom nav to avoid overcrowding
   const mobileNavItems = [
@@ -46,7 +54,7 @@ const Sidebar = () => {
           </div>
 
           <nav className="space-y-1">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}

@@ -24,8 +24,9 @@ const reminderSql = readFileSync(join(migrationDirectory, reminderName), 'utf8')
   .replaceAll('\r\n', '\n');
 const reminderHash = createHash('sha256').update(reminderSql).digest('hex');
 
-assert(files.length === 48, 'MIGRATION_INVENTORY_48');
-assert(files.at(-1) === migrationName, 'PUSH_MIGRATION_IS_TAIL');
+assert(files.length === 49, 'MIGRATION_INVENTORY_49_WITH_PRODUCT_ADMIN');
+assert(files.includes(migrationName), 'PUSH_MIGRATION_REMAINS_CANONICAL');
+assert(files.at(-1) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_IS_TAIL');
 assert(!/\b(?:pg_net|net\.http_post|http_post|vault\.decrypted_secrets|fetch\s*\()/i.test(sql), 'NO_PROVIDER_NETWORK_OR_SECRET_ACCESS');
 assert(!/alter publication|create publication|create webhook/i.test(sql), 'NO_REALTIME_OR_DATABASE_WEBHOOK');
 assert(!/insert\s+into\s+public\.notifications|update\s+public\.notifications/i.test(sql), 'PUSH_DOES_NOT_MUTATE_NOTIFICATION_SOURCE');

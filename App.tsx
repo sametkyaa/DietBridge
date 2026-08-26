@@ -25,6 +25,10 @@ import MealPlans from './pages/MealPlans';
 import DietitianProfilePage from './features/dietitians/pages/DietitianProfilePage';
 import EditProfilePage from './features/dietitians/pages/EditProfilePage';
 import NotesPage from './features/notes/pages/NotesPage';
+import AdminRoute from './features/admin/components/AdminRoute';
+import AdminDashboardPage from './features/admin/pages/AdminDashboardPage';
+import DietitianApplicationsPage from './features/admin/pages/DietitianApplicationsPage';
+import DietitianApplicationDetailPage from './features/admin/pages/DietitianApplicationDetailPage';
 
 const App = () => {
   return (
@@ -37,6 +41,13 @@ const App = () => {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+            {/* Independent Product Admin Routes */}
+            <Route element={<AdminRoute />}>
+              <Route path="/admin" element={<AdminDashboardPage />} />
+              <Route path="/admin/dietitians" element={<DietitianApplicationsPage />} />
+              <Route path="/admin/dietitians/:id" element={<DietitianApplicationDetailPage />} />
+            </Route>
 
             {/* Protected Dashboard Routes */}
             <Route element={<ProtectedRoute />}>

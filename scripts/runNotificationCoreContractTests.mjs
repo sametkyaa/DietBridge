@@ -19,7 +19,7 @@ const readMigrationInventory = () => readdirSync(migrationDirectory)
   .sort();
 
 const files = readMigrationInventory();
-assert(files.length === 48, 'NOTIFICATION_MIGRATION_COUNT_48_WITH_PUSH_FOUNDATION', 'count=' + files.length);
+assert(files.length === 49, 'NOTIFICATION_MIGRATION_COUNT_49_WITH_PRODUCT_ADMIN', 'count=' + files.length);
 
 const notificationFiles = files.filter((name) => /_notification_core_backend\.sql$/.test(name));
 assert(notificationFiles.length === 1, 'ONE_NOTIFICATION_CORE_MIGRATION', notificationFiles.join(','));
@@ -30,7 +30,8 @@ const appointmentReminderMigrationName = '20260816194431_appointment_reminders_b
 const pushRegistryMigrationName = '20260817120000_push_registry_outbox_backend.sql';
 assert(files.includes(markAllReadMigrationName), 'MARK_ALL_READ_MIGRATION_PRESENT', markAllReadMigrationName);
 assert(files.includes(appointmentReminderMigrationName), 'APPOINTMENT_REMINDER_MIGRATION_PRESENT', appointmentReminderMigrationName);
-assert(files.at(-1) === pushRegistryMigrationName, 'PUSH_REGISTRY_MIGRATION_TAIL', files.at(-1));
+assert(files.includes(pushRegistryMigrationName), 'PUSH_REGISTRY_MIGRATION_PRESENT', files.at(-1));
+assert(files.at(-1) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_TAIL', files.at(-1));
 const markAllReadSql = readFileSync(join(migrationDirectory, markAllReadMigrationName), 'utf8');
 const appointmentReminderSql = readFileSync(join(migrationDirectory, appointmentReminderMigrationName), 'utf8');
 

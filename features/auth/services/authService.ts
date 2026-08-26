@@ -66,7 +66,7 @@ const toDietitianProfile = (row: DietitianProfileRow, fallbackEmail: string): Di
   };
 };
 
-type VerificationResult = 'approved' | 'pending' | 'rejected' | 'missing' | 'error';
+type VerificationResult = 'approved' | 'pending' | 'rejected' | 'error';
 
 export const resolveVerificationStatus = (
   profile: Pick<DietitianProfile, 'is_verified' | 'verification_status'>,
@@ -75,18 +75,15 @@ export const resolveVerificationStatus = (
   const isVerified = profile.is_verified;
 
   if (status === 'rejected') {
-    return isVerified === true ? 'error' : 'rejected';
+    return isVerified === false ? 'rejected' : 'error';
   }
   if (status === 'pending') {
-    return isVerified === true ? 'error' : 'pending';
+    return isVerified === false ? 'pending' : 'error';
   }
   if (status === 'approved') {
-    return isVerified === false ? 'error' : 'approved';
+    return isVerified === true ? 'approved' : 'error';
   }
-  if (!status && isVerified === true) {
-    return 'approved';
-  }
-  return 'missing';
+  return 'error';
 };
 
 export const resolveAuthAccess = async (userId: string): Promise<ResolvedAuthAccess> => {

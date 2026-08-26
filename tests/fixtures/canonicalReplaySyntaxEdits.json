@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 38,
+  "expectedCanonicalCount": 39,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2849,6 +2849,13 @@
       "phase": "canonical",
       "sourceSha256": "5c2b36c1b445f02124696aa338afc279ea2bef4432d36d56b0ad59e8e352b6e6",
       "materializedSha256": "5c2b36c1b445f02124696aa338afc279ea2bef4432d36d56b0ad59e8e352b6e6",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260826133224_product_admin_dietitian_verification.sql",
+      "phase": "canonical",
+      "sourceSha256": "c325941a4153fab0a9bf867d1bc6ccc2dca1371453b1bcf48342a8433c6378d3",
+      "materializedSha256": "c325941a4153fab0a9bf867d1bc6ccc2dca1371453b1bcf48342a8433c6378d3",
       "edits": []
     }
   ]
