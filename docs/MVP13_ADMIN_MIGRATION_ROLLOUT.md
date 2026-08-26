@@ -65,6 +65,18 @@ Verify the expected pre-Admin state:
 - `20260826133224_product_admin_dietitian_verification.sql` is absent.
 - No unexpected migration is present.
 
+The release operator must establish the exact Production-applied migration set
+from this fresh read-only evidence and compare the isolated release
+materialization against the exact remote Production migration hashes. The
+isolated release artifact must reproduce the Production-applied migration
+inventory exactly. Historical aliases and reconciliation must follow the
+repository's established contract. No migration may be assumed applied merely
+from a count or filename, and this check authorizes no Production history
+mutation.
+
+The required preflight condition is explicit: deferred Push migration is absent,
+specifically `20260817120000_push_registry_outbox_backend.sql`.
+
 Do not rely solely on historical evidence. If the history differs, stop and
 resolve the discrepancy before any migration operation.
 
@@ -137,6 +149,9 @@ The result must show exactly one pending migration, and it must be:
 
 `20260826133224_product_admin_dietitian_verification.sql`
 
+The expected result is one pending Product Admin migration, and it must be the
+Product Admin migration named above.
+
 The result must not list:
 
 - `20260817120000_push_registry_outbox_backend.sql`;
@@ -178,6 +193,10 @@ The approved application must:
 
 No operator may substitute the canonical migration directory, apply Push,
 repair migration history, or broaden the approval during the apply.
+While the deferred Push migration remains pending, the documented rollout
+procedure does not run that command against the canonical migration directory;
+only the isolated release materialization proven by dry-run may later be used
+after explicit human approval.
 
 ## Mandatory read-only postflight
 
