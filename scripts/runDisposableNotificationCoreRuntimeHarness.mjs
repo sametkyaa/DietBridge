@@ -379,8 +379,8 @@ const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(sourceMigrations.length === 48, 'CANONICAL_MIGRATION_INVENTORY_48');
-  assert(sourceMigrations.at(-1) === pushRegistryMigrationName, 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
+  assert(sourceMigrations.length === 49, 'CANONICAL_MIGRATION_INVENTORY_49');
+  assert(sourceMigrations.at(-1) === '20260826133224_product_admin_dietitian_verification.sql', 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-core-'));
   const tempRoot = join(tempParent, 'project');
@@ -392,7 +392,7 @@ const runFlows = async () => {
     configPath,
     disposableHistory: { repositoryMigrationCount: runtimeManifest.expectedHistory.total },
   };
-  assert(disposable.disposableHistory.repositoryMigrationCount === 45, 'BASELINE_MATERIALIZED_COUNT_45');
+  assert(disposable.disposableHistory.repositoryMigrationCount === 46, 'BASELINE_MATERIALIZED_COUNT_46');
   const runtimeMigrationDirectory = join(disposable.tempRoot, 'supabase', 'migrations');
   const destinationMigration = join(runtimeMigrationDirectory, notificationCoreMigrationName);
   if (existsSync(destinationMigration)) throw new Error('Disposable migration destination already exists.');
@@ -408,7 +408,7 @@ const runFlows = async () => {
   const runtimeFiles = readdirSync(runtimeMigrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(runtimeFiles.length === 49, 'DISPOSABLE_MIGRATION_FILES_49_WITH_ONE_LOCAL_PREREQUISITE');
+  assert(runtimeFiles.length === 50, 'DISPOSABLE_MIGRATION_FILES_50_WITH_ONE_LOCAL_PREREQUISITE');
   assert(runtimeFiles.includes(markAllReadMigrationName), 'DISPOSABLE_MARK_ALL_READ_MIGRATION_REPLAY');
   assert(runtimeFiles.includes(appointmentReminderMigrationName), 'DISPOSABLE_APPOINTMENT_REMINDER_MIGRATION_REPLAY');
   assert(runtimeFiles.includes(pushRegistryMigrationName), 'DISPOSABLE_PUSH_REGISTRY_MIGRATION_REPLAY');
@@ -421,8 +421,8 @@ const runFlows = async () => {
 
   runCli(disposable.tempRoot, ['db', 'reset', '--local', '--no-seed']);
   const migrationCount = countBySql('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === 49, 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'canonical=48, local-prerequisite=1');
-  pass('DISPOSABLE_CANONICAL_MIGRATION_REPLAY_48');
+  assert(migrationCount === 50, 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'canonical=49, local-prerequisite=1');
+  pass('DISPOSABLE_CANONICAL_MIGRATION_REPLAY_49');
 
   local = parseStatus(runCli(disposable.tempRoot, ['status', '--output', 'env']));
   assertLoopback(local.API_URL);

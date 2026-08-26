@@ -11,6 +11,7 @@ const commands = [
   ['scripts/runMealPlanContractTests.mjs'],
   ['--test', 'tests/ciSafetyGuard.test.cjs'],
   ['--test', 'tests/registerTermsLinkContracts.test.cjs'],
+  ['--test', 'tests/productAdminContracts.test.cjs'],
   ['scripts/runNotificationCoreContractTests.mjs'],
   ['scripts/runNotificationClientContractTests.mjs'],
   ['scripts/runNotificationUiContractTests.mjs'],

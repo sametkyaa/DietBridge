@@ -22,6 +22,7 @@
     "test:notification-core:runtime": "node scripts/runDisposableNotificationCoreRuntimeHarness.mjs",
     "test:push-registry": "node scripts/runPushRegistryContractTests.mjs",
     "test:push-registry:runtime": "node scripts/runDisposablePushRegistryRuntimeHarness.mjs",
+    "test:product-admin:runtime": "node scripts/runDisposableProductAdminRuntimeHarness.mjs",
     "test:appointment-reminders:runtime": "node scripts/runDisposableAppointmentReminderRuntimeHarness.mjs",
     "test:notification-client": "node scripts/runNotificationClientContractTests.mjs",
     "test:notification-client:runtime": "node scripts/runDisposableNotificationClientIntegration.mjs",
