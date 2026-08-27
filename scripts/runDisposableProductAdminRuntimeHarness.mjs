@@ -14,6 +14,7 @@ import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalRe
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
 const adminMigrationName = '20260826133224_product_admin_dietitian_verification.sql';
+const standaloneAdminMigrationName = '20260827084741_standalone_platform_admin_access.sql';
 const notificationMigrationName = '20260814214101_notification_core_backend.sql';
 const reminderMigrationName = '20260816194431_appointment_reminders_backend.sql';
 const pushMigrationName = '20260817120000_push_registry_outbox_backend.sql';
@@ -155,6 +156,21 @@ const createActor = async (admin, actorIds, label, role) => {
   return { id: data.user.id, email: data.user.email, label, role };
 };
 
+const removeProductProfiles = async (admin, actor) => {
+  assertNoError(await admin.from('dietitian_profiles').delete().eq('user_id', actor.id),
+    actor.label + ' dietitian profile removal');
+  assertNoError(await admin.from('profiles').delete().eq('id', actor.id),
+    actor.label + ' product profile removal');
+  const [profileRows, dietitianRows] = await Promise.all([
+    admin.from('profiles').select('id').eq('id', actor.id),
+    admin.from('dietitian_profiles').select('user_id').eq('user_id', actor.id),
+  ]);
+  assertNoError(profileRows, actor.label + ' product profile absence check');
+  assertNoError(dietitianRows, actor.label + ' dietitian profile absence check');
+  assert(profileRows.data.length === 0 && dietitianRows.data.length === 0,
+    actor.label.toUpperCase() + '_NO_PRODUCT_PROFILES');
+};
+
 const readSchema = (project, sql) => execFileSync('docker', [
   'exec', 'supabase_db_' + project,
   'psql', '-U', 'postgres', '-d', 'postgres', '-Atc', sql,
@@ -248,6 +264,8 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
     const concurrentPending = await createActor(admin, actorIds, 'concurrent-pending', 'dietitian');
     const deletionSubject = await createActor(admin, actorIds, 'deletion-subject', 'dietitian');
     const client = await createActor(admin, actorIds, 'client', 'client');
+    const standaloneAdmin = await createActor(admin, actorIds, 'standalone-admin', 'client');
+    await removeProductProfiles(admin, standaloneAdmin);
 
     await makeCompletePending(admin, storagePaths, adminActor);
     await makeCompletePending(admin, storagePaths, approvedNonAdmin);
@@ -279,9 +297,9 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
     assertNoError(await admin.from('platform_admins').insert([
       { user_id: incompletePending.id, granted_by: adminActor.id },
       { user_id: rejectedPending.id, granted_by: adminActor.id },
-      { user_id: client.id, granted_by: adminActor.id },
+      { user_id: standaloneAdmin.id, granted_by: adminActor.id },
     ]), 'non-eligible admin entitlement fixtures');
-    pass('APPROVED_DIETITIAN_ADMIN_ENTITLEMENT');
+    pass('PLATFORM_ADMIN_ENTITLEMENT_FIXTURES');
 
     clients.admin = await createActorClient(local, adminActor);
     clients.approvedNonAdmin = await createActorClient(local, approvedNonAdmin);
@@ -289,6 +307,7 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
     clients.rejected = await createActorClient(local, rejectedPending);
     clients.concurrent = await createActorClient(local, concurrentPending);
     clients.client = await createActorClient(local, client);
+    clients.standalone = await createActorClient(local, standaloneAdmin);
     clients.anonymous = createAnonymousClient(local);
 
     const adminPredicate = await clients.admin.rpc('is_current_user_platform_admin');
@@ -298,12 +317,33 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
     assert((await clients.approvedNonAdmin.rpc('is_current_user_platform_admin')).data === false, 'APPROVED_NONADMIN_PREDICATE_FALSE');
     assertNoError(await clients.client.rpc('is_current_user_platform_admin'), 'client predicate');
     assert((await clients.client.rpc('is_current_user_platform_admin')).data === false, 'CLIENT_PREDICATE_FALSE');
-    assert((await clients.incomplete.rpc('is_current_user_platform_admin')).data === false, 'PENDING_DIETITIAN_PREDICATE_FALSE');
+    const standalonePredicate = await clients.standalone.rpc('is_current_user_platform_admin');
+    assertNoError(standalonePredicate, 'standalone admin predicate');
+    assert(standalonePredicate.data === true, 'STANDALONE_ADMIN_PREDICATE_TRUE');
+    assert((await clients.incomplete.rpc('is_current_user_platform_admin')).data === true, 'PENDING_DIETITIAN_ENTITLEMENT_TRUE');
+    assert((await clients.rejected.rpc('is_current_user_platform_admin')).data === true, 'REJECTED_DIETITIAN_ENTITLEMENT_TRUE');
     assertRpcError(await clients.anonymous.rpc('is_current_user_platform_admin'), 'ANONYMOUS_ADMIN_PREDICATE_DENY');
+
+    const standaloneProductRead = assertNoError(await clients.standalone.from('profiles').select('id').eq('id', client.id),
+      'standalone ordinary Product read');
+    assert(standaloneProductRead.length === 0, 'STANDALONE_PRODUCT_READ_ISOLATED');
+    const standaloneProductWrite = await clients.standalone.from('dietitian_profiles').insert({
+      user_id: standaloneAdmin.id,
+      verification_status: 'pending',
+      is_verified: false,
+    });
+    assert(Boolean(standaloneProductWrite.error), 'STANDALONE_PRODUCT_WRITE_DENY');
+    const standaloneDietitianRows = assertNoError(await admin.from('dietitian_profiles').select('user_id')
+      .eq('user_id', standaloneAdmin.id), 'standalone dietitian profile absence after write');
+    assert(standaloneDietitianRows.length === 0, 'STANDALONE_NO_DIETITIAN_PROFILE');
 
     const summaryRows = await rpcRows(clients.admin, 'admin_get_verification_summary', {}, 'admin summary');
     const summary = summaryRows[0];
     assert(summary.pending >= 5 && summary.approved >= 2 && summary.rejected === 0, 'ADMIN_SUMMARY_COUNTS');
+    const standaloneSummary = (await rpcRows(clients.standalone, 'admin_get_verification_summary', {}, 'standalone admin summary'))[0];
+    assert(standaloneSummary.pending === summary.pending
+      && standaloneSummary.approved === summary.approved
+      && standaloneSummary.rejected === summary.rejected, 'STANDALONE_ADMIN_SUMMARY_WORKS');
     assertRpcError(await clients.approvedNonAdmin.rpc('admin_get_verification_summary'), 'NONADMIN_SUMMARY_DENY');
     assertRpcError(await clients.client.rpc('admin_get_verification_summary'), 'CLIENT_SUMMARY_DENY');
     assertRpcError(await clients.admin.from('platform_admins').select('*'), 'PLATFORM_ADMIN_DIRECT_READ_DENY');
@@ -322,6 +362,11 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
       p_status: 'pending', p_search: 'complete', p_limit: 20, p_offset: 0,
     }, 'admin pending search list');
     assert(pendingRows.every((row) => row.verification_status === 'pending'), 'ADMIN_LIST_STATUS_FILTER');
+    const standaloneListRows = await rpcRows(clients.standalone, 'admin_list_dietitian_applications', {
+      p_status: 'pending', p_search: null, p_limit: 20, p_offset: 0,
+    }, 'standalone admin list');
+    assert(standaloneListRows.length > 0 && standaloneListRows.every((row) => row.verification_status === 'pending'),
+      'STANDALONE_ADMIN_LIST_WORKS');
 
     const completeDetail = (await rpcRows(clients.admin, 'admin_get_dietitian_application', { p_user_id: completePending.id }, 'complete detail'))[0];
     assert(completeDetail.completeness_state === 'complete'
@@ -330,6 +375,10 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
     assert(incompleteDetail.completeness_state === 'incomplete'
       && incompleteDetail.diploma_object_path === null
       && incompleteDetail.missing_fields.includes('diploma'), 'ADMIN_DETAIL_INCOMPLETE_FIELDS');
+    const standaloneDetail = (await rpcRows(clients.standalone, 'admin_get_dietitian_application',
+      { p_user_id: completePending.id }, 'standalone admin detail'))[0];
+    assert(standaloneDetail.user_id === completePending.id
+      && standaloneDetail.diploma_object_path === canonicalDiplomaPath(completePending.id), 'STANDALONE_ADMIN_DETAIL_WORKS');
     assertRpcError(await clients.approvedNonAdmin.rpc('admin_get_dietitian_application', { p_user_id: completePending.id }), 'NONADMIN_DETAIL_DENY');
 
     const incompleteApprove = await clients.admin.rpc('admin_approve_dietitian', { p_user_id: incompletePending.id });
@@ -341,10 +390,17 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
     assert(approvedResult.verification_status === 'approved' && approvedResult.is_verified === true && approvedResult.audit_id, 'ADMIN_APPROVE_RESULT');
     const approvedRetry = (await rpcRows(clients.admin, 'admin_approve_dietitian', { p_user_id: completePending.id }, 'admin approve retry'))[0];
     assert(approvedRetry.audit_id === approvedResult.audit_id && approvedRetry.verification_status === 'approved', 'ADMIN_APPROVE_IDEMPOTENT_RETRY');
+    const standaloneApprovedRetry = (await rpcRows(clients.standalone, 'admin_approve_dietitian',
+      { p_user_id: completePending.id }, 'standalone admin approve retry'))[0];
+    assert(standaloneApprovedRetry.audit_id === approvedResult.audit_id
+      && standaloneApprovedRetry.verification_status === 'approved', 'STANDALONE_ADMIN_APPROVE_WORKS');
     const approvedAuditRows = assertNoError(await admin.from('dietitian_verification_audit').select('*').eq('subject_user_id_snapshot', completePending.id), 'approved audit count');
     assert(approvedAuditRows.length === 1 && approvedAuditRows[0].new_status === 'approved', 'ADMIN_APPROVE_ONE_AUDIT');
     const approvedHistory = await rpcRows(clients.admin, 'admin_get_dietitian_verification_history', { p_user_id: completePending.id }, 'approved history');
     assert(approvedHistory.length === 1 && approvedHistory[0].decided_by_snapshot === adminActor.id, 'ADMIN_HISTORY_READ');
+    const standaloneHistory = await rpcRows(clients.standalone, 'admin_get_dietitian_verification_history',
+      { p_user_id: completePending.id }, 'standalone admin history');
+    assert(standaloneHistory.length === 1 && standaloneHistory[0].id === approvedHistory[0].id, 'STANDALONE_ADMIN_HISTORY_WORKS');
     assertRpcError(await clients.admin.rpc('admin_reject_dietitian', { p_user_id: completePending.id, p_reason: 'reverse' }), 'APPROVED_REVERSE_REJECT_DENY');
 
     assertRpcError(await clients.admin.rpc('admin_reject_dietitian', { p_user_id: rejectedPending.id, p_reason: '   ' }), 'REJECT_REASON_EMPTY_DENY');
@@ -354,9 +410,13 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
       && rejectedResult.rejection_reason === 'Diploma doğrulaması başarısız.', 'ADMIN_REJECT_RESULT');
     const rejectedRetry = (await rpcRows(clients.admin, 'admin_reject_dietitian', { p_user_id: rejectedPending.id, p_reason: 'farklı ikinci neden' }, 'admin reject retry'))[0];
     assert(rejectedRetry.audit_id === rejectedResult.audit_id && rejectedRetry.rejection_reason === rejectedResult.rejection_reason, 'ADMIN_REJECT_IDEMPOTENT_RETRY');
+    const standaloneRejectedRetry = (await rpcRows(clients.standalone, 'admin_reject_dietitian',
+      { p_user_id: rejectedPending.id, p_reason: 'standalone farklı neden' }, 'standalone admin reject retry'))[0];
+    assert(standaloneRejectedRetry.audit_id === rejectedResult.audit_id
+      && standaloneRejectedRetry.rejection_reason === rejectedResult.rejection_reason, 'STANDALONE_ADMIN_REJECT_WORKS');
     const rejectedAuditRows = assertNoError(await admin.from('dietitian_verification_audit').select('*').eq('subject_user_id_snapshot', rejectedPending.id), 'rejected audit count');
     assert(rejectedAuditRows.length === 1 && rejectedAuditRows[0].new_status === 'rejected', 'ADMIN_REJECT_ONE_AUDIT');
-    assert((await clients.rejected.rpc('is_current_user_platform_admin')).data === false, 'REJECTED_DIETITIAN_PREDICATE_FALSE');
+    assert((await clients.rejected.rpc('is_current_user_platform_admin')).data === true, 'REJECTED_DIETITIAN_ENTITLEMENT_TRUE');
     assertRpcError(await clients.admin.rpc('admin_approve_dietitian', { p_user_id: rejectedPending.id }), 'REJECTED_REVERSE_APPROVE_DENY');
 
     const concurrentResults = await Promise.all([
@@ -371,6 +431,10 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
     const signedUrl = assertNoError(await clients.admin.storage.from(diplomaBucket)
       .createSignedUrl(canonicalDiplomaPath(completePending.id), 120), 'admin diploma signed URL');
     assert(typeof signedUrl?.signedUrl === 'string' && signedUrl.signedUrl.length > 0, 'ADMIN_DIPLOMA_SIGNED_URL_120S');
+    const standaloneSignedUrl = assertNoError(await clients.standalone.storage.from(diplomaBucket)
+      .createSignedUrl(canonicalDiplomaPath(completePending.id), 120), 'standalone admin diploma signed URL');
+    assert(typeof standaloneSignedUrl?.signedUrl === 'string' && standaloneSignedUrl.signedUrl.length > 0,
+      'STANDALONE_ADMIN_DIPLOMA_READ');
     assertRpcError(await clients.approvedNonAdmin.storage.from(diplomaBucket)
       .createSignedUrl(canonicalDiplomaPath(completePending.id), 120), 'NONADMIN_DIPLOMA_READ_DENY');
     assertRpcError(await clients.client.storage.from(diplomaBucket)
@@ -381,6 +445,10 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
     const unauthorizedUploadObject = await admin.storage.from(diplomaBucket)
       .download(canonicalDiplomaPath(incompletePending.id));
     assert(Boolean(unauthorizedUpload.error) && Boolean(unauthorizedUploadObject.error), 'ADMIN_DIPLOMA_INSERT_DENY');
+    const standaloneUpload = await clients.standalone.storage.from(diplomaBucket).upload(
+      canonicalDiplomaPath(incompletePending.id), Buffer.from('%PDF standalone unauthorized'), { contentType: 'application/pdf' },
+    );
+    assert(Boolean(standaloneUpload.error), 'STANDALONE_ADMIN_DIPLOMA_INSERT_DENY');
     const unauthorizedUpdate = await clients.admin.storage.from(diplomaBucket).update(
       canonicalDiplomaPath(completePending.id), Buffer.from('%PDF unauthorized update'), { contentType: 'application/pdf' },
     );
@@ -496,9 +564,10 @@ const runScenario = async ({ includePush }) => {
       copyFileSync(join(migrationDirectory, migrationName), destination, 1);
     }
     const runtimeFiles = readdirSync(runtimeMigrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-    const expectedFiles = includePush ? 50 : 49;
+    const expectedFiles = includePush ? 51 : 50;
     assert(runtimeFiles.length === expectedFiles, scenarioLabel + '_MIGRATION_FILE_COUNT', String(runtimeFiles.length));
-    assert(runtimeFiles.at(-1) === adminMigrationName, scenarioLabel + '_ADMIN_MIGRATION_TAIL');
+    assert(runtimeFiles.at(-2) === adminMigrationName, scenarioLabel + '_ADMIN_MIGRATION_BEFORE_STANDALONE');
+    assert(runtimeFiles.at(-1) === standaloneAdminMigrationName, scenarioLabel + '_STANDALONE_ADMIN_MIGRATION_TAIL');
     if (includePush) assert(runtimeFiles.includes(pushMigrationName), scenarioLabel + '_PUSH_PRESENT');
     else assert(!runtimeFiles.includes(pushMigrationName), scenarioLabel + '_PUSH_ABSENT');
 
@@ -516,6 +585,8 @@ const runScenario = async ({ includePush }) => {
     assert(migrationCount === expectedFiles, scenarioLabel + '_SCHEMA_MIGRATION_COUNT', String(migrationCount));
     assert(countBySql(projectId, "select count(*) from supabase_migrations.schema_migrations where version='20260826133224';") === 1,
       scenarioLabel + '_ADMIN_MIGRATION_REPLAYED');
+    assert(countBySql(projectId, "select count(*) from supabase_migrations.schema_migrations where version='20260827084741';") === 1,
+      scenarioLabel + '_STANDALONE_ADMIN_MIGRATION_REPLAYED');
     assert(includePush
       ? countBySql(projectId, "select count(*) from pg_class where relname='push_installations' and relnamespace='private'::regnamespace;") === 1
       : countBySql(projectId, "select count(*) from pg_class where relname='push_installations' and relnamespace='private'::regnamespace;") === 0,
