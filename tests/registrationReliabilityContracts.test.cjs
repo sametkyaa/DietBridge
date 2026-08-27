@@ -6,7 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const root = path.join(__dirname, '..');
-const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8').replaceAll('\r\n', '\n');
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const service = () => read('features/dietitians/services/dietitianService.ts');
 const serviceBeforeProfileRead = () => service().slice(0, service().indexOf('export const getCurrentDietitianProfile'));
 

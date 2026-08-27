@@ -105,6 +105,7 @@ test('Web Admin route and service preserve entitlement isolation and signed-url 
   assert.match(route, /usePlatformAdminAccess/);
   assert.match(route, /const \{ accessState, session, signOut \} = useAuth\(\)/);
   assert.match(route, /enabled: Boolean\(session\?\.user\) && accessState\.status !== 'password_recovery'/);
+  assert.match(route, /userId: session\?\.user\.id \?\? null/);
   assert.match(route, /accessState\.status === 'unauthenticated' \|\| !session\?\.user/);
   assert.doesNotMatch(route, /accessState\.status === 'allowed'/);
   assert.doesNotMatch(route, /accessState\.status !== 'allowed'/);
@@ -125,6 +126,21 @@ test('Web Admin route and service preserve entitlement isolation and signed-url 
   assert.doesNotMatch(service, /SERVICE_ROLE|service_role|VITE_SUPABASE_SERVICE/);
   assert.match(read('features/admin/pages/DietitianApplicationDetailPage.tsx'), /Diplomayı Görüntüle/);
   assert.match(read('features/admin/pages/DietitianApplicationDetailPage.tsx'), /Promise\.all/);
+});
+
+test('Platform Admin entitlement state is scoped to the Auth identity and stale lookups cannot win', () => {
+  const hook = read('features/admin/hooks/usePlatformAdminAccess.ts');
+  const sidebar = read('shared/components/Sidebar.tsx');
+  assert.match(hook, /userId: string \| null/);
+  assert.match(hook, /if \(!enabled \|\| !userId\)/);
+  assert.match(hook, /const \[resolvedUserId, setResolvedUserId\] = useState<string \| null>\(null\)/);
+  assert.match(hook, /setResolvedUserId\(null\);[\s\S]*void checkCurrentPlatformAdmin\(\)/);
+  assert.match(hook, /if \(active\) \{[\s\S]*setResolvedUserId\(userId\);[\s\S]*setState\(\{ status: isAdmin \? 'authorized' : 'denied' \}\)/);
+  assert.match(hook, /\}, \[attempt, enabled, userId\]\);/);
+  assert.match(hook, /return \(\) => \{\s*active = false;\s*\};/);
+  assert.match(hook, /resolvedUserId === userId[\s\S]*\{ status: 'loading' \}/);
+  assert.match(sidebar, /const \{ accessState, session \} = useAuth\(\)/);
+  assert.match(sidebar, /userId: session\?\.user\.id \?\? null/);
 });
 
 test('Auth verification resolver accepts only the three consistent source states', () => {

@@ -42,6 +42,7 @@ const AdminRoute = () => {
   const { accessState, session, signOut } = useAuth();
   const adminAccess = usePlatformAdminAccess({
     enabled: Boolean(session?.user) && accessState.status !== 'password_recovery',
+    userId: session?.user.id ?? null,
   });
 
   if (accessState.status === 'initializing' || (accessState.status === 'resolving_access' && !session)) {
