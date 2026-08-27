@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { Search, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2, Info, Download, Utensils, Pencil } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import DietitianAvatar from '../../../shared/components/DietitianAvatar';
 import { Client } from '../../../shared/types';
 import { fetchDietitianClientList, addClientByEmail, resolveClientIdByRelationId } from '../services/clientService';
+import { exportClientsToXlsx } from '../services/clientExportService';
 import NotificationBell from '../../notifications/components/NotificationBell';
 
 type ClientListViewState =
@@ -47,6 +48,16 @@ const getClientInitials = (name: string) => {
   return initials || '?';
 };
 
+const clientNumberFormatter = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
+
+const formatClientPercentage = (value: number | null): string => (
+  value === null || !Number.isFinite(value) ? 'Veri yok' : `%${clientNumberFormatter.format(value)}`
+);
+
+const clientMessagesPath = (clientId: string): string => (
+  `/messages?clientId=${encodeURIComponent(clientId)}`
+);
+
 const ClientAvatar: React.FC<{
   name: string;
   src: string | null | undefined;
@@ -77,6 +88,135 @@ const ClientAvatar: React.FC<{
       onError={() => setImageFailed(true)}
       className={`${sizeClassName} shrink-0 rounded-full object-cover`}
     />
+  );
+};
+
+const ClientCompliance: React.FC<{ client: Client }> = ({ client }) => {
+  const value = client.compliance;
+  if (value === null || !Number.isFinite(value)) {
+    return <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-xs font-medium text-slate-400">Veri yok</span>;
+  }
+
+  const progress = Math.min(100, Math.max(0, value));
+  const tone = value > 80
+    ? { bar: 'bg-primary', text: 'text-primary' }
+    : value > 70
+      ? { bar: 'bg-yellow-400', text: 'text-yellow-500' }
+      : { bar: 'bg-red-500', text: 'text-red-500' };
+
+  return (
+    <div className="flex items-center gap-3" aria-label={`Son 7 gün uyumu: ${formatClientPercentage(value)}`}>
+      <div className="flex-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label="Son 7 gün uyumu">
+        <div className={`h-full rounded-full transition-all duration-500 ${tone.bar}`} style={{ width: `${progress}%` }} />
+      </div>
+      <span className={`w-12 text-right text-xs font-bold ${tone.text}`}>{formatClientPercentage(value)}</span>
+    </div>
+  );
+};
+
+const ClientMessageButton: React.FC<{ client: Client }> = ({ client }) => {
+  const navigate = useNavigate();
+  const isActive = client.status === 'Aktif';
+  return (
+    <button
+      type="button"
+      disabled={!isActive}
+      onClick={() => navigate(clientMessagesPath(client.id))}
+      aria-label={isActive ? `${client.name} danışanına mesaj gönder` : `${client.name} için mesajlaşma kullanılamıyor`}
+      title={isActive ? 'Mesaj Gönder' : 'Onay bekleyen danışanlar için mesajlaşma kullanılamaz.'}
+      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-slate-50 text-slate-400 transition-colors hover:bg-emerald-50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-50 disabled:hover:text-slate-400"
+    >
+      <MessageSquare className="h-4 w-4" aria-hidden="true" />
+    </button>
+  );
+};
+
+const ClientActionsMenu: React.FC<{ client: Client }> = ({ client }) => {
+  const navigate = useNavigate();
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const firstMenuItemRef = useRef<HTMLButtonElement>(null);
+  const isActive = client.status === 'Aktif';
+
+  const closeMenu = useCallback((restoreFocus = false) => {
+    setIsOpen(false);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => moreButtonRef.current?.focus());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handleOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !containerRef.current?.contains(event.target)) {
+        closeMenu();
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeMenu(true);
+      }
+    };
+    const focusFrame = window.requestAnimationFrame(() => firstMenuItemRef.current?.focus());
+    document.addEventListener('pointerdown', handleOutsidePointer);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener('pointerdown', handleOutsidePointer);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeMenu, isOpen]);
+
+  if (!isActive) {
+    return (
+      <button
+        type="button"
+        disabled
+        aria-label={`${client.name} için işlemler kullanılamıyor`}
+        title="Onay bekleyen danışanlar için aktif ilişki gerektiren işlemler kullanılamaz."
+        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed"
+      >
+        <MoreVertical className="h-4 w-4" aria-hidden="true" />
+      </button>
+    );
+  }
+
+  const menuItemClassName = 'flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary';
+
+  return (
+    <div ref={containerRef} className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        ref={moreButtonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-label={`${client.name} için daha fazla işlem`}
+        onClick={() => setIsOpen((current) => !current)}
+        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      >
+        <MoreVertical className="h-4 w-4" aria-hidden="true" />
+      </button>
+      {isOpen && (
+        <div role="menu" aria-label={`${client.name} işlemleri`} className="absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+          <button ref={firstMenuItemRef} type="button" role="menuitem" className={menuItemClassName} onClick={() => { closeMenu(); navigate(`/clients/${client.id}`); }}>
+            <Eye className="h-4 w-4 text-slate-400" aria-hidden="true" /> Profili Görüntüle
+          </button>
+          <button type="button" role="menuitem" className={menuItemClassName} onClick={() => { closeMenu(); navigate(clientMessagesPath(client.id)); }}>
+            <MessageSquare className="h-4 w-4 text-slate-400" aria-hidden="true" /> Mesaj Gönder
+          </button>
+          <button type="button" role="menuitem" className={menuItemClassName} onClick={() => { closeMenu(); navigate(`/clients/${client.id}/meal-tracking`); }}>
+            <Utensils className="h-4 w-4 text-slate-400" aria-hidden="true" /> Öğün Takibi
+          </button>
+          <button type="button" role="menuitem" className={menuItemClassName} onClick={() => { closeMenu(); navigate('/meal-plans', { state: { clientId: client.id } }); }}>
+            <Pencil className="h-4 w-4 text-slate-400" aria-hidden="true" /> Planı Düzenle
+          </button>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -147,23 +287,11 @@ const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
         )}
       </td>
       <td className="px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
-              <div 
-                className={`h-full rounded-full transition-all duration-500 ${client.compliance > 80 ? 'bg-primary' : client.compliance > 70 ? 'bg-yellow-400' : 'bg-red-500'}`} 
-                style={{ width: `${client.compliance}%` }}
-              ></div>
-            </div>
-            <span className={`text-xs font-bold w-8 text-right ${client.compliance > 80 ? 'text-primary' : client.compliance > 70 ? 'text-yellow-500' : 'text-red-500'}`}>
-              %{client.compliance}
-            </span>
-          </div>
+        <ClientCompliance client={client} />
       </td>
       <td className="px-6 py-4">
         <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
-            <button className="p-2 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-full transition-colors">
-              <MessageSquare className="w-4 h-4" />
-            </button>
+            <ClientMessageButton client={client} />
             <button
               type="button"
               onClick={() => navigate(`/clients/${client.id}`)}
@@ -172,9 +300,7 @@ const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
             >
               <Eye className="w-4 h-4" />
             </button>
-            <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
-              <MoreVertical className="w-4 h-4" />
-            </button>
+            <ClientActionsMenu client={client} />
         </div>
       </td>
     </tr>
@@ -259,25 +385,15 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
 
       {/* Compliance */}
       <div className="flex items-center gap-3 mb-4">
-        <p className="text-xs font-medium text-slate-400 w-10">Uyum</p>
-        <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
-          <div 
-            className={`h-full rounded-full transition-all duration-500 ${client.compliance > 80 ? 'bg-primary' : client.compliance > 70 ? 'bg-yellow-400' : 'bg-red-500'}`} 
-            style={{ width: `${client.compliance}%` }}
-          ></div>
-        </div>
-        <span className={`text-xs font-bold w-8 text-right ${client.compliance > 80 ? 'text-primary' : client.compliance > 70 ? 'text-yellow-500' : 'text-red-500'}`}>
-          %{client.compliance}
-        </span>
+        <p className="w-10 text-xs font-medium text-slate-400" title="Son 7 gündeki planlanan öğünlerin tamamlanma oranı">Uyum</p>
+        <div className="min-w-0 flex-1"><ClientCompliance client={client} /></div>
       </div>
 
       {/* Actions */}
       <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
          <p className="text-xs text-slate-400 font-medium">Hızlı İşlemler</p>
          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-            <button className="p-2 bg-slate-50 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-lg transition-colors">
-              <MessageSquare className="w-4 h-4" />
-            </button>
+            <ClientMessageButton client={client} />
             <button
               type="button"
               onClick={() => navigate(`/clients/${client.id}`)}
@@ -286,6 +402,7 @@ const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
             >
               <Eye className="w-4 h-4" />
             </button>
+            <ClientActionsMenu client={client} />
          </div>
       </div>
     </div>
@@ -308,12 +425,15 @@ const ClientsPage = () => {
   const inviteEmailInputRef = useRef<HTMLInputElement>(null);
   const wasAddModalOpen = useRef(false);
   const handledNotificationRelationshipRef = useRef<string | null>(null);
+  const exportInFlight = useRef(false);
 
   // Add Client Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newClientEmail, setNewClientEmail] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [addFeedback, setAddFeedback] = useState<{ type: 'success' | 'info' | 'error', message: string } | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const loadClients = useCallback(async (
     options: { showLoading?: boolean; preserveOnError?: boolean } = {}
@@ -569,6 +689,25 @@ const ClientsPage = () => {
   const activeClients = filteredClients.filter(c => c.status === 'Aktif');
   const pendingClients = filteredClients.filter(c => c.status === 'Onay Bekliyor');
 
+  const handleExport = useCallback(async () => {
+    if (filteredClients.length === 0 || exportInFlight.current) return;
+
+    exportInFlight.current = true;
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      await exportClientsToXlsx(filteredClients);
+    } catch {
+      console.error('Client list export failed.');
+      if (isMounted.current) {
+        setExportError('Danışan listesi dışa aktarılamadı. Lütfen tekrar deneyin.');
+      }
+    } finally {
+      exportInFlight.current = false;
+      if (isMounted.current) setIsExporting(false);
+    }
+  }, [filteredClients]);
+
   return (
     <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-hidden p-4 md:h-screen md:max-w-7xl md:p-8 mx-auto flex flex-col">
        {/* Responsive Header */}
@@ -625,7 +764,15 @@ const ClientsPage = () => {
                  />
               </div>
               <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                 <button className="flex-1 md:flex-none whitespace-nowrap px-4 py-2.5 md:py-2 text-sm font-medium text-slate-600 bg-white md:bg-slate-50 rounded-xl md:rounded-lg border border-slate-200 hover:bg-slate-50 shadow-sm md:shadow-none">Dışa Aktar</button>
+                 <button
+                   type="button"
+                   onClick={() => void handleExport()}
+                   disabled={filteredClients.length === 0 || isExporting}
+                   className="flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:rounded-lg md:bg-slate-50 md:py-2 md:shadow-none"
+                 >
+                   {isExporting ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="h-4 w-4" aria-hidden="true" />}
+                   {isExporting ? 'Dışa aktarılıyor...' : 'Dışa Aktar'}
+                 </button>
                  <div
                    className="flex w-full sm:w-auto gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white md:bg-slate-50 p-1 shadow-sm md:shadow-none"
                    role="group"
@@ -651,6 +798,7 @@ const ClientsPage = () => {
                      </button>
                    ))}
                  </div>
+                 {exportError && <p className="text-sm font-medium text-red-600" role="alert">{exportError}</p>}
               </div>
         </div>
         
@@ -732,7 +880,7 @@ const ClientsPage = () => {
                     <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Diyet Süresi</th>
                     <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Güncel Kilo</th>
                     <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Haftalık Değişim</th>
-                    <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs w-48">Uyum</th>
+                    <th className="w-48 px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Uyum (7 Gün)</th>
                     <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs text-center">İşlemler</th>
                   </tr>
                 </thead>

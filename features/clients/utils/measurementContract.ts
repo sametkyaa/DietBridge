@@ -6,6 +6,8 @@ export type MeasurementInputResult = {
 };
 
 export const MEASUREMENT_MAX_CM = 500;
+export const WEIGHT_MIN_KG = 20;
+export const WEIGHT_MAX_KG = 500;
 
 /**
  * Parses the same decimal input contract used by the mobile measurement form.
@@ -29,4 +31,11 @@ export const parseMeasurementInput = (rawValue: string): MeasurementInputResult 
 export const isValidMeasurementValue = (value: number | null): boolean => (
   value === null
   || (Number.isFinite(value) && value > 0 && value <= MEASUREMENT_MAX_CM)
+);
+
+export const isValidWeightMeasurementValue = (value: number | null): value is number => (
+  value !== null
+  && Number.isFinite(value)
+  && value >= WEIGHT_MIN_KG
+  && value <= WEIGHT_MAX_KG
 );

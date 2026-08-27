@@ -34,6 +34,7 @@
     "test:notes": "node scripts/runMealPlanContractTests.mjs --notes-only",
     "test:notes:runtime": "node scripts/runDisposableNoteRuntimeHarness.mjs",
     "test:analytics": "node scripts/runMealPlanContractTests.mjs --analytics-only",
+    "test:client-metrics": "node scripts/runClientMetricsContractTests.mjs",
     "test:water": "node scripts/runMealPlanContractTests.mjs --water-only",
     "test:analytics:runtime": "node scripts/runDisposableAnalyticsRuntimeHarness.mjs",
     "test:subscriptions": "node scripts/runMealPlanContractTests.mjs --subscriptions-only",
@@ -49,7 +50,8 @@
     "lucide-react": "^0.556.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "react-router-dom": "^7.18.2"
+    "react-router-dom": "^7.18.2",
+    "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

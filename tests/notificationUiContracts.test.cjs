@@ -221,11 +221,18 @@ test('bell is exposed only in the approved Dashboard, Messages, and Clients head
 
 test('deep-link destinations validate existing authenticated chat and relationship boundaries', () => {
   const messages = source('pages/Messages.tsx');
+  const messageDeepLink = source('features/chat/utils/messageDeepLink.ts');
   const clients = source('features/clients/pages/ClientsPage.tsx');
   const clientService = source('features/clients/services/clientService.ts');
   assert.match(messages, /useSearchParams\(\)/);
-  assert.match(messages, /conversation\.conversationId === requestedConversationId/);
-  assert.match(messages, /setActiveRelationId\(requestedConversation\.relationId\)/);
+  assert.match(messages, /searchParams\.get\('conversationId'\)/);
+  assert.match(messages, /searchParams\.get\('clientId'\)/);
+  assert.match(messages, /resolveConversationSelection/);
+  assert.match(messages, /conversationSelection\.status === 'resolved'/);
+  assert.match(messages, /setActiveRelationId\(conversationSelection\.conversation\.relationId\)/);
+  assert.match(messageDeepLink, /source: 'conversationId'/);
+  assert.match(messageDeepLink, /source: 'clientId'/);
+  assert.match(messageDeepLink, /isLoading \|\| !hasLoaded/);
   assert.match(clients, /resolveClientIdByRelationId\(notificationRelationshipId\)/);
   assert.match(clientService, /\.eq\('id', relationId\)/);
   assert.match(clientService, /\.eq\('dietitian_id', user\.id\)/);

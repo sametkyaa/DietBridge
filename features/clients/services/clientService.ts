@@ -5,6 +5,7 @@ import { USER_AVATAR } from '../../../shared/constants';
 import { isValidUuid } from '../../../shared/utils/uuid';
 import { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
 import { isValidMeasurementValue } from '../utils/measurementContract';
+import { fetchClientProgressMetrics } from './clientProgressService';
 
 export { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
 
@@ -31,7 +32,6 @@ interface ClientDetailsProfileRow {
   goal_catalog: NestedRelation<CatalogLabelRow>;
   diet_start_date: string | null;
   current_weight: number | null;
-  compliance_score: number | null;
   start_weight: number | null;
   target_weight: number | null;
   height_cm: number | null;
@@ -66,7 +66,6 @@ interface ClientListProfileRow {
   goal_catalog: NestedRelation<CatalogLabelRow>;
   diet_start_date: string | null;
   current_weight: number | null;
-  compliance_score: number | null;
   start_weight: number | null;
   target_weight: number | null;
   height_cm: number | null;
@@ -130,7 +129,7 @@ type ClientLifestyleKeys =
   | 'smokingStatus'
   | 'alcoholUse';
 
-export type ActiveClientDetails = Omit<Client, ClientLifestyleKeys | 'duration' | 'weeklyChange'> &
+export type ActiveClientDetails = Omit<Client, ClientLifestyleKeys | 'duration'> &
   ClientLifestyleReadModel & { relationId: string };
 
 interface ClientLifestyleReadSource {
@@ -155,6 +154,10 @@ const CLIENT_LIST_LOAD_ERROR =
 export type ClientListResult =
   | { status: 'success'; clients: Client[] }
   | { status: 'error'; kind: 'auth' | 'query' | 'unexpected'; userMessage: string };
+
+export interface FetchDietitianClientListOptions {
+  includeProgress?: boolean;
+}
 
 const formatDietDuration = (dietStartDate: string | null): string | null => {
   if (!dietStartDate) return null;
@@ -190,7 +193,9 @@ const formatDietDuration = (dietStartDate: string | null): string | null => {
  */
 export const fetchDietitianClientList = async (
   relationStatuses: Array<'active' | 'pending'> = ['active', 'pending'],
+  options: FetchDietitianClientListOptions = {},
 ): Promise<ClientListResult> => {
+  const includeProgress = options.includeProgress ?? true;
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -212,7 +217,6 @@ export const fetchDietitianClientList = async (
             goal_catalog:client_goals!client_profiles_goal_id_fkey (label),
             diet_start_date,
             current_weight,
-            compliance_score,
             start_weight,
             target_weight,
             height_cm,
@@ -249,7 +253,7 @@ export const fetchDietitianClientList = async (
     }
 
     const rows = (data ?? []) as unknown as DietitianClientListRow[];
-    const clients = (await Promise.all(rows.map(async (item): Promise<Client | null> => {
+    const baseClients = (await Promise.all(rows.map(async (item): Promise<Client | null> => {
       if (item.status !== 'active' && item.status !== 'pending') return null;
 
       const client = Array.isArray(item.client) ? item.client[0] : item.client;
@@ -318,7 +322,7 @@ export const fetchDietitianClientList = async (
         startWeight: profile.start_weight ? `${profile.start_weight} kg` : undefined,
         targetWeight: profile.target_weight ? `${profile.target_weight} kg` : undefined,
         weeklyChange: null,
-        compliance: profile.compliance_score || 0,
+        compliance: null,
         bloodType,
         chronicConditions,
         medications,
@@ -328,6 +332,21 @@ export const fetchDietitianClientList = async (
         sleepHours: profile.sleep_hours,
       };
     }))).filter((client): client is Client => client !== null);
+
+    const activeClientIds = baseClients
+      .filter((client) => client.status === 'Aktif')
+      .map((client) => client.id);
+    const progressByClientId = includeProgress
+      ? await fetchClientProgressMetrics(activeClientIds)
+      : new Map();
+    const clients = baseClients.map((client) => {
+      const progress = progressByClientId.get(client.id);
+      return {
+        ...client,
+        weeklyChange: progress?.weeklyChange ?? null,
+        compliance: progress?.compliance ?? null,
+      };
+    });
 
     return { status: 'success', clients };
   } catch {
@@ -366,7 +385,7 @@ export const resolveClientIdByRelationId = async (relationId: string): Promise<s
 };
 
 export const fetchActiveDietitianClientList = async (): Promise<ClientListResult> => {
-  const result = await fetchDietitianClientList(['active']);
+  const result = await fetchDietitianClientList(['active'], { includeProgress: false });
   if (result.status === 'error') return result;
 
   return {
@@ -622,7 +641,6 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
           goal_catalog:client_goals!client_profiles_goal_id_fkey (label),
           diet_start_date,
           current_weight,
-          compliance_score,
           start_weight,
           target_weight,
           height_cm,
@@ -696,6 +714,9 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
     });
     const waterGoalLiters = profile.daily_water_goal_ml ? profile.daily_water_goal_ml / 1000 : undefined;
 
+    const progressByClientId = await fetchClientProgressMetrics([clientId]);
+    const progress = progressByClientId.get(clientId);
+
     const profilePhotoUrl = await resolveProfilePhotoUrl(clientData.avatar_url, {
       subjectUserId: clientId,
       allowPrivatePath: true,
@@ -717,7 +738,8 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
         currentWeight: profile.current_weight ? `${profile.current_weight}` : '-',
         startWeight: profile.start_weight ? `${profile.start_weight}` : undefined,
         targetWeight: profile.target_weight ? `${profile.target_weight}` : undefined,
-        compliance: profile.compliance_score || 0,
+        weeklyChange: progress?.weeklyChange ?? null,
+        compliance: progress?.compliance ?? null,
         waterGoalLiters,
         heightCm: profile.height_cm,
         lastLabDate: profile.last_lab_date ? new Date(profile.last_lab_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : undefined,

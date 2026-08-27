@@ -663,15 +663,21 @@ const DashboardPage = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full ${client.compliance > 80 ? 'bg-primary' : client.compliance > 70 ? 'bg-yellow-400' : 'bg-red-500'}`} 
-                          style={{ width: `${client.compliance}%` }}
-                        ></div>
-                      </div>
-                      <span className={`text-sm font-bold ${client.compliance > 80 ? 'text-primary' : client.compliance > 70 ? 'text-yellow-500' : 'text-red-500'}`}>
-                        %{client.compliance}
-                      </span>
+                      {client.compliance === null ? (
+                        <span className="text-xs font-medium text-slate-400">Veri yok</span>
+                      ) : (
+                        <>
+                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className={`h-full rounded-full ${client.compliance > 80 ? 'bg-primary' : client.compliance > 70 ? 'bg-yellow-400' : 'bg-red-500'}`}
+                              style={{ width: `${Math.min(100, Math.max(0, client.compliance))}%` }}
+                            />
+                          </div>
+                          <span className={`text-sm font-bold ${client.compliance > 80 ? 'text-primary' : client.compliance > 70 ? 'text-yellow-500' : 'text-red-500'}`}>
+                            %{client.compliance}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))

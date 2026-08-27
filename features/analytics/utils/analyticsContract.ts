@@ -19,14 +19,18 @@ import {
   DAILY_WATER_MAX_LITERS,
   isValidDailyWaterLiters,
 } from './waterContract';
+import { calculateAdherencePercentage } from '../../../shared/utils/adherenceContract';
+import {
+  addCalendarDays,
+  getDateKeyInTimeZone,
+} from '../../../shared/utils/dateContract';
+import { isValidWeightMeasurementValue } from '../../clients/utils/measurementContract';
 
 export const ANALYTICS_TIME_ZONE = 'Europe/Istanbul';
 export const ANALYTICS_MAX_MEAL_CALORIES = 10_000;
 export const ANALYTICS_MAX_MACRO_GRAMS = 1_000;
 
 const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const WEIGHT_MIN_KG = 20;
-const WEIGHT_MAX_KG = 500;
 const BODY_MEASUREMENT_MAX_CM = 500;
 const MEAL_TYPES: readonly AnalyticsMealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -80,22 +84,19 @@ export const isAnalyticsDateRangeKey = (value: unknown): value is AnalyticsDateR
 );
 
 export const getIstanbulDateKey = (now: Date = new Date()): string => {
-  if (!Number.isFinite(now.getTime())) throw new Error('INVALID_ANALYTICS_NOW');
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: ANALYTICS_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
+  try {
+    return getDateKeyInTimeZone(now, ANALYTICS_TIME_ZONE);
+  } catch {
+    throw new Error('INVALID_ANALYTICS_NOW');
+  }
 };
 
 export const addAnalyticsDays = (date: string, amount: number): string => {
-  if (!Number.isInteger(amount)) throw new Error('INVALID_ANALYTICS_DAY_OFFSET');
-  const parsed = dateFromKey(date);
-  parsed.setUTCDate(parsed.getUTCDate() + amount);
-  return keyFromDate(parsed);
+  try {
+    return addCalendarDays(date, amount);
+  } catch {
+    throw new Error('INVALID_ANALYTICS_DAY_OFFSET');
+  }
 };
 
 const subtractCalendarMonths = (date: string, amount: number): string => {
@@ -132,12 +133,10 @@ export const countAnalyticsRangeDays = (range: AnalyticsDateRange): number | nul
   return Math.floor((end - start) / 86_400_000) + 1;
 };
 
-const percentage = (completed: number, planned: number): number | null => (
-  planned === 0 ? null : (completed / planned) * 100
-);
+const percentage = calculateAdherencePercentage;
 
 const validWeight = (value: number | null): value is number => (
-  value !== null && Number.isFinite(value) && value >= WEIGHT_MIN_KG && value <= WEIGHT_MAX_KG
+  isValidWeightMeasurementValue(value)
 );
 
 const validBodyMeasurement = (value: number | null): value is number => (

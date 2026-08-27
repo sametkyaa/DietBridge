@@ -67,7 +67,10 @@ test('approved dietitian restores session, reads a persisted client profile, and
   await expect(page.getByText(clientName).first()).toBeVisible();
 
   await page.goto('/settings');
-  await page.getByRole('button', { name: /Çıkış Yap/ }).click();
+  await expect(page.getByRole('heading', { name: 'Ayarlar', level: 1 })).toBeVisible();
+  await page.getByRole('button', { name: /Güvenlik ve Oturum/ }).click();
+  await expect(page.getByRole('heading', { name: 'Güvenlik ve Oturum', level: 2 })).toBeVisible();
+  await page.getByRole('button', { name: /^Çıkış Yap$/ }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto('/clients');
   await expect(page).toHaveURL(/\/login$/);
