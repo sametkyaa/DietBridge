@@ -39,30 +39,21 @@ const AdminDeniedState = ({ onRetry, onSignOut, message }: { message: string; on
 
 const AdminRoute = () => {
   const location = useLocation();
-  const { accessState, signOut, refreshAccess } = useAuth();
-  const adminAccess = usePlatformAdminAccess({ enabled: accessState.status === 'allowed' });
+  const { accessState, session, signOut } = useAuth();
+  const adminAccess = usePlatformAdminAccess({
+    enabled: Boolean(session?.user) && accessState.status !== 'password_recovery',
+    userId: session?.user.id ?? null,
+  });
 
-  if (accessState.status === 'initializing') {
+  if (accessState.status === 'initializing' || (accessState.status === 'resolving_access' && !session)) {
     return <AdminLoadingState message="Oturum kontrol ediliyor..." />;
-  }
-  if (accessState.status === 'resolving_access') {
-    return <AdminLoadingState message="Hesap erişimi doğrulanıyor..." />;
-  }
-  if (accessState.status === 'unauthenticated') {
-    const from = `${location.pathname}${location.search}${location.hash}`;
-    return <Navigate to="/login" replace state={{ from }} />;
   }
   if (accessState.status === 'password_recovery') {
     return <Navigate to="/reset-password" replace />;
   }
-  if (accessState.status !== 'allowed') {
-    return (
-      <AdminDeniedState
-        message="Yönetim konsolu yalnızca onaylı diyetisyen hesabına bağlı, açık bir platform yöneticisi entitlement'ı için kullanılabilir."
-        onRetry={() => { void refreshAccess(); }}
-        onSignOut={() => { void signOut(); }}
-      />
-    );
+  if (accessState.status === 'unauthenticated' || !session?.user) {
+    const from = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to="/login" replace state={{ from }} />;
   }
   if (adminAccess.status === 'disabled' || adminAccess.status === 'loading') {
     return <AdminLoadingState message="Yönetim yetkisi doğrulanıyor..." />;

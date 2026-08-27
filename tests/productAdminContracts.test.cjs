@@ -8,6 +8,7 @@ const test = require('node:test');
 const root = path.join(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const migration = () => read('supabase/migrations/20260826133224_product_admin_dietitian_verification.sql');
+const standaloneMigration = () => read('supabase/migrations/20260827084741_standalone_platform_admin_access.sql');
 const adminService = () => read('features/admin/services/adminService.ts');
 const authService = () => read('features/auth/services/authService.ts');
 
@@ -32,15 +33,33 @@ test('Product Admin migration is additive, isolated from deferred Push work, and
   assert.doesNotMatch(source, /create type[^;]+admin/i);
 });
 
-test('Admin predicate and RPC surface fail closed with bounded reads and controlled writes', () => {
-  const source = migration();
-  assert.match(source, /create or replace function public\.is_current_user_platform_admin\(\)[\s\S]*security definer[\s\S]*set search_path = pg_catalog, public/);
-  assert.match(source, /join public\.profiles as profile on profile\.id = entitlement\.user_id/);
-  assert.match(source, /join public\.dietitian_profiles as dietitian on dietitian\.user_id = entitlement\.user_id/);
-  assert.match(source, /profile\.role = 'dietitian'::public\.user_role/);
-  assert.match(source, /dietitian\.verification_status = 'approved'/);
-  assert.match(source, /dietitian\.is_verified is true/);
+test('Standalone Admin migration is additive and makes authorization entitlement-only', () => {
+  const source = standaloneMigration();
+  const helperStart = source.indexOf('create or replace function public.is_current_user_platform_admin()');
+  const helperEnd = source.indexOf('$function$;', helperStart);
+  const helper = helperStart >= 0 && helperEnd >= 0 ? source.slice(helperStart, helperEnd) : '';
+  assert.match(source, /to_regclass\('public\.platform_admins'\)/);
+  assert.match(source, /to_regprocedure\('public\.admin_get_verification_summary\(\)'\)/);
+  assert.match(source, /to_regprocedure\('public\.admin_list_dietitian_applications\(text,text,integer,integer\)'\)/);
+  assert.match(source, /to_regprocedure\('public\.admin_get_dietitian_application\(uuid\)'\)/);
+  assert.match(source, /to_regprocedure\('public\.admin_get_dietitian_verification_history\(uuid\)'\)/);
+  assert.match(source, /to_regprocedure\('public\.admin_approve_dietitian\(uuid\)'\)/);
+  assert.match(source, /to_regprocedure\('public\.admin_reject_dietitian\(uuid,text\)'\)/);
+  assert.match(helper, /stable[\s\S]*security definer[\s\S]*set search_path = pg_catalog, public/);
+  assert.match(helper, /from public\.platform_admins as entitlement/);
+  assert.match(helper, /\(select auth\.uid\(\)\) is not null/);
+  assert.match(helper, /entitlement\.user_id = \(select auth\.uid\(\)\)/);
+  assert.match(helper, /entitlement\.revoked_at is null/);
+  assert.doesNotMatch(helper, /join public\.profiles|join public\.dietitian_profiles|verification_status|is_verified/i);
+  assert.match(source, /alter function public\.is_current_user_platform_admin\(\) owner to postgres/);
+  assert.match(source, /revoke all on function public\.is_current_user_platform_admin\(\) from public, anon, authenticated, service_role/);
   assert.match(source, /grant execute on function public\.is_current_user_platform_admin\(\) to authenticated/);
+  assert.doesNotMatch(source, /create table|alter table|create (?:unique )?index|create trigger|create policy|insert into|update .* set|delete from/i);
+  assert.doesNotMatch(source, /20260817120000|push/i);
+});
+
+test('Historical Product Admin RPC surface remains bounded and controlled', () => {
+  const source = migration();
   assert.match(source, /create or replace function public\.admin_list_dietitian_applications\([\s\S]*p_limit integer default 25/);
   assert.match(source, /v_limit integer := least\(greatest\(coalesce\(p_limit, 25\), 1\), 100\)/);
   assert.match(source, /v_offset integer := least\(greatest\(coalesce\(p_offset, 0\), 0\), 100000\)/);
@@ -77,14 +96,27 @@ test('Web Admin route and service preserve entitlement isolation and signed-url 
   const app = read('App.tsx');
   const sidebar = read('shared/components/Sidebar.tsx');
   const route = read('features/admin/components/AdminRoute.tsx');
+  const protectedRoute = read('shared/components/ProtectedRoute.tsx');
+  const login = read('features/auth/pages/LoginPage.tsx');
   const service = adminService();
   assert.match(app, /path="\/admin"/);
   assert.match(app, /path="\/admin\/dietitians"/);
   assert.match(app, /path="\/admin\/dietitians\/:id"/);
   assert.match(route, /usePlatformAdminAccess/);
+  assert.match(route, /const \{ accessState, session, signOut \} = useAuth\(\)/);
+  assert.match(route, /enabled: Boolean\(session\?\.user\) && accessState\.status !== 'password_recovery'/);
+  assert.match(route, /userId: session\?\.user\.id \?\? null/);
+  assert.match(route, /accessState\.status === 'unauthenticated' \|\| !session\?\.user/);
+  assert.doesNotMatch(route, /accessState\.status === 'allowed'/);
+  assert.doesNotMatch(route, /accessState\.status !== 'allowed'/);
   assert.match(route, /<Outlet \/>/);
   assert.match(route, /<Navigate to="\/login" replace state=\{\{ from \}\} \/>/);
+  assert.match(route, /<Navigate to="\/reset-password" replace \/>/);
   assert.match(route, /adminAccess\.status === 'disabled' \|\| adminAccess\.status === 'loading'/);
+  assert.match(protectedRoute, /case 'allowed'/);
+  assert.match(protectedRoute, /case 'blocked_missing_role'/);
+  assert.match(login, /blocked_missing_role/);
+  assert.match(login, /returnPath/);
   assert.match(sidebar, /label: 'Yönetim'/);
   assert.match(sidebar, /adminAccess\.status === 'authorized'/);
   assert.match(service, /ADMIN_DIPLOMA_SIGNED_URL_SECONDS = 120/);
@@ -94,6 +126,21 @@ test('Web Admin route and service preserve entitlement isolation and signed-url 
   assert.doesNotMatch(service, /SERVICE_ROLE|service_role|VITE_SUPABASE_SERVICE/);
   assert.match(read('features/admin/pages/DietitianApplicationDetailPage.tsx'), /Diplomayı Görüntüle/);
   assert.match(read('features/admin/pages/DietitianApplicationDetailPage.tsx'), /Promise\.all/);
+});
+
+test('Platform Admin entitlement state is scoped to the Auth identity and stale lookups cannot win', () => {
+  const hook = read('features/admin/hooks/usePlatformAdminAccess.ts');
+  const sidebar = read('shared/components/Sidebar.tsx');
+  assert.match(hook, /userId: string \| null/);
+  assert.match(hook, /if \(!enabled \|\| !userId\)/);
+  assert.match(hook, /const \[resolvedUserId, setResolvedUserId\] = useState<string \| null>\(null\)/);
+  assert.match(hook, /setResolvedUserId\(null\);[\s\S]*void checkCurrentPlatformAdmin\(\)/);
+  assert.match(hook, /if \(active\) \{[\s\S]*setResolvedUserId\(userId\);[\s\S]*setState\(\{ status: isAdmin \? 'authorized' : 'denied' \}\)/);
+  assert.match(hook, /\}, \[attempt, enabled, userId\]\);/);
+  assert.match(hook, /return \(\) => \{\s*active = false;\s*\};/);
+  assert.match(hook, /resolvedUserId === userId[\s\S]*\{ status: 'loading' \}/);
+  assert.match(sidebar, /const \{ accessState, session \} = useAuth\(\)/);
+  assert.match(sidebar, /userId: session\?\.user\.id \?\? null/);
 });
 
 test('Auth verification resolver accepts only the three consistent source states', () => {

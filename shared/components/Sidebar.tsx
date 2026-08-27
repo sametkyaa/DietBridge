@@ -17,8 +17,11 @@ import { useAuth } from '../../features/auth/context/AuthContext';
 import { usePlatformAdminAccess } from '../../features/admin/hooks/usePlatformAdminAccess';
 
 const Sidebar = () => {
-  const { accessState } = useAuth();
-  const adminAccess = usePlatformAdminAccess({ enabled: accessState.status === 'allowed' });
+  const { accessState, session } = useAuth();
+  const adminAccess = usePlatformAdminAccess({
+    enabled: accessState.status === 'allowed',
+    userId: session?.user.id ?? null,
+  });
   const navItems = [
     { icon: LayoutDashboard, label: 'Kontrol Paneli', path: '/' },
     { icon: Calendar, label: 'Randevular', path: '/appointments' },
