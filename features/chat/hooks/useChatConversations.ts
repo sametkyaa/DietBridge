@@ -12,6 +12,7 @@ const getSafeChatListErrorMessage = (error: unknown): string => (
 export const useChatConversations = (dietitianId?: string) => {
   const [conversations, setConversations] = useState<ChatConversationListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(false);
   const requestVersionRef = useRef(0);
@@ -33,17 +34,20 @@ export const useChatConversations = (dietitianId?: string) => {
         setConversations([]);
         setError(null);
         setIsLoading(false);
+        setHasLoaded(false);
       }
       return;
     }
 
     setIsLoading(true);
+    setHasLoaded(false);
     setError(null);
 
     try {
       const nextConversations = await fetchChatConversations(normalizedDietitianId);
       if (!mountedRef.current || requestVersion !== requestVersionRef.current) return;
       setConversations(nextConversations);
+      setHasLoaded(true);
     } catch (cause) {
       if (!mountedRef.current || requestVersion !== requestVersionRef.current) return;
       setError(getSafeChatListErrorMessage(cause));
@@ -78,5 +82,5 @@ export const useChatConversations = (dietitianId?: string) => {
     }));
   }, []);
 
-  return { conversations, isLoading, error, refetch, commitConversationReceipt };
+  return { conversations, isLoading, hasLoaded, error, refetch, commitConversationReceipt };
 };

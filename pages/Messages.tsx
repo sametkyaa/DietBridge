@@ -15,6 +15,7 @@ import type { ChatImageFinalizeResult } from '../features/chat/services/chatImag
 import { ChatConversationListItem, ChatMessage, ChatReadState } from '../features/chat/types/chat';
 import { useAuth } from '../features/auth/context/AuthContext';
 import DietitianAvatar from '../shared/components/DietitianAvatar';
+import { resolveConversationSelection } from '../features/chat/utils/messageDeepLink';
 import { env } from '../lib/env';
 import NotificationBell from '../features/notifications/components/NotificationBell';
 
@@ -22,10 +23,12 @@ const Messages = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedConversationId = searchParams.get('conversationId');
+  const requestedClientId = searchParams.get('clientId');
   const { user, isInitialLoading } = useAuth();
   const {
     conversations,
     isLoading,
+    hasLoaded,
     error,
     refetch,
     commitConversationReceipt,
@@ -47,6 +50,15 @@ const Messages = () => {
   const activeConversation = useMemo(() => (
     conversations.find((conversation) => conversation.relationId === activeRelationId) ?? null
   ), [activeRelationId, conversations]);
+  const conversationSelection = useMemo(
+    () => resolveConversationSelection(
+      conversations,
+      requestedConversationId,
+      requestedClientId,
+      { isLoading, hasLoaded },
+    ),
+    [conversations, hasLoaded, isLoading, requestedClientId, requestedConversationId],
+  );
   const {
     messages,
     mealActivities,
@@ -194,21 +206,27 @@ const Messages = () => {
   });
 
   useEffect(() => {
-    if (requestedConversationId) {
-      const requestedConversation = conversations.find(
-        (conversation) => conversation.conversationId === requestedConversationId,
-      );
-      if (requestedConversation) {
-        setActiveRelationId(requestedConversation.relationId);
-        setIsMessagePanelVisible(true);
-        return;
-      }
+    if (isInitialLoading || !user || error) return;
 
-      if (!isLoading && !isInitialLoading && conversations.length > 0) {
+    if (conversationSelection.status === 'pending') {
+      if (conversationSelection.hasQuery) {
         setActiveRelationId(null);
         setIsMessagePanelVisible(false);
-        setSearchParams({}, { replace: true });
       }
+      return;
+    }
+
+    if (conversationSelection.status === 'resolved') {
+      setActiveRelationId(conversationSelection.conversation.relationId);
+      setIsMessagePanelVisible(true);
+      if (requestedConversationId || requestedClientId) setSearchParams({}, { replace: true });
+      return;
+    }
+
+    if (conversationSelection.hasQuery) {
+      setActiveRelationId(null);
+      setIsMessagePanelVisible(false);
+      setSearchParams({}, { replace: true });
       return;
     }
 
@@ -216,14 +234,14 @@ const Messages = () => {
       if (currentRelationId && conversations.some((conversation) => conversation.relationId === currentRelationId)) {
         return currentRelationId;
       }
-      return conversations[0]?.relationId ?? null;
+      return conversationSelection.conversation?.relationId ?? null;
     });
-  }, [conversations, isInitialLoading, isLoading, requestedConversationId, setSearchParams]);
+  }, [conversationSelection, conversations, error, isInitialLoading, requestedClientId, requestedConversationId, setSearchParams, user]);
 
   const handleSelectConversation = (conversation: ChatConversationListItem) => {
     setActiveRelationId(conversation.relationId);
     setIsMessagePanelVisible(true);
-    if (requestedConversationId) setSearchParams({}, { replace: true });
+    if (requestedConversationId || requestedClientId) setSearchParams({}, { replace: true });
   };
 
   const isAuthPreparing = !user && isInitialLoading;

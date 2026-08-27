@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../../lib/supabaseClient';
 import { APP_LOGO } from '../../../shared/constants';
 import { ArrowLeft, Mail, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { requestPasswordResetForEmail } from '../services/authService';
 
 const ForgotPasswordPage = () => {
   const navigate = useNavigate();
@@ -24,17 +24,10 @@ const ForgotPasswordPage = () => {
     setSuccess(false);
 
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-
-      if (resetError) {
-        setError('Şifre sıfırlama işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.');
-      } else {
-        setSuccess(true);
-      }
-    } catch (resetException) {
-      console.error('Password reset request failed:', resetException);
+      const result = await requestPasswordResetForEmail(email);
+      if (result.success) setSuccess(true);
+      else setError('Şifre sıfırlama işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.');
+    } catch {
       setError('Şifre sıfırlama işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setLoading(false);

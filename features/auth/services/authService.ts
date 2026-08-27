@@ -43,6 +43,50 @@ const safeAuthError = (error: unknown, fallback: string): string => {
 export const getSafeAuthErrorMessage = (error: unknown): string =>
   safeAuthError(error, 'Kimlik doğrulama sırasında bir hata oluştu. Lütfen tekrar deneyin.');
 
+export type PasswordResetRequestResult =
+  | { success: true }
+  | { success: false; userMessage: string };
+
+const PASSWORD_RESET_ERROR =
+  'Şifre yenileme bağlantısı gönderilemedi. Lütfen tekrar deneyin.';
+
+const isValidEmail = (value: string): boolean => /^\S+@\S+\.\S+$/.test(value);
+
+export const requestPasswordResetForEmail = async (
+  email: string,
+): Promise<PasswordResetRequestResult> => {
+  const normalizedEmail = email.trim();
+  if (!isValidEmail(normalizedEmail)) {
+    return { success: false, userMessage: 'Geçerli bir e-posta adresi bulunamadı.' };
+  }
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) {
+      console.error('Password reset request failed.');
+      return { success: false, userMessage: PASSWORD_RESET_ERROR };
+    }
+    return { success: true };
+  } catch {
+    console.error('Password reset request failed.');
+    return { success: false, userMessage: PASSWORD_RESET_ERROR };
+  }
+};
+
+export const requestCurrentUserPasswordReset = async (): Promise<PasswordResetRequestResult> => {
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user?.email) {
+      return { success: false, userMessage: 'Oturum e-posta adresi doğrulanamadı.' };
+    }
+    return requestPasswordResetForEmail(user.email);
+  } catch {
+    return { success: false, userMessage: PASSWORD_RESET_ERROR };
+  }
+};
+
 const toDietitianProfile = (row: DietitianProfileRow, fallbackEmail: string): DietitianProfile => {
   const fullName = row.profiles?.full_name?.trim() || '';
   const [firstName, ...lastNameParts] = fullName.split(' ');

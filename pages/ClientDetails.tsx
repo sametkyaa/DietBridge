@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mail, MapPin, Phone, Calendar, Weight, Activity, TrendingUp, TrendingDown, Droplets, Utensils, HeartPulse, Pill, Moon, Coffee, Stethoscope, Clock, Trash2 } from 'lucide-react';
+import { ArrowLeft, Mail, MapPin, Phone, Calendar, Weight, Activity, TrendingUp, TrendingDown, Droplets, Utensils, HeartPulse, Pill, Moon, Coffee, Stethoscope, Clock, Trash2, MessageSquare } from 'lucide-react';
 import {
   fetchClientDetails,
   removeClient,
@@ -17,6 +17,12 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
 import { parseMeasurementInput } from '../features/clients/utils/measurementContract';
+
+const clientPercentageFormatter = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
+
+const formatClientPercentage = (value: number | null): string => (
+  value === null || !Number.isFinite(value) ? 'Veri yok' : `%${clientPercentageFormatter.format(value)}`
+);
 
 
 const ProfileAvatarFallback = ({ name, className }: { name: string, className?: string }) => {
@@ -881,7 +887,12 @@ const ClientDetails = () => {
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-3">
-                        <button className="px-5 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-primary-dark transition-all shadow-sm shadow-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/messages?clientId=${encodeURIComponent(client.id)}`)}
+                          className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 font-medium text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                        >
+                            <MessageSquare className="h-4 w-4" aria-hidden="true" />
                             Mesaj Gönder
                         </button>
                         <button 
@@ -1069,22 +1080,28 @@ const ClientDetails = () => {
                 </div>
             </div>
 
-            <div className="bg-gradient-to-br from-primary to-primary-dark p-6 rounded-2xl text-white shadow-lg shadow-primary/20">
-                <div className="flex justify-between items-start mb-8">
+            <div className="rounded-2xl bg-gradient-to-br from-primary to-primary-dark p-6 text-white shadow-lg shadow-primary/20">
+                <div className="mb-8 flex items-start justify-between">
                    <div>
-                       <p className="text-emerald-100 font-medium mb-1">Program Uyumu</p>
-                       <h3 className="text-3xl font-bold">%{client.compliance}</h3>
+                       <p className="mb-1 font-medium text-emerald-100">Program Uyumu</p>
+                       <h3 className="text-3xl font-bold">{formatClientPercentage(client.compliance)}</h3>
                    </div>
-                   <div className="p-2 bg-white/20 rounded-lg">
-                       <TrendingUp className="w-6 h-6 text-white" />
+                   <div className="rounded-lg bg-white/20 p-2">
+                       <TrendingUp className="h-6 w-6 text-white" aria-hidden="true" />
                    </div>
                 </div>
-                <p className="text-emerald-100 text-sm leading-relaxed mb-6">
-                    {client.name.split(' ')[0]} için kayıtlı program uyum oranı.
+                <p className="mb-6 text-sm leading-relaxed text-emerald-100">
+                    Son 7 gündeki planlanan öğünlerin tamamlanma oranı.
                 </p>
-                <div className="w-full bg-black/20 rounded-full h-2">
-                    <div className="bg-white h-full rounded-full" style={{ width: `${client.compliance}%` }}></div>
-                </div>
+                {client.compliance === null ? (
+                  <p className="rounded-xl bg-black/10 px-3 py-2 text-sm text-emerald-50" role="status">
+                    Son 7 gün içinde planlanmış öğün bulunmuyor.
+                  </p>
+                ) : (
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-black/20" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.max(0, client.compliance))} aria-label="Son 7 gün program uyumu">
+                    <div className="h-full rounded-full bg-white" style={{ width: `${Math.min(100, Math.max(0, client.compliance))}%` }} />
+                  </div>
+                )}
             </div>
         </div>
 

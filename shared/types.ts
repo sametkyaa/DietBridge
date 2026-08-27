@@ -14,7 +14,7 @@ export interface Client {
   startWeight?: string; // Added for detail view
   targetWeight?: string; // Added for detail view
   weeklyChange: number | null;
-  compliance: number;
+  compliance: number | null;
   bloodType?: string;
   chronicConditions?: string[];
   medications?: string[];

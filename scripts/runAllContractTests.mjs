@@ -9,6 +9,7 @@ import { assertCiSafeEnvironment } from './ciSafetyGuard.mjs';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const commands = [
   ['scripts/runMealPlanContractTests.mjs'],
+  ['scripts/runClientMetricsContractTests.mjs'],
   ['--test', 'tests/ciSafetyGuard.test.cjs'],
   ['--test', 'tests/registerTermsLinkContracts.test.cjs'],
   ['--test', 'tests/registrationReliabilityContracts.test.cjs'],
