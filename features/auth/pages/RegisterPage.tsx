@@ -3,13 +3,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { APP_LOGO } from '../../../shared/constants';
 import { nutritionUniversities } from '../../../shared/constants/nutritionUniversities';
-import { User, Mail, Phone, Lock, BookOpen, Briefcase, Award, FileText, Upload, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
+import { User, Mail, Phone, Lock, BookOpen, Briefcase, Award, FileText, Upload, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { registerDietitian, RegistrationData } from '../../dietitians/services/dietitianService';
 
 const RegisterPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -82,6 +83,7 @@ const RegisterPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfoMessage(null);
 
     const normalizedFirstName = formData.firstName?.trim() || '';
     const normalizedLastName = formData.lastName?.trim() || '';
@@ -144,8 +146,17 @@ const RegisterPage = () => {
 
     const result = await registerDietitian(payload);
 
-    if (result.success) {
+    if (result.success && result.status === 'complete') {
       setIsSuccess(true);
+    } else if (result.status === 'email_confirmation_required') {
+      setInfoMessage(result.error || 'Hesabınızı etkinleştirmek için e-posta adresinizi doğrulayın.');
+    } else if (result.status === 'incomplete_profile') {
+      setLoading(false);
+      navigate('/complete-registration', {
+        replace: true,
+        state: { message: result.error || 'Profil kurulumu tamamlanmadı.' },
+      });
+      return;
     } else {
       setError(result.error || "Kayıt sırasında bir hata oluştu.");
     }
@@ -195,6 +206,13 @@ const RegisterPage = () => {
             <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-8 text-sm flex items-start gap-2">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {infoMessage && (
+            <div className="bg-blue-50 border border-blue-100 text-blue-700 px-4 py-3 rounded-xl mb-8 text-sm flex items-start gap-2">
+              <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <span>{infoMessage}</span>
             </div>
           )}
 

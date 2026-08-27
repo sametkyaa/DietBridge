@@ -15,6 +15,7 @@ import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalRe
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const supabaseVersion = '2.110.0';
 const password = 'Disposable-E2E-Only-11m!';
+const diplomaBucket = 'dietitian-diplomas';
 const isolatedMigrations = [
   '20260814214101_notification_core_backend.sql',
   '20260816194431_appointment_reminders_backend.sql',
@@ -22,6 +23,7 @@ const isolatedMigrations = [
 ];
 const actorIds = [];
 const relationshipIds = [];
+const diplomaPaths = [];
 let disposable;
 let local;
 let admin;
@@ -117,10 +119,35 @@ const setDietitianStatus = async (actor, status) => {
   }).eq('user_id', actor.id).select('user_id').single(), `${actor.label} status`);
 };
 
+const makeCompletePending = async (actor) => {
+  const diplomaPath = `diplomas/${actor.id}/diploma.pdf`;
+  assertNoError(await admin.storage.from(diplomaBucket).upload(
+    diplomaPath,
+    Buffer.from('%PDF-1.4 disposable critical access diploma'),
+    { contentType: 'application/pdf', upsert: false },
+  ), `${actor.label} diploma fixture`);
+  diplomaPaths.push(diplomaPath);
+
+  assertNoError(await admin.from('profiles').update({
+    full_name: `Disposable ${actor.label}`,
+    email: actor.email,
+  }).eq('id', actor.id).select('id').single(), `${actor.label} base profile fixture`);
+  assertNoError(await admin.from('dietitian_profiles').update({
+    phone: '+905551234567',
+    university: 'Disposable Üniversitesi',
+    graduation_year: 2018,
+    experience_years: 4,
+    specialization: 'Klinik beslenme',
+    bio: 'Disposable critical access başvurusu.',
+    diploma_url: diplomaPath,
+  }).eq('user_id', actor.id).select('user_id').single(), `${actor.label} onboarding fixture`);
+};
+
 const cleanupFixtures = async () => {
   if (!admin) return;
   if (relationshipIds.length) assertNoError(await admin.from('dietitian_clients').delete().in('id', relationshipIds), 'relationship cleanup');
   if (actorIds.length) assertNoError(await admin.from('dietitian_subscriptions').delete().in('dietitian_id', actorIds), 'subscription cleanup');
+  if (diplomaPaths.length) assertNoError(await admin.storage.from(diplomaBucket).remove(diplomaPaths), 'diploma cleanup');
   for (const id of [...actorIds].reverse()) assertNoError(await admin.auth.admin.deleteUser(id), 'Auth cleanup');
   const residue = await admin.from('profiles').select('id', { count: 'exact', head: true }).in('id', actorIds);
   assertNoError(residue, 'profile residue query');
@@ -140,12 +167,20 @@ try {
   local = parseStatus(cli(['status', '--output', 'env']));
   assertCiSafeEnvironment({ SUPABASE_URL: local.API_URL }, { requireLoopback: true });
   admin = createClient(local.API_URL, local.SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  assertNoError(await admin.storage.createBucket(diplomaBucket, {
+    public: false,
+    fileSizeLimit: 10485760,
+    allowedMimeTypes: ['application/pdf'],
+  }), 'dietitian diploma bucket fixture');
+  pass('E2E_DIPLOMA_BUCKET_READY');
 
   const client = await createActor('client-role', 'client');
   const pending = await createActor('pending-dietitian', 'dietitian');
   const rejected = await createActor('rejected-dietitian', 'dietitian');
   const approved = await createActor('approved-dietitian', 'dietitian');
   const linkedClient = await createActor('linked-client', 'client');
+  await makeCompletePending(pending);
+  await makeCompletePending(rejected);
   await setDietitianStatus(pending, 'pending');
   await setDietitianStatus(rejected, 'rejected');
   await setDietitianStatus(approved, 'approved');

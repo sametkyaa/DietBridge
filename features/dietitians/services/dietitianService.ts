@@ -5,6 +5,12 @@ import {
   AVATAR_BUCKET,
   getOwnedAvatarObjectPath,
 } from '../../../shared/utils/avatarUrl';
+import {
+  DIETITIAN_DIPLOMA_BUCKET,
+  getCanonicalDiplomaPath,
+  getRegistrationCompleteness,
+  isCanonicalDiplomaPath,
+} from '../../auth/utils/registrationCompleteness';
 
 const AVATAR_MAX_FILE_BYTES = 5 * 1024 * 1024;
 const AVATAR_MIME_EXTENSION_MAP: Record<string, string> = {
@@ -27,6 +33,18 @@ export interface RegistrationData {
   diplomaFile: File;
 }
 
+export interface DietitianCompletionData {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  university: string;
+  graduationYear: string;
+  experienceYears: string;
+  specialization: string;
+  bio: string;
+  diplomaFile?: File | null;
+}
+
 export type RegistrationStatus = 'complete' | 'email_confirmation_required' | 'incomplete_profile' | 'failed';
 
 export interface RegistrationResult {
@@ -35,75 +53,326 @@ export interface RegistrationResult {
   error?: string;
 }
 
-/**
- * Helper function to sanitize file names (remove Turkish chars, spaces)
- */
-const sanitizeFileName = (fileName: string): string => {
-  return fileName
-    .replace(/[^a-zA-Z0-9.]/g, '-') // Replace non-alphanumeric chars with hyphen
-    .toLowerCase();
+interface DietitianProfileRow {
+  user_id: string;
+  phone?: string | null;
+  university?: string | null;
+  graduation_year?: number | null;
+  experience_years?: number | null;
+  specialization?: string | null;
+  bio?: string | null;
+  diploma_url?: string | null;
+  is_verified?: boolean | null;
+  verification_status?: string | null;
+  verified_at?: string | null;
+  rejection_reason?: string | null;
+  profiles?: {
+    full_name?: string | null;
+    email?: string | null;
+    avatar_url?: string | null;
+  } | null;
+}
+
+interface BaseProfileRow {
+  id: string;
+  email?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+  role?: string | null;
+}
+
+export interface DietitianOnboardingState {
+  userId: string;
+  email: string;
+  fullName: string;
+  phone: string;
+  university: string;
+  graduationYear: number | null;
+  experienceYears: number | null;
+  specialization: string;
+  bio: string;
+  profile: DietitianProfile | null;
+  diplomaUrl: string | null;
+}
+
+export interface DietitianOnboardingResult {
+  success: boolean;
+  data?: DietitianOnboardingState;
+  error?: string;
+}
+
+export type DiplomaFileValidation =
+  | { status: 'valid' }
+  | { status: 'invalid'; userMessage: string };
+
+const DIPLOMA_MAX_FILE_BYTES = 5 * 1024 * 1024;
+const REGISTRATION_INCOMPLETE_MESSAGE = 'Başvurunuz henüz tamamlanmamış.';
+const REGISTRATION_GENERIC_MESSAGE = 'Profil kurulumu tamamlanamadı. Lütfen tekrar deneyin.';
+const AUTH_SESSION_REQUIRED_MESSAGE = 'Hesabınız oluşturuldu ancak e-posta doğrulaması gerekiyor. Profil kurulumu oturum açtıktan sonra tamamlanabilir.';
+const VERIFICATION_LOCKED_MESSAGE = 'Başvurunuzun doğrulama durumu değiştirilemez.';
+
+const safeRegistrationError = (error: unknown, fallback: string): string => {
+  const message = error instanceof Error ? error.message : '';
+  if (message === 'Failed to fetch') {
+    return 'Sunucuya bağlanılamadı. Lütfen bağlantınızı kontrol edip tekrar deneyin.';
+  }
+  return fallback;
+};
+
+const toNumber = (value: string): number => Number(value.trim());
+
+const toDietitianProfile = (row: DietitianProfileRow, fallbackEmail: string): DietitianProfile => {
+  const fullName = row.profiles?.full_name?.trim() || '';
+  const [firstName, ...lastNameParts] = fullName.split(' ');
+
+  return {
+    user_id: row.user_id,
+    first_name: firstName || '',
+    last_name: lastNameParts.join(' ') || '',
+    email: row.profiles?.email || fallbackEmail,
+    phone: row.phone || '',
+    university: row.university || '',
+    graduation_year: Number(row.graduation_year || 0),
+    experience_years: Number(row.experience_years || 0),
+    specialization: row.specialization || '',
+    bio: row.bio || '',
+    diploma_url: row.diploma_url || '',
+    avatar_url: row.profiles?.avatar_url || undefined,
+    is_verified: row.is_verified ?? undefined,
+    verification_status: row.verification_status as DietitianProfile['verification_status'],
+    verified_at: row.verified_at ?? null,
+    rejection_reason: row.rejection_reason ?? null,
+  };
+};
+
+export const validateDiplomaFile = (file: File): DiplomaFileValidation => {
+  if (file.type !== 'application/pdf') {
+    return { status: 'invalid', userMessage: 'Lütfen geçerli bir PDF dosyası yükleyiniz.' };
+  }
+  if (file.size <= 0) {
+    return { status: 'invalid', userMessage: 'Seçilen diploma dosyası boş görünüyor.' };
+  }
+  if (file.size > DIPLOMA_MAX_FILE_BYTES) {
+    return { status: 'invalid', userMessage: "Dosya boyutu 5MB'dan büyük olamaz." };
+  }
+  return { status: 'valid' };
 };
 
 /**
- * Helper function to upload the diploma document to Supabase Storage.
- * Path format: diplomas/{authUserId}/diploma.pdf
+ * Uploads only the authenticated user's canonical private diploma object.
  */
 export const uploadDiplomaFile = async (authUserId: string, file: File): Promise<string> => {
-  try {
-    // 1. Build the deterministic file path
-    const filePath = `diplomas/${authUserId}/diploma.pdf`;
+  const validation = validateDiplomaFile(file);
+  if (validation.status === 'invalid') {
+    throw new Error('invalid_diploma_file');
+  }
+  const authenticatedUser = await getAuthenticatedUser();
+  if (!authenticatedUser || authenticatedUser.id !== authUserId) {
+    throw new Error('unauthorized_diploma_owner');
+  }
+  const filePath = getCanonicalDiplomaPath(authUserId);
+  const { error: uploadError } = await supabase.storage
+    .from(DIETITIAN_DIPLOMA_BUCKET)
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: true,
+    });
 
-    // 2. Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from('dietitian-diplomas')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: true, // Overwrite if exists to prevent conflicts
-      });
+  if (uploadError) throw uploadError;
+  return filePath;
+};
 
-    if (uploadError) {
-      console.error('Supabase Storage Upload Error Details:', uploadError);
-      throw uploadError;
-    }
+const getAuthenticatedUser = async () => {
+  const { data: authUserData, error: authUserError } = await supabase.auth.getUser();
+  if (authUserError || !authUserData.user) return null;
 
-    // 3. Return the file path reference
-    return filePath;
-  } catch (error: any) {
-    console.error('Storage upload error:', error);
-    throw error; 
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !sessionData.session) return null;
+  if (sessionData.session.user.id !== authUserData.user.id) return null;
+
+  return authUserData.user;
+};
+
+export const getCurrentDietitianOnboarding = async (): Promise<DietitianOnboardingResult> => {
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return { success: false, error: 'Oturum bulunamadı. Lütfen tekrar giriş yapın.' };
+  }
+
+  const { data: baseProfile, error: baseProfileError } = await supabase
+    .from('profiles')
+    .select('id,email,full_name,phone,role')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (baseProfileError) {
+    return { success: false, error: REGISTRATION_GENERIC_MESSAGE };
+  }
+
+  const profileData = baseProfile as BaseProfileRow | null;
+  if (!profileData || profileData.role !== 'dietitian') {
+    return { success: false, error: 'Hesabınızın diyetisyen rolü doğrulanamadı.' };
+  }
+
+  const { data: dietitianProfileRow, error: dietitianProfileError } = await supabase
+    .from('dietitian_profiles')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (dietitianProfileError) {
+    return { success: false, error: REGISTRATION_GENERIC_MESSAGE };
+  }
+
+  const row = dietitianProfileRow as DietitianProfileRow | null;
+  const fullName = profileData.full_name?.trim() || '';
+  const email = user.email?.trim() || '';
+  const profile = row
+    ? toDietitianProfile({
+      ...row,
+      profiles: {
+        full_name: fullName,
+        email,
+      },
+    }, email)
+    : null;
+
+  return {
+    success: true,
+    data: {
+      userId: user.id,
+      email,
+      fullName,
+      phone: row?.phone || profileData.phone || '',
+      university: row?.university || '',
+      graduationYear: row?.graduation_year ?? null,
+      experienceYears: row?.experience_years ?? null,
+      specialization: row?.specialization || '',
+      bio: row?.bio || '',
+      profile,
+      diplomaUrl: row?.diploma_url || null,
+    },
+  };
+};
+
+interface CoreOnboardingInput {
+  fullName: string;
+  phone: string;
+  university: string;
+  graduationYear: string;
+  experienceYears: string;
+  specialization: string;
+  bio: string;
+}
+
+const persistCoreOnboardingFields = async (
+  user: { id: string; email?: string },
+  input: CoreOnboardingInput,
+): Promise<{ diplomaUrl: string | null }> => {
+  const { data: baseProfile, error: baseProfileError } = await supabase
+    .from('profiles')
+    .update({
+      email: user.email?.trim() || null,
+      full_name: input.fullName.trim(),
+      phone: input.phone.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.id)
+    .select('id')
+    .maybeSingle();
+  if (baseProfileError || !baseProfile) throw new Error('base_profile_persistence_failed');
+
+  const { data: dietitianProfile, error: dietitianProfileError } = await supabase
+    .from('dietitian_profiles')
+    .upsert({
+      user_id: user.id,
+      phone: input.phone.trim(),
+      university: input.university.trim(),
+      graduation_year: toNumber(input.graduationYear),
+      experience_years: toNumber(input.experienceYears),
+      specialization: input.specialization.trim(),
+      bio: input.bio.trim(),
+    }, { onConflict: 'user_id' })
+    .select('user_id,diploma_url')
+    .maybeSingle();
+  if (dietitianProfileError || !dietitianProfile) throw new Error('dietitian_profile_persistence_failed');
+
+  return { diplomaUrl: (dietitianProfile as { diploma_url?: string | null }).diploma_url || null };
+};
+
+const persistDiplomaLink = async (userId: string, diplomaPath: string): Promise<void> => {
+  const { data, error } = await supabase
+    .from('dietitian_profiles')
+    .update({ diploma_url: diplomaPath })
+    .eq('user_id', userId)
+    .select('user_id')
+    .maybeSingle();
+  if (error || !data) throw new Error('diploma_link_persistence_failed');
+};
+
+const removeCanonicalDiplomaFile = async (userId: string): Promise<void> => {
+  const authenticatedUser = await getAuthenticatedUser();
+  if (!authenticatedUser || authenticatedUser.id !== userId) return;
+  const { error } = await supabase.storage
+    .from(DIETITIAN_DIPLOMA_BUCKET)
+    .remove([getCanonicalDiplomaPath(authenticatedUser.id)]);
+  if (error) {
+    console.warn('Diploma cleanup failed; the deterministic object will be retried on the next completion attempt.');
   }
 };
 
+const incompleteResult = (error = REGISTRATION_INCOMPLETE_MESSAGE): RegistrationResult => ({
+  success: false,
+  status: 'incomplete_profile',
+  error,
+});
+
+const getCoreCompleteness = (
+  userId: string,
+  email: string,
+  input: CoreOnboardingInput,
+  diplomaUrl: string,
+) => getRegistrationCompleteness({
+  userId,
+  fullName: input.fullName,
+  email,
+  phone: input.phone,
+  university: input.university,
+  graduationYear: input.graduationYear,
+  experienceYears: input.experienceYears,
+  specialization: input.specialization,
+  bio: input.bio,
+  diplomaUrl,
+});
+
 /**
- * Handles the full registration flow:
- * 1. Sign up User (Auth)
- * 2. Upload Diploma (Storage) via helper
- * 3. Create Profile (Database)
+ * Creates the Auth account, then persists recoverable onboarding state in a
+ * deterministic order. No browser write assigns role or verification authority.
  */
 export const registerDietitian = async (data: RegistrationData): Promise<RegistrationResult> => {
   let authUserCreated = false;
+  const fullName = [data.firstName, data.lastName]
+    .map(value => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const diplomaValidation = validateDiplomaFile(data.diplomaFile);
+
+  if (!fullName) return { success: false, status: 'failed', error: 'Ad ve soyad boş bırakılamaz.' };
+  if (diplomaValidation.status === 'invalid') {
+    return { success: false, status: 'failed', error: diplomaValidation.userMessage };
+  }
+
   try {
-    const fullName = [data.firstName, data.lastName]
-      .map(v => String(v || '').trim())
-      .filter(Boolean)
-      .join(' ');
-
-    if (!fullName) {
-      throw new Error("Ad ve soyad boş bırakılamaz.");
-    }
-
-    // 1. Sign Up in Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: data.email,
+      email: data.email.trim(),
       password: data.password,
       options: {
         data: {
-          first_name: data.firstName,
-          last_name: data.lastName,
+          first_name: data.firstName.trim(),
+          last_name: data.lastName.trim(),
           full_name: fullName,
-          role: 'dietitian'
-        }
-      }
+          account_type: 'dietitian',
+          role: 'dietitian',
+        },
+      },
     });
 
     if (authError) throw authError;
@@ -115,82 +384,160 @@ export const registerDietitian = async (data: RegistrationData): Promise<Registr
     authUserCreated = true;
 
     if (!authData.session) {
-      return {
-        success: false,
-        status: 'email_confirmation_required',
-        error: 'Hesabınız oluşturuldu ancak e-posta doğrulaması gerekiyor. Profil kurulumu tamamlanana kadar web paneline erişemezsiniz.',
-      };
+      return { success: false, status: 'email_confirmation_required', error: AUTH_SESSION_REQUIRED_MESSAGE };
     }
 
-    // 2. Upload Diploma Image using helper
-    let diplomaUrl: string;
-    try {
-      diplomaUrl = await uploadDiplomaFile(userId, data.diplomaFile);
-    } catch (uploadError: unknown) {
-      console.error('Diploma upload failed after auth signup:', uploadError);
-      return {
-        success: false,
-        status: 'incomplete_profile',
-        error: 'Hesabınız oluşturulmuş olabilir ancak diploma yüklenemedi. Profil kurulumu tamamlanmadı.',
-      };
+    const authenticatedUser = await getAuthenticatedUser();
+    if (!authenticatedUser || authenticatedUser.id !== userId) {
+      return { success: false, status: 'email_confirmation_required', error: AUTH_SESSION_REQUIRED_MESSAGE };
+    }
+    if (!authenticatedUser.email?.trim()) return incompleteResult();
+
+    const onboarding = await getCurrentDietitianOnboarding();
+    if (!onboarding.success || !onboarding.data) return incompleteResult(onboarding.error);
+    if (
+      onboarding.data.profile
+      && (onboarding.data.profile.verification_status !== 'pending'
+        || onboarding.data.profile.is_verified !== false)
+    ) {
+      return { success: false, status: 'failed', error: VERIFICATION_LOCKED_MESSAGE };
     }
 
-    // 3. Insert into 'dietitian_profiles' table and update 'profiles'
-    try {
-      // Upsert base profile first
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: userId,
-          full_name: fullName,
-          role: 'dietitian',
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+    const coreInput: CoreOnboardingInput = {
+      fullName,
+      phone: data.phone,
+      university: data.university,
+      graduationYear: data.graduationYear,
+      experienceYears: data.experienceYears,
+      specialization: data.specialization,
+      bio: data.bio,
+    };
+    const completeness = getCoreCompleteness(
+      userId,
+      authenticatedUser.email,
+      coreInput,
+      getCanonicalDiplomaPath(userId),
+    );
+    if (!completeness.isComplete) return incompleteResult();
 
-      if (profileError) {
-        console.error('Failed to upsert base profile:', profileError);
-        throw profileError;
+    let coreResult: { diplomaUrl: string | null };
+    try {
+      coreResult = await persistCoreOnboardingFields(authenticatedUser, coreInput);
+    } catch {
+      return incompleteResult();
+    }
+
+    let diplomaPath: string;
+    try {
+      diplomaPath = await uploadDiplomaFile(userId, data.diplomaFile);
+    } catch {
+      return incompleteResult();
+    }
+
+    try {
+      await persistDiplomaLink(userId, diplomaPath);
+    } catch {
+      if (!isCanonicalDiplomaPath(coreResult.diplomaUrl, userId)) {
+        await removeCanonicalDiplomaFile(userId);
       }
-
-      const profileData = {
-        user_id: userId,
-        phone: data.phone,
-        university: data.university,
-        graduation_year: parseInt(data.graduationYear),
-        experience_years: parseInt(data.experienceYears),
-        specialization: data.specialization,
-        bio: data.bio,
-        diploma_url: diplomaUrl,
-        is_verified: false,
-        verification_status: 'pending',
-        verified_at: null,
-        rejection_reason: null
-      };
-
-      const { error: dbError } = await supabase
-        .from('dietitian_profiles')
-        .upsert([profileData]);
-
-      if (dbError) throw dbError;
-    } catch (dbError: unknown) {
-      console.error('Database profile insert error:', dbError);
-      return {
-        success: false,
-        status: 'incomplete_profile',
-        error: 'Hesabınız oluşturulmuş olabilir ancak diyetisyen profiliniz tamamlanamadı. Web paneline erişim verilmedi.',
-      };
+      return incompleteResult();
     }
 
     return { success: true, status: 'complete' };
-
   } catch (error: unknown) {
-    console.error('Registration error:', error);
-    const message = error instanceof Error ? error.message : '';
-    if (message === 'Failed to fetch') {
-      return { success: false, status: authUserCreated ? 'incomplete_profile' : 'failed', error: 'Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin veya daha sonra tekrar deneyin.' };
-    }
-    return { success: false, status: authUserCreated ? 'incomplete_profile' : 'failed', error: authUserCreated ? 'Hesabınız oluşturulmuş olabilir ancak profil kurulumu tamamlanamadı.' : 'Kayıt işlemi sırasında bir hata oluştu.' };
+    const errorMessage = safeRegistrationError(
+      error,
+      authUserCreated
+        ? REGISTRATION_GENERIC_MESSAGE
+        : 'Kayıt işlemi sırasında bir hata oluştu.',
+    );
+    return authUserCreated
+      ? incompleteResult(errorMessage)
+      : { success: false, status: 'failed', error: errorMessage };
   }
+};
+
+/**
+ * Completes an already authenticated dietitian account. This function never
+ * calls signUp and never changes verification authority fields.
+ */
+export const completeDietitianRegistration = async (
+  data: DietitianCompletionData,
+): Promise<RegistrationResult> => {
+  const authenticatedUser = await getAuthenticatedUser();
+  if (!authenticatedUser) {
+    return { success: false, status: 'failed', error: 'Oturum bulunamadı. Lütfen tekrar giriş yapın.' };
+  }
+  if (!authenticatedUser.email?.trim()) return incompleteResult();
+
+  const onboarding = await getCurrentDietitianOnboarding();
+  if (!onboarding.success || !onboarding.data) {
+    return incompleteResult(onboarding.error);
+  }
+
+  const currentProfile = onboarding.data.profile;
+  if (
+    currentProfile
+    && (currentProfile.verification_status !== 'pending' || currentProfile.is_verified !== false)
+  ) {
+    return { success: false, status: 'failed', error: VERIFICATION_LOCKED_MESSAGE };
+  }
+
+  const fullName = [data.firstName, data.lastName]
+    .map(value => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const coreInput: CoreOnboardingInput = {
+    fullName,
+    phone: data.phone,
+    university: data.university,
+    graduationYear: data.graduationYear,
+    experienceYears: data.experienceYears,
+    specialization: data.specialization,
+    bio: data.bio,
+  };
+  const diplomaPath = data.diplomaFile
+    ? getCanonicalDiplomaPath(authenticatedUser.id)
+    : onboarding.data.diplomaUrl || '';
+  const completeness = getCoreCompleteness(
+    authenticatedUser.id,
+    authenticatedUser.email,
+    coreInput,
+    diplomaPath,
+  );
+  if (!completeness.isComplete) return incompleteResult();
+
+  if (data.diplomaFile) {
+    const validation = validateDiplomaFile(data.diplomaFile);
+    if (validation.status === 'invalid') return incompleteResult(validation.userMessage);
+  }
+
+  let coreResult: { diplomaUrl: string | null };
+  try {
+    coreResult = await persistCoreOnboardingFields(authenticatedUser, coreInput);
+  } catch {
+    return incompleteResult();
+  }
+
+  if (!data.diplomaFile) return { success: true, status: 'complete' };
+
+  let uploadedPath: string;
+  try {
+    uploadedPath = await uploadDiplomaFile(authenticatedUser.id, data.diplomaFile);
+  } catch {
+    return incompleteResult();
+  }
+
+  try {
+    await persistDiplomaLink(authenticatedUser.id, uploadedPath);
+  } catch {
+    if (!isCanonicalDiplomaPath(coreResult.diplomaUrl, authenticatedUser.id)) {
+      await removeCanonicalDiplomaFile(authenticatedUser.id);
+    }
+    return incompleteResult();
+  }
+
+  return { success: true, status: 'complete' };
 };
 
 /**

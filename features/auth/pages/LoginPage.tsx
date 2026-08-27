@@ -32,6 +32,10 @@ const LoginPage = () => {
   }, [location.state]);
 
   useEffect(() => {
+    if (accessState.status === 'incomplete_registration') {
+      navigate('/complete-registration', { replace: true });
+      return;
+    }
     if (['allowed', 'pending', 'rejected', 'blocked_missing_role', 'blocked_missing_dietitian_profile', 'access_error'].includes(accessState.status)) {
       navigate(returnPath, { replace: true });
     }
