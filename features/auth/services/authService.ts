@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { DietitianProfile } from '../../../shared/types';
+import { getRegistrationCompleteness } from '../utils/registrationCompleteness';
 import { ResolvedAuthAccess } from '../types';
 
 interface DietitianProfileRow {
@@ -144,16 +145,45 @@ export const resolveAuthAccess = async (userId: string): Promise<ResolvedAuthAcc
   }
   if (!profileRow) {
     return {
-      status: 'blocked_missing_dietitian_profile',
-      message: 'Diyetisyen profiliniz bulunamadı. Profil kurulumunun tamamlanması gerekiyor.',
+      status: 'incomplete_registration',
+      userRole: 'dietitian',
+      dietitianProfile: null,
+      message: 'Başvurunuz henüz tamamlanmamış.',
     };
   }
 
-  const { data: authUserData } = await supabase.auth.getUser();
-  const profile = toDietitianProfile(profileRow as unknown as DietitianProfileRow, authUserData.user?.email || '');
+  const { data: authUserData, error: authUserError } = await supabase.auth.getUser();
+  if (authUserError || !authUserData.user) {
+    return {
+      status: 'access_error',
+      message: 'Oturum doğrulanırken bir hata oluştu. Lütfen tekrar deneyin.',
+    };
+  }
+  const rawProfile = profileRow as unknown as DietitianProfileRow;
+  const profile = toDietitianProfile(rawProfile, authUserData.user?.email || '');
   const verification = resolveVerificationStatus(profile);
 
   if (verification === 'pending') {
+    const completeness = getRegistrationCompleteness({
+      userId,
+      fullName: rawProfile.profiles?.full_name,
+      email: rawProfile.profiles?.email,
+      phone: rawProfile.phone,
+      university: rawProfile.university,
+      graduationYear: rawProfile.graduation_year,
+      experienceYears: rawProfile.experience_years,
+      specialization: rawProfile.specialization,
+      bio: rawProfile.bio,
+      diplomaUrl: rawProfile.diploma_url,
+    });
+    if (!completeness.isComplete) {
+      return {
+        status: 'incomplete_registration',
+        userRole: 'dietitian',
+        dietitianProfile: profile,
+        message: 'Başvurunuz henüz tamamlanmamış.',
+      };
+    }
     return { status: 'pending', userRole: 'dietitian', dietitianProfile: profile };
   }
   if (verification === 'rejected') {

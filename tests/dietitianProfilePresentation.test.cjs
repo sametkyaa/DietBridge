@@ -43,9 +43,10 @@ test('registration and onboarding diploma handling remain present', () => {
   const register = registerPage();
 
   assert.match(service, /export const uploadDiplomaFile/);
-  assert.match(service, /dietitian-diplomas/);
-  assert.match(service, /diploma_url:\s*diplomaUrl/);
-  assert.match(service, /verification_status:\s*'pending'/);
+  assert.match(service, /DIETITIAN_DIPLOMA_BUCKET/);
+  assert.match(service, /update\(\{ diploma_url: diplomaPath \}\)/);
+  assert.match(service, /verification_status !== 'pending'/);
+  assert.doesNotMatch(service, /is_verified:\s*false|verification_status:\s*'pending'/);
   assert.match(register, /const \[diplomaFile, setDiplomaFile\]/);
   assert.match(register, /registerDietitian\(payload\)/);
   assert.match(register, /Lütfen diplomanızı yükleyin/);

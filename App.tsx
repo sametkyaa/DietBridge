@@ -7,6 +7,7 @@ import ProtectedRoute from './shared/components/ProtectedRoute';
 import DashboardLayout from './shared/components/DashboardLayout';
 import LoginPage from './features/auth/pages/LoginPage';
 import RegisterPage from './features/auth/pages/RegisterPage';
+import CompleteRegistrationPage from './features/auth/pages/CompleteRegistrationPage';
 import ForgotPasswordPage from './features/auth/pages/ForgotPasswordPage';
 import ResetPasswordPage from './features/auth/pages/ResetPasswordPage';
 
@@ -47,6 +48,11 @@ const App = () => {
               <Route path="/admin" element={<AdminDashboardPage />} />
               <Route path="/admin/dietitians" element={<DietitianApplicationsPage />} />
               <Route path="/admin/dietitians/:id" element={<DietitianApplicationDetailPage />} />
+            </Route>
+
+            {/* Authenticated recovery route for incomplete dietitian onboarding */}
+            <Route element={<ProtectedRoute allowIncomplete />}>
+              <Route path="/complete-registration" element={<CompleteRegistrationPage />} />
             </Route>
 
             {/* Protected Dashboard Routes */}

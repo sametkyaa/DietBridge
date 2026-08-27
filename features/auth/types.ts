@@ -8,6 +8,7 @@ export type AuthAccessState =
   | { status: 'blocked_client'; userRole: 'client'; message: string }
   | { status: 'blocked_missing_role'; message: string }
   | { status: 'blocked_missing_dietitian_profile'; message: string }
+  | { status: 'incomplete_registration'; userRole: 'dietitian'; dietitianProfile: DietitianProfile | null; message: string }
   | { status: 'pending'; userRole: 'dietitian'; dietitianProfile: DietitianProfile }
   | { status: 'rejected'; userRole: 'dietitian'; dietitianProfile: DietitianProfile }
   | { status: 'access_error'; message: string }

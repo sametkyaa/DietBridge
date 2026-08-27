@@ -29,7 +29,11 @@ const BlockedAccessState = ({ message, onRetry, onSignOut }: { message: string; 
   </div>
 );
 
-const ProtectedRoute = () => {
+interface ProtectedRouteProps {
+  allowIncomplete?: boolean;
+}
+
+const ProtectedRoute = ({ allowIncomplete = false }: ProtectedRouteProps) => {
   const { accessState, refreshAccess, signOut } = useAuth();
 
   switch (accessState.status) {
@@ -38,7 +42,9 @@ const ProtectedRoute = () => {
     case 'resolving_access':
       return <LoadingState message="Hesap erişimi doğrulanıyor..." />;
     case 'allowed':
-      return <Outlet />;
+      return allowIncomplete ? <Navigate to="/" replace /> : <Outlet />;
+    case 'incomplete_registration':
+      return allowIncomplete ? <Outlet /> : <Navigate to="/complete-registration" replace />;
     case 'pending':
     case 'rejected':
       return <VerificationStatusPage />;
