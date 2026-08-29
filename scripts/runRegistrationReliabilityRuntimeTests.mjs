@@ -22,7 +22,11 @@ const sources = [
 const SUPABASE_CLIENT_STUB = String.raw`'use strict';
 const assert = require('node:assert/strict');
 
-const DEFAULT_USER = { id: '11111111-1111-4111-8111-111111111111', email: 'dietitian@example.test' };
+const DEFAULT_USER = {
+  id: '11111111-1111-4111-8111-111111111111',
+  email: 'dietitian@example.test',
+  user_metadata: { first_name: 'Ada', last_name: 'Diyetisyen', full_name: 'Ada Diyetisyen' },
+};
 const clone = (value) => value === null || value === undefined ? value : JSON.parse(JSON.stringify(value));
 
 const state = {};
@@ -63,6 +67,7 @@ const resetState = (options = {}) => {
   state.storageObject = null;
   state.mutations = [];
   state.signUpCalls = 0;
+  state.signUpPayload = null;
   state.uploadCalls = 0;
   state.cleanupCalls = 0;
   Object.assign(state, options);
@@ -124,12 +129,17 @@ const queryBuilder = (table) => {
 
 const supabase = {
   auth: {
-    async signUp() {
+    async signUp(payload) {
       state.signUpCalls += 1;
+      state.signUpPayload = clone(payload);
       if (state.signUpError) return { data: { user: null, session: null }, error: state.signUpError };
-      state.user = clone(DEFAULT_USER);
-      state.session = state.signUpSession ? { user: clone(DEFAULT_USER) } : null;
-      return { data: { user: clone(DEFAULT_USER), session: clone(state.session) }, error: null };
+      state.user = {
+        ...clone(DEFAULT_USER),
+        email: payload.email,
+        user_metadata: clone(payload.options?.data || {}),
+      };
+      state.session = state.signUpSession ? { user: clone(state.user) } : null;
+      return { data: { user: clone(state.user), session: clone(state.session) }, error: null };
     },
     async getUser() {
       return { data: { user: clone(state.user) }, error: state.authUserError };
@@ -199,13 +209,15 @@ try {
   const requireFromBuild = createRequire(join(buildDir, 'runtime.cjs'));
   const { __testState: state, resetState } = requireFromBuild('./lib/supabaseClient.js');
   const service = requireFromBuild('./features/dietitians/services/dietitianService.js');
-  const { registerDietitian, completeDietitianRegistration } = service;
+  const { registerDietitian, completeDietitianRegistration, getCurrentDietitianOnboarding } = service;
   const diplomaFile = { type: 'application/pdf', size: 3 };
   const registrationData = {
     email: 'dietitian@example.test',
     password: 'strong-password',
     firstName: 'Ada',
     lastName: 'Diyetisyen',
+  };
+  const completionData = {
     phone: '+90 555 000 00 00',
     university: 'Hacettepe Üniversitesi',
     graduationYear: '2020',
@@ -214,7 +226,6 @@ try {
     bio: 'Beslenme danışmanlığı.',
     diplomaFile,
   };
-  const completionData = { ...registrationData, diplomaFile };
   const canonicalPath = 'diplomas/11111111-1111-4111-8111-111111111111/diploma.pdf';
 
   resetState({ signUpError: { message: 'signup failed' } });
@@ -225,28 +236,44 @@ try {
 
   resetState({ signUpSession: false });
   result = await registerDietitian(registrationData);
+  assert.equal(result.success, true);
   assert.equal(result.status, 'email_confirmation_required');
+  assert.deepEqual(state.mutations, []);
+  assert.equal(state.uploadCalls, 0);
+  assert.deepEqual(state.signUpPayload.options.data, {
+    first_name: 'Ada',
+    last_name: 'Diyetisyen',
+    full_name: 'Ada Diyetisyen',
+    account_type: 'dietitian',
+    role: 'dietitian',
+  });
+  assert.equal('phone' in state.signUpPayload.options.data, false);
+
+  resetState();
+  result = await registerDietitian(registrationData);
+  assert.equal(result.success, true);
+  assert.equal(result.status, 'incomplete_profile');
   assert.deepEqual(state.mutations, []);
   assert.equal(state.uploadCalls, 0);
 
   resetState({ failBaseUpdate: true });
-  result = await registerDietitian(registrationData);
+  result = await completeDietitianRegistration(completionData);
   assert.equal(result.status, 'incomplete_profile');
   assert.equal(state.uploadCalls, 0);
 
   resetState({ failDietitianUpsert: true });
-  result = await registerDietitian(registrationData);
+  result = await completeDietitianRegistration(completionData);
   assert.equal(result.status, 'incomplete_profile');
   assert.equal(state.uploadCalls, 0);
 
   resetState({ failUpload: true });
-  result = await registerDietitian(registrationData);
+  result = await completeDietitianRegistration(completionData);
   assert.equal(result.status, 'incomplete_profile');
   assert.equal(state.uploadCalls, 1);
   assert.equal(state.mutations.includes('dietitian_profiles.update'), false);
 
   resetState({ failDiplomaLink: true });
-  result = await registerDietitian(registrationData);
+  result = await completeDietitianRegistration(completionData);
   assert.equal(result.status, 'incomplete_profile');
   assert.equal(state.uploadCalls, 1);
   assert.equal(state.cleanupCalls, 1);
@@ -256,7 +283,7 @@ try {
   result = await completeDietitianRegistration(completionData);
   assert.equal(result.success, true);
   assert.equal(result.status, 'complete');
-  assert.equal(state.signUpCalls, 1);
+  assert.equal(state.signUpCalls, 0);
   assert.equal(state.uploadCalls, 2);
   assert.equal(state.storageObject, canonicalPath);
   assert.equal(state.dietitianProfile.diploma_url, canonicalPath);
@@ -288,6 +315,51 @@ try {
   assert.equal(result.success, false);
   assert.deepEqual(state.mutations, []);
   assert.equal(state.uploadCalls, 0);
+
+  resetState({
+    user: {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'dietitian@example.test',
+      user_metadata: {
+        first_name: 'Legacy',
+        last_name: 'Diyetisyen',
+        phone: '+90 555 111 11 11',
+        university: 'Legacy Üniversitesi',
+        graduation_year: '2018',
+        experience_years: '6',
+        specialization: 'Legacy Uzmanlık',
+        bio: 'Legacy biyografi',
+      },
+    },
+    baseProfile: {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'dietitian@example.test',
+      full_name: null,
+      phone: null,
+      role: 'dietitian',
+    },
+    dietitianProfile: {
+      user_id: '11111111-1111-4111-8111-111111111111',
+      phone: null,
+      university: 'Persisted Üniversite',
+      graduation_year: null,
+      experience_years: null,
+      specialization: null,
+      bio: null,
+      diploma_url: null,
+      is_verified: false,
+      verification_status: 'pending',
+    },
+  });
+  const onboarding = await getCurrentDietitianOnboarding();
+  assert.equal(onboarding.success, true);
+  assert.equal(onboarding.data.fullName, 'Legacy Diyetisyen');
+  assert.equal(onboarding.data.phone, '+90 555 111 11 11');
+  assert.equal(onboarding.data.university, 'Persisted Üniversite');
+  assert.equal(onboarding.data.graduationYear, 2018);
+  assert.equal(onboarding.data.experienceYears, 6);
+  assert.equal(onboarding.data.specialization, 'Legacy Uzmanlık');
+  assert.equal(onboarding.data.bio, 'Legacy biyografi');
 
   process.stdout.write('REGISTRATION_RELIABILITY_RUNTIME_PASS\n');
 } finally {

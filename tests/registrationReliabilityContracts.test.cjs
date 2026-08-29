@@ -10,36 +10,27 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 const service = () => read('features/dietitians/services/dietitianService.ts');
 const serviceBeforeProfileRead = () => service().slice(0, service().indexOf('export const getCurrentDietitianProfile'));
 
-test('registration follows Auth, session, core persistence, upload, and diploma-link ordering', () => {
+test('account creation stops after Auth and never persists professional application data', () => {
   const source = service();
   const body = source.slice(source.indexOf('export const registerDietitian'), source.indexOf('export const completeDietitianRegistration'));
   const authIndex = body.indexOf('supabase.auth.signUp');
-  const sessionIndex = body.indexOf('getAuthenticatedUser()');
-  const coreIndex = body.indexOf('persistCoreOnboardingFields(');
-  const uploadIndex = body.indexOf('uploadDiplomaFile(');
-  const linkIndex = body.indexOf('persistDiplomaLink(');
 
   assert.ok(authIndex >= 0, 'registration must create the Auth account first');
-  assert.ok(sessionIndex > authIndex, 'registration must verify the authenticated session after signUp');
-  assert.ok(coreIndex > sessionIndex, 'core profile fields must be persisted after session verification');
-  assert.ok(uploadIndex > coreIndex, 'diploma upload must follow core profile persistence');
-  assert.ok(linkIndex > uploadIndex, 'diploma_url must be linked only after upload succeeds');
-
-  const coreFailureWindow = body.slice(coreIndex, uploadIndex);
-  assert.match(coreFailureWindow, /catch\s*\{[\s\S]*return incompleteResult\(\);/u);
-  assert.doesNotMatch(coreFailureWindow, /uploadDiplomaFile\(/u);
+  assert.match(body, /first_name: data\.firstName\.trim\(\)/u);
+  assert.match(body, /last_name: data\.lastName\.trim\(\)/u);
+  assert.match(body, /account_type: 'dietitian'/u);
+  assert.match(body, /role: 'dietitian'/u);
+  assert.doesNotMatch(body, /persistCoreOnboardingFields|uploadDiplomaFile|persistDiplomaLink/u);
+  assert.doesNotMatch(body, /data\.(?:phone|university|graduationYear|experienceYears|specialization|bio|diplomaFile)/u);
 });
 
-test('no session returns email_confirmation_required before any profile or Storage continuation', () => {
+test('no session is successful email confirmation state before any profile or Storage continuation', () => {
   const body = service().slice(service().indexOf('export const registerDietitian'), service().indexOf('export const completeDietitianRegistration'));
   const noSessionIndex = body.indexOf('if (!authData.session)');
-  const coreIndex = body.indexOf('persistCoreOnboardingFields(');
-  const uploadIndex = body.indexOf('uploadDiplomaFile(');
-  const noSessionBlock = body.slice(noSessionIndex, coreIndex);
+  const noSessionBlock = body.slice(noSessionIndex, body.indexOf('if (authData.session.user.id'));
 
   assert.ok(noSessionIndex >= 0);
-  assert.ok(noSessionIndex < coreIndex);
-  assert.ok(noSessionIndex < uploadIndex);
+  assert.match(noSessionBlock, /success: true/u);
   assert.match(noSessionBlock, /status: 'email_confirmation_required'/u);
   assert.doesNotMatch(noSessionBlock, /persistCoreOnboardingFields|uploadDiplomaFile|persistDiplomaLink/u);
 });
@@ -54,6 +45,7 @@ test('completion is same-account recovery and cannot create a second Auth accoun
   assert.doesNotMatch(body, /signUp\(/u);
   assert.match(body, /getAuthenticatedUser\(\)/u);
   assert.match(body, /getCurrentDietitianOnboarding\(\)/u);
+  assert.match(body, /fullName: onboarding\.data\.fullName/u);
   assert.match(body, /verification_status !== 'pending'/u);
   assert.match(body, /is_verified !== false/u);
   assert.match(body, /status: 'failed', error: VERIFICATION_LOCKED_MESSAGE/u);
@@ -88,11 +80,15 @@ test('Storage path and cleanup are private, deterministic, and ownership-scoped'
 
 test('link persistence failure returns recoverable incomplete state and conditionally cleans the new object', () => {
   const source = serviceBeforeProfileRead();
-  const linkFailureStart = source.indexOf('try {\n      await persistDiplomaLink');
+  const completionStart = source.indexOf('export const completeDietitianRegistration');
+  const linkCall = source.indexOf('await persistDiplomaLink', completionStart);
+  const linkFailureStart = source.lastIndexOf('try {', linkCall);
   const linkFailureBlock = source.slice(linkFailureStart, source.indexOf('return incompleteResult();', linkFailureStart) + 'return incompleteResult();'.length);
 
+  assert.ok(linkCall > completionStart);
+  assert.ok(linkFailureStart > completionStart);
   assert.match(linkFailureBlock, /isCanonicalDiplomaPath\(coreResult\.diplomaUrl/u);
-  assert.match(linkFailureBlock, /removeCanonicalDiplomaFile\(userId\)/u);
+  assert.match(linkFailureBlock, /removeCanonicalDiplomaFile\(authenticatedUser\.id\)/u);
   assert.match(linkFailureBlock, /return incompleteResult\(\)/u);
   assert.match(source, /diploma_url: diplomaPath/u);
 });
@@ -125,7 +121,7 @@ test('Auth access distinguishes incomplete registration before pending verificat
   assert.match(route, /allowIncomplete \? <Outlet \/> : <Navigate/u);
 });
 
-test('completion route and UI keep Auth email fixed and route completed users through normal access resolution', () => {
+test('register collects identity only while completion collects professional data exactly once', () => {
   const app = read('App.tsx');
   const page = read('features/auth/pages/CompleteRegistrationPage.tsx');
   const register = read('features/auth/pages/RegisterPage.tsx');
@@ -134,13 +130,66 @@ test('completion route and UI keep Auth email fixed and route completed users th
   assert.match(app, /path="\/complete-registration"/u);
   assert.match(app, /ProtectedRoute allowIncomplete/u);
   assert.match(page, /completeDietitianRegistration/u);
-  assert.match(page, /readOnly value=\{onboarding\.email\}/u);
+  assert.match(page, /\{onboarding\.fullName\}/u);
+  assert.match(page, /\{onboarding\.email\}/u);
+  assert.match(page, /E-posta doğrulandı/u);
+  assert.doesNotMatch(page, /completion-(?:first-name|last-name|email)/u);
+  assert.doesNotMatch(page, /name="(?:firstName|lastName)"/u);
+  for (const field of ['completion-phone', 'completion-university', 'completion-graduation-year', 'completion-experience-years', 'completion-specialization', 'completion-bio']) {
+    assert.match(page, new RegExp(field, 'u'), `completion form missing professional field: ${field}`);
+  }
+  assert.match(page, /accept="application\/pdf"/u);
   assert.match(page, /await refreshAccess\(\)/u);
   assert.match(page, /navigate\('\/', \{ replace: true \}\)/u);
-  assert.match(register, /result\.status === 'email_confirmation_required'/u);
+  assert.match(register, /result\.success && result\.status === 'email_confirmation_required'/u);
+  assert.match(register, /E-posta adresinizi doğrulayın/u);
   assert.match(register, /result\.status === 'incomplete_profile'/u);
   assert.match(register, /navigate\('\/complete-registration'/u);
+  for (const forbidden of ['register-phone', 'register-university', 'register-graduation-date', 'register-experience', 'register-specialization', 'register-bio', 'diploma-upload']) {
+    assert.doesNotMatch(register, new RegExp(forbidden, 'u'), `register must not collect professional field: ${forbidden}`);
+  }
   assert.match(login, /accessState\.status === 'incomplete_registration'/u);
+});
+
+test('complete-registration is state-aware and all non-approved states remain fail-closed', () => {
+  const route = read('shared/components/ProtectedRoute.tsx');
+  const authService = read('features/auth/services/authService.ts');
+  const authContext = read('features/auth/context/AuthContext.tsx');
+
+  assert.match(route, /case 'allowed':[\s\S]*allowIncomplete \? <Navigate to="\/" replace \/> : <Outlet \/>/u);
+  assert.match(route, /case 'incomplete_registration':[\s\S]*allowIncomplete \? <Outlet \/>/u);
+  assert.match(route, /case 'pending':\s*case 'rejected':\s*return <VerificationStatusPage/u);
+  assert.match(route, /case 'access_error':[\s\S]*<BlockedAccessState/u);
+  assert.match(route, /case 'unauthenticated':[\s\S]*<Navigate to="\/login"/u);
+  assert.match(authService, /if \(role === 'client'\)[\s\S]*status: 'blocked_client'/u);
+  assert.match(authService, /verification === 'pending'[\s\S]*status: 'pending'/u);
+  assert.match(authService, /verification === 'rejected'[\s\S]*status: 'rejected'/u);
+  assert.match(authService, /verification !== 'approved'[\s\S]*status: 'access_error'/u);
+  assert.match(authContext, /resolvedAccess\.status === 'blocked_client'[\s\S]*signOut/u);
+});
+
+test('legacy onboarding values are prefetched without using metadata for authorization', () => {
+  const source = service();
+  const onboardingBody = source.slice(
+    source.indexOf('export const getCurrentDietitianOnboarding'),
+    source.indexOf('interface CoreOnboardingInput'),
+  );
+
+  assert.match(onboardingBody, /profileData\.full_name\?\.trim\(\) \|\| metadataFullName/u);
+  assert.match(onboardingBody, /row\?\.phone \|\| profileData\.phone \|\| getMetadataText\(metadata, 'phone'\)/u);
+  assert.match(onboardingBody, /row\?\.university \|\| getMetadataText\(metadata, 'university'\)/u);
+  assert.match(onboardingBody, /getMetadataNumber\(metadata, 'graduation_year', 'graduationYear'\)/u);
+  assert.doesNotMatch(onboardingBody, /metadata[^\n]*(?:role|account_type)/u);
+});
+
+test('sensitive onboarding fields and diploma files are never browser-persisted', () => {
+  const sources = [
+    read('features/auth/pages/RegisterPage.tsx'),
+    read('features/auth/pages/CompleteRegistrationPage.tsx'),
+    service(),
+  ].join('\n');
+
+  assert.doesNotMatch(sources, /localStorage|sessionStorage/u);
 });
 
 test('existing Product Admin routes and migration remain part of the unchanged contract', () => {

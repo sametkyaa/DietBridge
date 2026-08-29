@@ -24,18 +24,9 @@ export interface RegistrationData {
   password: string;
   firstName: string;
   lastName: string;
-  phone: string;
-  university: string;
-  graduationYear: string;
-  experienceYears: string;
-  specialization: string;
-  bio: string;
-  diplomaFile: File;
 }
 
 export interface DietitianCompletionData {
-  firstName: string;
-  lastName: string;
   phone: string;
   university: string;
   graduationYear: string;
@@ -108,7 +99,7 @@ export type DiplomaFileValidation =
 const DIPLOMA_MAX_FILE_BYTES = 5 * 1024 * 1024;
 const REGISTRATION_INCOMPLETE_MESSAGE = 'Başvurunuz henüz tamamlanmamış.';
 const REGISTRATION_GENERIC_MESSAGE = 'Profil kurulumu tamamlanamadı. Lütfen tekrar deneyin.';
-const AUTH_SESSION_REQUIRED_MESSAGE = 'Hesabınız oluşturuldu ancak e-posta doğrulaması gerekiyor. Profil kurulumu oturum açtıktan sonra tamamlanabilir.';
+const AUTH_SESSION_REQUIRED_MESSAGE = 'Hesabınız oluşturuldu. Başvurunuza devam etmek için e-posta adresinizi doğrulayın.';
 const VERIFICATION_LOCKED_MESSAGE = 'Başvurunuzun doğrulama durumu değiştirilemez.';
 
 const safeRegistrationError = (error: unknown, fallback: string): string => {
@@ -120,6 +111,30 @@ const safeRegistrationError = (error: unknown, fallback: string): string => {
 };
 
 const toNumber = (value: string): number => Number(value.trim());
+
+const getMetadataText = (
+  metadata: Record<string, unknown>,
+  ...keys: string[]
+): string => {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+};
+
+const getMetadataNumber = (
+  metadata: Record<string, unknown>,
+  ...keys: string[]
+): number | null => {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value !== 'string' && typeof value !== 'number') continue;
+    const parsed = Number(String(value).trim());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
 
 const toDietitianProfile = (row: DietitianProfileRow, fallbackEmail: string): DietitianProfile => {
   const fullName = row.profiles?.full_name?.trim() || '';
@@ -223,7 +238,13 @@ export const getCurrentDietitianOnboarding = async (): Promise<DietitianOnboardi
   }
 
   const row = dietitianProfileRow as DietitianProfileRow | null;
-  const fullName = profileData.full_name?.trim() || '';
+  const metadata = user.user_metadata as Record<string, unknown>;
+  const metadataFullName = getMetadataText(metadata, 'full_name', 'name')
+    || [
+      getMetadataText(metadata, 'first_name', 'firstName'),
+      getMetadataText(metadata, 'last_name', 'lastName'),
+    ].filter(Boolean).join(' ');
+  const fullName = profileData.full_name?.trim() || metadataFullName;
   const email = user.email?.trim() || '';
   const profile = row
     ? toDietitianProfile({
@@ -241,12 +262,14 @@ export const getCurrentDietitianOnboarding = async (): Promise<DietitianOnboardi
       userId: user.id,
       email,
       fullName,
-      phone: row?.phone || profileData.phone || '',
-      university: row?.university || '',
-      graduationYear: row?.graduation_year ?? null,
-      experienceYears: row?.experience_years ?? null,
-      specialization: row?.specialization || '',
-      bio: row?.bio || '',
+      phone: row?.phone || profileData.phone || getMetadataText(metadata, 'phone'),
+      university: row?.university || getMetadataText(metadata, 'university'),
+      graduationYear: row?.graduation_year
+        ?? getMetadataNumber(metadata, 'graduation_year', 'graduationYear'),
+      experienceYears: row?.experience_years
+        ?? getMetadataNumber(metadata, 'experience_years', 'experienceYears'),
+      specialization: row?.specialization || getMetadataText(metadata, 'specialization'),
+      bio: row?.bio || getMetadataText(metadata, 'bio'),
       profile,
       diplomaUrl: row?.diploma_url || null,
     },
@@ -344,21 +367,17 @@ const getCoreCompleteness = (
 });
 
 /**
- * Creates the Auth account, then persists recoverable onboarding state in a
- * deterministic order. No browser write assigns role or verification authority.
+ * Creates only the Auth account and trigger metadata. Professional application
+ * persistence and diploma upload require a confirmed authenticated session and
+ * are handled exclusively by completeDietitianRegistration.
  */
 export const registerDietitian = async (data: RegistrationData): Promise<RegistrationResult> => {
-  let authUserCreated = false;
   const fullName = [data.firstName, data.lastName]
     .map(value => String(value || '').trim())
     .filter(Boolean)
     .join(' ');
-  const diplomaValidation = validateDiplomaFile(data.diplomaFile);
 
   if (!fullName) return { success: false, status: 'failed', error: 'Ad ve soyad boş bırakılamaz.' };
-  if (diplomaValidation.status === 'invalid') {
-    return { success: false, status: 'failed', error: diplomaValidation.userMessage };
-  }
 
   try {
     const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -381,79 +400,23 @@ export const registerDietitian = async (data: RegistrationData): Promise<Registr
     }
 
     const userId = authData.user.id;
-    authUserCreated = true;
 
     if (!authData.session) {
-      return { success: false, status: 'email_confirmation_required', error: AUTH_SESSION_REQUIRED_MESSAGE };
+      return { success: true, status: 'email_confirmation_required', error: AUTH_SESSION_REQUIRED_MESSAGE };
     }
 
-    const authenticatedUser = await getAuthenticatedUser();
-    if (!authenticatedUser || authenticatedUser.id !== userId) {
-      return { success: false, status: 'email_confirmation_required', error: AUTH_SESSION_REQUIRED_MESSAGE };
-    }
-    if (!authenticatedUser.email?.trim()) return incompleteResult();
-
-    const onboarding = await getCurrentDietitianOnboarding();
-    if (!onboarding.success || !onboarding.data) return incompleteResult(onboarding.error);
-    if (
-      onboarding.data.profile
-      && (onboarding.data.profile.verification_status !== 'pending'
-        || onboarding.data.profile.is_verified !== false)
-    ) {
-      return { success: false, status: 'failed', error: VERIFICATION_LOCKED_MESSAGE };
+    if (authData.session.user.id !== userId) {
+      return { success: false, status: 'failed', error: 'Oturum doğrulanamadı. Lütfen tekrar giriş yapın.' };
     }
 
-    const coreInput: CoreOnboardingInput = {
-      fullName,
-      phone: data.phone,
-      university: data.university,
-      graduationYear: data.graduationYear,
-      experienceYears: data.experienceYears,
-      specialization: data.specialization,
-      bio: data.bio,
+    return {
+      success: true,
+      status: 'incomplete_profile',
+      error: 'Hesabınız oluşturuldu. Mesleki başvurunuzu tamamlayabilirsiniz.',
     };
-    const completeness = getCoreCompleteness(
-      userId,
-      authenticatedUser.email,
-      coreInput,
-      getCanonicalDiplomaPath(userId),
-    );
-    if (!completeness.isComplete) return incompleteResult();
-
-    let coreResult: { diplomaUrl: string | null };
-    try {
-      coreResult = await persistCoreOnboardingFields(authenticatedUser, coreInput);
-    } catch {
-      return incompleteResult();
-    }
-
-    let diplomaPath: string;
-    try {
-      diplomaPath = await uploadDiplomaFile(userId, data.diplomaFile);
-    } catch {
-      return incompleteResult();
-    }
-
-    try {
-      await persistDiplomaLink(userId, diplomaPath);
-    } catch {
-      if (!isCanonicalDiplomaPath(coreResult.diplomaUrl, userId)) {
-        await removeCanonicalDiplomaFile(userId);
-      }
-      return incompleteResult();
-    }
-
-    return { success: true, status: 'complete' };
   } catch (error: unknown) {
-    const errorMessage = safeRegistrationError(
-      error,
-      authUserCreated
-        ? REGISTRATION_GENERIC_MESSAGE
-        : 'Kayıt işlemi sırasında bir hata oluştu.',
-    );
-    return authUserCreated
-      ? incompleteResult(errorMessage)
-      : { success: false, status: 'failed', error: errorMessage };
+    const errorMessage = safeRegistrationError(error, 'Kayıt işlemi sırasında bir hata oluştu.');
+    return { success: false, status: 'failed', error: errorMessage };
   }
 };
 
@@ -483,12 +446,8 @@ export const completeDietitianRegistration = async (
     return { success: false, status: 'failed', error: VERIFICATION_LOCKED_MESSAGE };
   }
 
-  const fullName = [data.firstName, data.lastName]
-    .map(value => String(value || '').trim())
-    .filter(Boolean)
-    .join(' ');
   const coreInput: CoreOnboardingInput = {
-    fullName,
+    fullName: onboarding.data.fullName,
     phone: data.phone,
     university: data.university,
     graduationYear: data.graduationYear,
