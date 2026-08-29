@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { APP_LOGO } from '../../../shared/constants';
-import { User, Mail, Lock, CheckCircle2, AlertCircle, ArrowRight, BarChart3, ShieldCheck, Users } from 'lucide-react';
+import { User, Mail, Lock, CheckCircle2, AlertCircle, ArrowRight, BarChart3, ShieldCheck, Users, Eye, EyeOff } from 'lucide-react';
 import { registerDietitian, RegistrationData } from '../../dietitians/services/dietitianService';
 
 const RegisterPage = () => {
@@ -10,6 +10,7 @@ const RegisterPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
+  const [showPasswords, setShowPasswords] = useState(false);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -218,14 +219,23 @@ const RegisterPage = () => {
                     <label htmlFor="register-password" className="text-xs font-semibold text-[#10233f]">Şifre</label>
                     <div className="relative">
                       <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                      <input id="register-password" type="password" name="password" required value={formData.password} onChange={handleChange} placeholder="En az 8 karakter" aria-describedby={error ? 'register-error' : undefined} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" />
+                      <input id="register-password" type={showPasswords ? 'text' : 'password'} name="password" required value={formData.password} onChange={handleChange} placeholder="En az 8 karakter" aria-describedby={error ? 'register-error' : undefined} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-12 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" />
+                      <button
+                        type="button"
+                        aria-label={showPasswords ? 'Şifreleri gizle' : 'Şifreleri göster'}
+                        aria-pressed={showPasswords}
+                        onClick={() => setShowPasswords(previous => !previous)}
+                        className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                      >
+                        {showPasswords ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                      </button>
                     </div>
                   </div>
                   <div className="space-y-1">
                     <label htmlFor="register-password-confirm" className="text-xs font-semibold text-[#10233f]">Şifre Tekrar</label>
                     <div className="relative">
                       <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                      <input id="register-password-confirm" type="password" name="passwordConfirm" required value={formData.passwordConfirm} onChange={handleChange} placeholder="Şifrenizi tekrar girin" aria-describedby={error ? 'register-error' : undefined} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" />
+                      <input id="register-password-confirm" type={showPasswords ? 'text' : 'password'} name="passwordConfirm" required value={formData.passwordConfirm} onChange={handleChange} placeholder="Şifrenizi tekrar girin" aria-describedby={error ? 'register-error' : undefined} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" />
                     </div>
                   </div>
                 </div>

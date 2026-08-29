@@ -20,11 +20,46 @@ import {
 interface CompletionFormData {
   phone: string;
   university: string;
-  graduationYear: string;
+  graduationDate: string;
   experienceYears: string;
   specialization: string;
   bio: string;
 }
+
+const MIN_GRADUATION_YEAR = 1950;
+
+interface GraduationDateParts {
+  year: number;
+  month: number;
+  day: number;
+}
+
+const getTodayDateInputValue = (): string => {
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${today.getFullYear()}-${month}-${day}`;
+};
+
+const isLeapYear = (year: number): boolean => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+
+const getDaysInMonth = (year: number, month: number): number => {
+  if (month === 2) return isLeapYear(year) ? 29 : 28;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+};
+
+const parseGraduationDate = (value: string): GraduationDateParts | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > getDaysInMonth(year, month)) return null;
+  return { year, month, day };
+};
+
+const getGraduationYearFromDate = (value: string): number | null => parseGraduationDate(value)?.year ?? null;
 
 const getRouteMessage = (state: unknown): string | null => {
   if (!state || typeof state !== 'object') return null;
@@ -36,7 +71,7 @@ const toFormData = (state: DietitianOnboardingState): CompletionFormData => {
   return {
     phone: state.phone,
     university: state.university,
-    graduationYear: state.graduationYear === null ? '' : String(state.graduationYear),
+    graduationDate: '',
     experienceYears: state.experienceYears === null ? '' : String(state.experienceYears),
     specialization: state.specialization,
     bio: state.bio,
@@ -117,12 +152,38 @@ const CompleteRegistrationPage = () => {
       ...formData,
       phone: formData.phone.trim(),
       university: formData.university.trim(),
-      graduationYear: formData.graduationYear.trim(),
+      graduationDate: formData.graduationDate.trim(),
       experienceYears: formData.experienceYears.trim(),
       specialization: formData.specialization.trim(),
       bio: formData.bio.trim(),
     };
     setFormData(normalizedFormData);
+
+    const todayDate = getTodayDateInputValue();
+    const parsedGraduationDate = normalizedFormData.graduationDate
+      ? parseGraduationDate(normalizedFormData.graduationDate)
+      : null;
+    if (normalizedFormData.graduationDate && !parsedGraduationDate) {
+      setError('Lütfen geçerli bir mezuniyet tarihi seçin.');
+      return;
+    }
+    if (normalizedFormData.graduationDate && normalizedFormData.graduationDate > todayDate) {
+      setError('Gelecekte bir mezuniyet tarihi seçilemez.');
+      return;
+    }
+
+    const graduationYear = getGraduationYearFromDate(normalizedFormData.graduationDate)
+      ?? onboarding.graduationYear;
+    const currentYear = Number(todayDate.slice(0, 4));
+    if (
+      graduationYear === null
+      || !Number.isInteger(graduationYear)
+      || graduationYear < MIN_GRADUATION_YEAR
+      || graduationYear > currentYear
+    ) {
+      setError('Lütfen geçerli bir mezuniyet tarihi seçin.');
+      return;
+    }
 
     if (!nutritionUniversities.includes(normalizedFormData.university)) {
       setError('Lütfen listeden geçerli bir üniversite seçin.');
@@ -138,7 +199,7 @@ const CompleteRegistrationPage = () => {
       email: onboarding.email,
       phone: normalizedFormData.phone,
       university: normalizedFormData.university,
-      graduationYear: normalizedFormData.graduationYear,
+      graduationYear: String(graduationYear),
       experienceYears: normalizedFormData.experienceYears,
       specialization: normalizedFormData.specialization,
       bio: normalizedFormData.bio,
@@ -151,7 +212,12 @@ const CompleteRegistrationPage = () => {
 
     setSaving(true);
     const payload: DietitianCompletionData = {
-      ...normalizedFormData,
+      phone: normalizedFormData.phone,
+      university: normalizedFormData.university,
+      graduationYear: String(graduationYear),
+      experienceYears: normalizedFormData.experienceYears,
+      specialization: normalizedFormData.specialization,
+      bio: normalizedFormData.bio,
       diplomaFile,
     };
     const result = await completeDietitianRegistration(payload);
@@ -235,8 +301,11 @@ const CompleteRegistrationPage = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1.5">
-                  <label htmlFor="completion-graduation-year" className="text-sm font-bold text-slate-700">Mezuniyet Yılı</label>
-                  <input id="completion-graduation-year" name="graduationYear" type="number" min="1950" max={new Date().getFullYear()} required value={formData.graduationYear} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />
+                  <label htmlFor="completion-graduation-date" className="text-sm font-bold text-slate-700">Mezuniyet Tarihi</label>
+                  <input id="completion-graduation-date" name="graduationDate" type="date" min={`${MIN_GRADUATION_YEAR}-01-01`} max={getTodayDateInputValue()} required={onboarding.graduationYear === null} value={formData.graduationDate} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" aria-describedby={onboarding.graduationYear === null ? undefined : 'completion-graduation-date-help'} />
+                  {onboarding.graduationYear !== null && (
+                    <p id="completion-graduation-date-help" className="text-xs text-slate-500">Mevcut mezuniyet yılı ({onboarding.graduationYear}) korunur. Yeni bir tarih seçerseniz yıl güncellenir.</p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <label htmlFor="completion-experience-years" className="text-sm font-bold text-slate-700">Deneyim (Yıl)</label>

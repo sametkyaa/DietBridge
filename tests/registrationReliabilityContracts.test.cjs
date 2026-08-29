@@ -135,7 +135,7 @@ test('register collects identity only while completion collects professional dat
   assert.match(page, /E-posta doğrulandı/u);
   assert.doesNotMatch(page, /completion-(?:first-name|last-name|email)/u);
   assert.doesNotMatch(page, /name="(?:firstName|lastName)"/u);
-  for (const field of ['completion-phone', 'completion-university', 'completion-graduation-year', 'completion-experience-years', 'completion-specialization', 'completion-bio']) {
+  for (const field of ['completion-phone', 'completion-university', 'completion-graduation-date', 'completion-experience-years', 'completion-specialization', 'completion-bio']) {
     assert.match(page, new RegExp(field, 'u'), `completion form missing professional field: ${field}`);
   }
   assert.match(page, /accept="application\/pdf"/u);
@@ -149,6 +149,46 @@ test('register collects identity only while completion collects professional dat
     assert.doesNotMatch(register, new RegExp(forbidden, 'u'), `register must not collect professional field: ${forbidden}`);
   }
   assert.match(login, /accessState\.status === 'incomplete_registration'/u);
+});
+
+test('registration UX uses a native graduation date while preserving the year-only backend contract', () => {
+  const page = read('features/auth/pages/CompleteRegistrationPage.tsx');
+  const serviceSource = service();
+
+  assert.match(page, /<label htmlFor="completion-graduation-date"[^>]*>Mezuniyet Tarihi<\/label>/u);
+  assert.match(page, /id="completion-graduation-date" name="graduationDate" type="date"/u);
+  assert.match(page, /min=\{`\$\{MIN_GRADUATION_YEAR\}-01-01`\}/u);
+  assert.match(page, /max=\{getTodayDateInputValue\(\)\}/u);
+  assert.match(page, /required=\{onboarding\.graduationYear === null\}/u);
+  assert.match(page, /getGraduationYearFromDate\(normalizedFormData\.graduationDate\)\s*\?\?\s*onboarding\.graduationYear/u);
+  assert.match(page, /normalizedFormData\.graduationDate > todayDate/u);
+  assert.match(page, /graduationYear: String\(graduationYear\)/u);
+  assert.doesNotMatch(page, /new Date\([^)]*graduationDate/u);
+
+  const payloadStart = page.indexOf('const payload: DietitianCompletionData');
+  const payloadEnd = page.indexOf('const result = await completeDietitianRegistration', payloadStart);
+  assert.ok(payloadStart >= 0 && payloadEnd > payloadStart);
+  assert.doesNotMatch(page.slice(payloadStart, payloadEnd), /graduationDate/u);
+  assert.doesNotMatch(serviceSource, /graduation_date/u);
+});
+
+test('registration UX exposes one shared password visibility toggle for both password inputs', () => {
+  const page = read('features/auth/pages/RegisterPage.tsx');
+  const passwordTypes = page.match(/type=\{showPasswords \? 'text' : 'password'\}/gu) || [];
+  const visibilityLabels = page.match(/aria-label=\{showPasswords \? 'Şifreleri gizle' : 'Şifreleri göster'\}/gu) || [];
+
+  assert.equal(passwordTypes.length, 2);
+  assert.equal(visibilityLabels.length, 1);
+  assert.match(page, /const \[showPasswords, setShowPasswords\] = useState\(false\)/u);
+  assert.match(page, /<button[\s\S]*?type="button"[\s\S]*?aria-label=\{showPasswords \? 'Şifreleri gizle' : 'Şifreleri göster'\}/u);
+  assert.match(page, /setShowPasswords\(previous => !previous\)/u);
+  assert.match(page, /EyeOff[\s\S]*Eye/u);
+  assert.match(page, /register-password"[^>]*className="[^"]*pr-12/u);
+
+  const confirmationInputStart = page.indexOf('<input id="register-password-confirm"');
+  const confirmationInputEnd = page.indexOf('/>', confirmationInputStart);
+  assert.ok(confirmationInputStart >= 0 && confirmationInputEnd > confirmationInputStart);
+  assert.doesNotMatch(page.slice(confirmationInputStart, confirmationInputEnd), /Eye|aria-label/u);
 });
 
 test('complete-registration is state-aware and all non-approved states remain fail-closed', () => {
