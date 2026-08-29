@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, FileText, Info, Upload } from 'lucide-react';
 import { APP_LOGO } from '../../../shared/constants';
@@ -18,8 +18,6 @@ import {
 } from '../utils/registrationCompleteness';
 
 interface CompletionFormData {
-  firstName: string;
-  lastName: string;
   phone: string;
   university: string;
   graduationYear: string;
@@ -34,16 +32,8 @@ const getRouteMessage = (state: unknown): string | null => {
   return typeof message === 'string' && message.trim() ? message : null;
 };
 
-const splitFullName = (fullName: string): { firstName: string; lastName: string } => {
-  const [firstName = '', ...lastNameParts] = fullName.trim().split(/\s+/);
-  return { firstName, lastName: lastNameParts.join(' ') };
-};
-
 const toFormData = (state: DietitianOnboardingState): CompletionFormData => {
-  const profileName = splitFullName(state.fullName);
   return {
-    firstName: state.profile?.first_name || profileName.firstName,
-    lastName: state.profile?.last_name || profileName.lastName,
     phone: state.phone,
     university: state.university,
     graduationYear: state.graduationYear === null ? '' : String(state.graduationYear),
@@ -90,9 +80,8 @@ const CompleteRegistrationPage = () => {
     };
   }, []);
 
-  const hasExistingDiploma = useMemo(
-    () => Boolean(onboarding && isCanonicalDiplomaPath(onboarding.diplomaUrl, onboarding.userId)),
-    [onboarding],
+  const hasExistingDiploma = Boolean(
+    onboarding && isCanonicalDiplomaPath(onboarding.diplomaUrl, onboarding.userId),
   );
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -126,8 +115,6 @@ const CompleteRegistrationPage = () => {
 
     const normalizedFormData: CompletionFormData = {
       ...formData,
-      firstName: formData.firstName.trim(),
-      lastName: formData.lastName.trim(),
       phone: formData.phone.trim(),
       university: formData.university.trim(),
       graduationYear: formData.graduationYear.trim(),
@@ -142,15 +129,12 @@ const CompleteRegistrationPage = () => {
       return;
     }
 
-    const fullName = [normalizedFormData.firstName, normalizedFormData.lastName]
-      .filter(Boolean)
-      .join(' ');
     const prospectiveDiplomaPath = diplomaFile
       ? getCanonicalDiplomaPath(onboarding.userId)
       : onboarding.diplomaUrl || '';
     const completeness = getRegistrationCompleteness({
       userId: onboarding.userId,
-      fullName,
+      fullName: onboarding.fullName,
       email: onboarding.email,
       phone: normalizedFormData.phone,
       university: normalizedFormData.university,
@@ -224,19 +208,16 @@ const CompleteRegistrationPage = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="space-y-1.5">
-                <label htmlFor="completion-first-name" className="text-sm font-bold text-slate-700">Ad</label>
-                <input id="completion-first-name" name="firstName" required value={formData.firstName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />
-              </div>
-              <div className="space-y-1.5">
-                <label htmlFor="completion-last-name" className="text-sm font-bold text-slate-700">Soyad</label>
-                <input id="completion-last-name" name="lastName" required value={formData.lastName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />
-              </div>
-              <div className="space-y-1.5">
-                <label htmlFor="completion-email" className="text-sm font-bold text-slate-700">E-posta</label>
-                <input id="completion-email" type="email" readOnly value={onboarding.email} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed text-sm" />
-              </div>
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-5 py-4">
+              <p className="text-sm font-bold text-[#10233f]">{onboarding.fullName}</p>
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-emerald-700">
+                {onboarding.email}
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only">E-posta doğrulandı</span>
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5">
               <div className="space-y-1.5">
                 <label htmlFor="completion-phone" className="text-sm font-bold text-slate-700">Telefon</label>
                 <input id="completion-phone" name="phone" type="tel" required value={formData.phone} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />

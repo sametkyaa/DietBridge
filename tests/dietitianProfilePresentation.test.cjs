@@ -12,6 +12,7 @@ const profilePage = () => read('features/dietitians/pages/DietitianProfilePage.t
 const dietitianService = () => read('features/dietitians/services/dietitianService.ts');
 const authService = () => read('features/auth/services/authService.ts');
 const registerPage = () => read('features/auth/pages/RegisterPage.tsx');
+const completeRegistrationPage = () => read('features/auth/pages/CompleteRegistrationPage.tsx');
 
 test('dietitian profile keeps normal profile content without the visible diploma section', () => {
   const source = profilePage();
@@ -38,16 +39,19 @@ test('profile data contract still carries diploma_url for legitimate application
   assert.match(auth, /resolveVerificationStatus/);
 });
 
-test('registration and onboarding diploma handling remain present', () => {
+test('authenticated onboarding keeps diploma handling out of account creation', () => {
   const service = dietitianService();
   const register = registerPage();
+  const completion = completeRegistrationPage();
 
   assert.match(service, /export const uploadDiplomaFile/);
   assert.match(service, /DIETITIAN_DIPLOMA_BUCKET/);
   assert.match(service, /update\(\{ diploma_url: diplomaPath \}\)/);
   assert.match(service, /verification_status !== 'pending'/);
   assert.doesNotMatch(service, /is_verified:\s*false|verification_status:\s*'pending'/);
-  assert.match(register, /const \[diplomaFile, setDiplomaFile\]/);
   assert.match(register, /registerDietitian\(payload\)/);
-  assert.match(register, /Lütfen diplomanızı yükleyin/);
+  assert.doesNotMatch(register, /diplomaFile|diploma-upload|application\/pdf/);
+  assert.match(completion, /const \[diplomaFile, setDiplomaFile\]/);
+  assert.match(completion, /completeDietitianRegistration\(payload\)/);
+  assert.match(completion, /accept="application\/pdf"/);
 });
