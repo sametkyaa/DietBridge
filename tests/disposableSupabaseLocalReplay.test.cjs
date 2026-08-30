@@ -41,11 +41,11 @@ const runMaterializeOnly = async (options = {}) => {
 test('materializes the exact current migration chain in deterministic order', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
-  assert.deepEqual(result.manifest.expectedHistory, { canonical: 42, image: 7, total: 49 });
-  assert.equal(result.manifest.files.length, 49);
-  assert.equal(result.disposableHistory.repositoryMigrationCount, 49);
+  assert.deepEqual(result.manifest.expectedHistory, { canonical: 43, image: 7, total: 50 });
+  assert.equal(result.manifest.files.length, 50);
+  assert.equal(result.disposableHistory.repositoryMigrationCount, 50);
   assert.equal(result.disposableHistory.localPrerequisiteCount, 1);
-  assert.equal(result.disposableHistory.disposableMigrationCount, 50);
+  assert.equal(result.disposableHistory.disposableMigrationCount, 51);
   assert.deepEqual(
     result.manifest.files.map((file) => file.path),
     [...result.manifest.files.map((file) => file.path)].sort(),
