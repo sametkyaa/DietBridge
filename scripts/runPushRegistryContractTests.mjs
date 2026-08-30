@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
 const migrationName = '20260817120000_push_registry_outbox_backend.sql';
-const reminderName = '20260816194431_appointment_reminders_backend.sql';
+const reminderName = '20260817084531_appointment_reminders_backend.sql';
 const reminderSha256 = 'e3dd24c784e62131dfd3ee1ee611cc7634b3a30042331d2caf70e1af1946f474';
 
 const fail = (message) => { throw new Error(message); };

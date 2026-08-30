@@ -15,7 +15,7 @@ import { LOCAL_PREREQUISITE_FILE, LOCAL_PREREQUISITE_SQL } from './runDisposable
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
 const notificationCoreMigrationName = '20260814214101_notification_core_backend.sql';
-const appointmentReminderMigrationName = '20260816194431_appointment_reminders_backend.sql';
+const appointmentReminderMigrationName = '20260817084531_appointment_reminders_backend.sql';
 const pushRegistryMigrationName = '20260817120000_push_registry_outbox_backend.sql';
 const supabaseVersion = '2.110.0';
 const password = 'Disposable-Push-Registry-6b!';

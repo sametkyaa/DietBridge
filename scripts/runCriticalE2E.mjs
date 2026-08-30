@@ -18,7 +18,7 @@ const password = 'Disposable-E2E-Only-11m!';
 const diplomaBucket = 'dietitian-diplomas';
 const isolatedMigrations = [
   '20260814214101_notification_core_backend.sql',
-  '20260816194431_appointment_reminders_backend.sql',
+  '20260817084531_appointment_reminders_backend.sql',
   '20260817120000_push_registry_outbox_backend.sql',
 ];
 const actorIds = [];
