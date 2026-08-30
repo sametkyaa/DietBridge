@@ -6,6 +6,7 @@ import { Client } from '../../../shared/types';
 import { fetchDietitianClientList, addClientByEmail, resolveClientIdByRelationId } from '../services/clientService';
 import { exportClientsToXlsx } from '../services/clientExportService';
 import NotificationBell from '../../notifications/components/NotificationBell';
+import { formatPercentageDisplay } from '../../../shared/utils/percentageDisplay';
 
 type ClientListViewState =
   | { status: 'loading' }
@@ -47,12 +48,6 @@ const getClientInitials = (name: string) => {
 
   return initials || '?';
 };
-
-const clientNumberFormatter = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
-
-const formatClientPercentage = (value: number | null): string => (
-  value === null || !Number.isFinite(value) ? 'Veri yok' : `%${clientNumberFormatter.format(value)}`
-);
 
 const clientMessagesPath = (clientId: string): string => (
   `/messages?clientId=${encodeURIComponent(clientId)}`
@@ -105,11 +100,11 @@ const ClientCompliance: React.FC<{ client: Client }> = ({ client }) => {
       : { bar: 'bg-red-500', text: 'text-red-500' };
 
   return (
-    <div className="flex items-center gap-3" aria-label={`Son 7 gün uyumu: ${formatClientPercentage(value)}`}>
+    <div className="flex items-center gap-3" aria-label={`Son 7 gün uyumu: ${formatPercentageDisplay(value)}`}>
       <div className="flex-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label="Son 7 gün uyumu">
         <div className={`h-full rounded-full transition-all duration-500 ${tone.bar}`} style={{ width: `${progress}%` }} />
       </div>
-      <span className={`w-12 text-right text-xs font-bold ${tone.text}`}>{formatClientPercentage(value)}</span>
+      <span className={`w-12 text-right text-xs font-bold ${tone.text}`}>{formatPercentageDisplay(value)}</span>
     </div>
   );
 };
