@@ -37,6 +37,26 @@ const assertNoError = (result, label) => {
   if (result?.error) throw new Error(`${label}: ${result.error.message}`);
   return result?.data;
 };
+const ensureDiplomaBucket = async () => {
+  const current = await admin.storage.getBucket(diplomaBucket);
+  if (current.error && current.error.status !== 404) {
+    throw new Error(`dietitian diploma bucket lookup failed: ${current.error.message}`);
+  }
+  if (current.error?.status === 404 || !current.data) {
+    assertNoError(await admin.storage.createBucket(diplomaBucket, {
+      public: false,
+      fileSizeLimit: 10485760,
+      allowedMimeTypes: ['application/pdf'],
+    }), 'dietitian diploma bucket fixture');
+  }
+  const verified = assertNoError(await admin.storage.getBucket(diplomaBucket), 'dietitian diploma bucket contract lookup');
+  assert(verified.name === diplomaBucket
+    && verified.public === false
+    && verified.file_size_limit === 10485760
+    && Array.isArray(verified.allowed_mime_types)
+    && verified.allowed_mime_types.length === 1
+    && verified.allowed_mime_types[0] === 'application/pdf', 'E2E_DIPLOMA_BUCKET_PRIVATE_PDF_10_MIB');
+};
 const redact = (value) => String(value)
   .replace(/\b(sb_(?:secret|publishable)_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9._-]+)\b/g, '[redacted]');
 
@@ -159,7 +179,7 @@ try {
   disposable = await runDisposableSupabaseLocalReplay({ materializeOnly: true, keepTemp: true });
   const migrationDirectory = join(disposable.tempRoot, 'supabase', 'migrations');
   for (const migration of isolatedMigrations) copyFileSync(join(repoRoot, 'supabase', 'migrations', migration), join(migrationDirectory, migration), 1);
-  assert(readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length === 51, 'E2E_DISPOSABLE_MIGRATION_COUNT_51');
+  assert(readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length === 52, 'E2E_DISPOSABLE_MIGRATION_COUNT_52');
   await configurePorts(disposable.configPath);
   cli(['start']);
   stackStarted = true;
@@ -167,11 +187,7 @@ try {
   local = parseStatus(cli(['status', '--output', 'env']));
   assertCiSafeEnvironment({ SUPABASE_URL: local.API_URL }, { requireLoopback: true });
   admin = createClient(local.API_URL, local.SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-  assertNoError(await admin.storage.createBucket(diplomaBucket, {
-    public: false,
-    fileSizeLimit: 10485760,
-    allowedMimeTypes: ['application/pdf'],
-  }), 'dietitian diploma bucket fixture');
+  await ensureDiplomaBucket();
   pass('E2E_DIPLOMA_BUCKET_READY');
 
   const client = await createActor('client-role', 'client');
