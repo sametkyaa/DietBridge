@@ -345,8 +345,8 @@ const cleanupFixtures = async () => {
 const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  assert(sourceMigrations.length === 51, 'REMINDER_CANONICAL_MIGRATION_INVENTORY_51');
-  assert(sourceMigrations.at(-1) === '20260830060342_dietitian_diploma_storage_hardening.sql', 'REMINDER_CANONICAL_MIGRATION_TAIL');
+  assert(sourceMigrations.length === 52, 'REMINDER_CANONICAL_MIGRATION_INVENTORY_52');
+  assert(sourceMigrations.at(-1) === '20260830141202_meal_plan_cross_day_identity_preservation.sql', 'REMINDER_CANONICAL_MIGRATION_TAIL');
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-appointment-reminders-'));
   const tempRoot = join(tempParent, 'project');
@@ -359,8 +359,8 @@ const runFlows = async () => {
   copyFileSync(join(migrationDirectory, pushRegistryMigrationName), join(runtimeMigrationDirectory, pushRegistryMigrationName));
   writeFileSync(join(runtimeMigrationDirectory, LOCAL_PREREQUISITE_FILE), LOCAL_PREREQUISITE_SQL, { flag: 'wx' });
   const runtimeFiles = readdirSync(runtimeMigrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  assert(manifest.expectedHistory.total === 48, 'REMINDER_BASELINE_MATERIALIZED_COUNT_48');
-  assert(runtimeFiles.length === 52, 'REMINDER_DISPOSABLE_MIGRATION_FILES_52');
+  assert(manifest.expectedHistory.total === 49, 'REMINDER_BASELINE_MATERIALIZED_COUNT_49');
+  assert(runtimeFiles.length === 53, 'REMINDER_DISPOSABLE_MIGRATION_FILES_53');
 
   disposable = { tempRoot, configPath };
   await configureProject(configPath);
@@ -377,7 +377,7 @@ const runFlows = async () => {
   });
 
   const migrationCount = countSql('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === 52, 'REMINDER_SCHEMA_MIGRATION_COUNT', 'canonical=51, local-prerequisite=1');
+  assert(migrationCount === 53, 'REMINDER_SCHEMA_MIGRATION_COUNT', 'canonical=52, local-prerequisite=1');
   assert(countSql("select count(*) from public.notifications where event_type in ('reminder_24h','reminder_1h');") === 0,
     'REMINDER_NOTIFICATION_COUNT_0_AFTER_REPLAY');
 
