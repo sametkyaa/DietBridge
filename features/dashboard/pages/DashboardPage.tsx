@@ -28,6 +28,7 @@ import type { DailyTask, DailyTaskDraft, DailyTaskGroups } from '../types/dailyT
 import { getIstanbulDateKey, getPendingDailyTaskGroup } from '../utils/dailyTaskContract';
 import { getDashboardFocusMessage, summarizeDashboard } from '../utils/dashboardContract';
 import NotificationBell from '../../notifications/components/NotificationBell';
+import { formatPercentageDisplay } from '../../../shared/utils/percentageDisplay';
 
 type TaskFilter = keyof DailyTaskGroups;
 
@@ -663,7 +664,7 @@ const DashboardPage = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {client.compliance === null ? (
+                      {client.compliance === null || !Number.isFinite(client.compliance) ? (
                         <span className="text-xs font-medium text-slate-400">Veri yok</span>
                       ) : (
                         <>
@@ -674,7 +675,7 @@ const DashboardPage = () => {
                             />
                           </div>
                           <span className={`text-sm font-bold ${client.compliance > 80 ? 'text-primary' : client.compliance > 70 ? 'text-yellow-500' : 'text-red-500'}`}>
-                            %{client.compliance}
+                            {formatPercentageDisplay(client.compliance)}
                           </span>
                         </>
                       )}

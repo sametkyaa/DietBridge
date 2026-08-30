@@ -50,10 +50,14 @@ const Sidebar = () => {
       {/* Desktop Sidebar */}
       <aside className="hidden max-md:hidden md:flex w-64 shrink-0 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex-col justify-between z-20">
         <div className="p-6">
-          <div className="flex items-center mb-10">
+          <NavLink
+            to="/"
+            aria-label="Kontrol Paneline git"
+            className="flex items-center mb-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          >
             <img src={APP_LOGO} alt="DietBridge Logo" className="h-10 w-auto object-contain" />
             <span className="text-2xl font-bold text-slate-800 tracking-tight ml-3">DietBridge</span>
-          </div>
+          </NavLink>
 
           <nav className="space-y-1">
             {visibleNavItems.map((item) => (

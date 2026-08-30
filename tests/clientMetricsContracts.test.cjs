@@ -9,6 +9,7 @@ const buildDir = process.env.CLIENT_METRICS_CONTRACT_BUILD_DIR;
 if (!buildDir) throw new Error('CLIENT_METRICS_CONTRACT_BUILD_DIR is required.');
 
 const adherence = require(path.join(buildDir, 'shared/utils/adherenceContract.js'));
+const percentageDisplay = require(path.join(buildDir, 'shared/utils/percentageDisplay.js'));
 const clientMetrics = require(path.join(buildDir, 'features/clients/utils/clientMetricsContract.js'));
 const clientExport = require(path.join(buildDir, 'features/clients/utils/clientExport.js'));
 const exportService = require(path.join(buildDir, 'features/clients/services/clientExportService.js'));
@@ -39,6 +40,23 @@ test('adherence contract is canonical and fails closed', () => {
   assert.equal(adherence.calculateAdherencePercentage(-1, 4), null);
   assert.equal(adherence.calculateAdherencePercentage(5, 4), null);
   assert.equal(clientMetrics.calculateClientMealAdherence(2, 4), 50);
+});
+
+test('percentage display rounds only visible labels and preserves raw metrics/export values', () => {
+  assert.equal(percentageDisplay.formatPercentageDisplay(16.666666), '%17');
+  assert.equal(percentageDisplay.formatPercentageDisplay(85.7), '%86');
+  assert.equal(percentageDisplay.formatPercentageDisplay(50), '%50');
+  assert.equal(percentageDisplay.formatPercentageDisplay(0), '%0');
+  assert.equal(percentageDisplay.formatPercentageDisplay(100), '%100');
+  assert.equal(percentageDisplay.formatPercentageDisplay(null), 'Veri yok');
+  assert.equal(percentageDisplay.formatPercentageDisplay(Number.NaN), 'Veri yok');
+  assert.equal(percentageDisplay.formatPercentageDisplay(Number.POSITIVE_INFINITY), 'Veri yok');
+  assert.equal(adherence.calculateAdherencePercentage(1, 6), (1 / 6) * 100);
+  assert.equal(clientMetrics.calculateClientMealAdherence(1, 6), (1 / 6) * 100);
+  assert.equal(clientExport.mapClientsToExportRows([{
+    name: 'Test Danışan', email: 'test@example.com', status: 'Aktif', goal: 'Kilo Verme',
+    duration: null, currentWeight: '-', weeklyChange: null, compliance: 85.7,
+  }])[0][7], 85.7);
 });
 
 test('client metric windows are inclusive Istanbul calendar windows', () => {
@@ -196,6 +214,8 @@ test('active source chain uses real metrics, actions, export and functional sett
   const clientService = read('features/clients/services/clientService.ts');
   const clientsPage = read('features/clients/pages/ClientsPage.tsx');
   const clientDetails = read('pages/ClientDetails.tsx');
+  const dashboard = read('features/dashboard/pages/DashboardPage.tsx');
+  const sidebar = read('shared/components/Sidebar.tsx');
   const progressService = read('features/clients/services/clientProgressService.ts');
   const exportServiceSource = read('features/clients/services/clientExportService.ts');
   const analyticsContract = read('features/analytics/utils/analyticsContract.ts');
@@ -215,6 +235,8 @@ test('active source chain uses real metrics, actions, export and functional sett
   assert.match(clientsPage, /exportClientsToXlsx\(filteredClients\)/);
   assert.match(clientsPage, /filteredClients: \[\.\.\.searched\]\.sort\(compareClients\)/);
   assert.match(clientsPage, /Uyum \(7 Gün\)/);
+  assert.match(clientsPage, /formatPercentageDisplay\(value\)/);
+  assert.doesNotMatch(clientsPage, /maximumFractionDigits: 1/);
   assert.match(clientsPage, /disabled=\{filteredClients\.length === 0 \|\| isExporting\}/);
   assert.match(clientsPage, /clientMessagesPath/);
   assert.match(clientsPage, /role="menu"/);
@@ -223,6 +245,12 @@ test('active source chain uses real metrics, actions, export and functional sett
   assert.match(exportServiceSource, /sheet: 'Danışanlar'/);
   assert.match(exportServiceSource, /\.toFile\(getClientExportFileName\(now\)\)/);
   assert.doesNotMatch(clientDetails, /compliance_score/);
+  assert.match(clientDetails, /formatPercentageDisplay\(client\.compliance\)/);
+  assert.doesNotMatch(clientDetails, /maximumFractionDigits: 1/);
+  assert.match(dashboard, /formatPercentageDisplay\(client\.compliance\)/);
+  assert.doesNotMatch(dashboard, /%\{client\.compliance\}/);
+  assert.match(sidebar, /<NavLink[\s\S]*to="\/"[\s\S]*aria-label="Kontrol Paneline git"[\s\S]*APP_LOGO[\s\S]*DietBridge/);
+  assert.match(sidebar, /label: 'Kontrol Paneli', path: '\/'/);
   assert.match(clientDetails, /Son 7 gündeki planlanan öğünlerin tamamlanma oranı\./);
   assert.match(clientDetails, /client\.compliance === null/);
   assert.match(analyticsContract, /calculateAdherencePercentage/);

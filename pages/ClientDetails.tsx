@@ -17,12 +17,7 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
 import { parseMeasurementInput } from '../features/clients/utils/measurementContract';
-
-const clientPercentageFormatter = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
-
-const formatClientPercentage = (value: number | null): string => (
-  value === null || !Number.isFinite(value) ? 'Veri yok' : `%${clientPercentageFormatter.format(value)}`
-);
+import { formatPercentageDisplay } from '../shared/utils/percentageDisplay';
 
 
 const ProfileAvatarFallback = ({ name, className }: { name: string, className?: string }) => {
@@ -1084,7 +1079,7 @@ const ClientDetails = () => {
                 <div className="mb-8 flex items-start justify-between">
                    <div>
                        <p className="mb-1 font-medium text-emerald-100">Program Uyumu</p>
-                       <h3 className="text-3xl font-bold">{formatClientPercentage(client.compliance)}</h3>
+                       <h3 className="text-3xl font-bold">{formatPercentageDisplay(client.compliance)}</h3>
                    </div>
                    <div className="rounded-lg bg-white/20 p-2">
                        <TrendingUp className="h-6 w-6 text-white" aria-hidden="true" />
@@ -1093,7 +1088,7 @@ const ClientDetails = () => {
                 <p className="mb-6 text-sm leading-relaxed text-emerald-100">
                     Son 7 gündeki planlanan öğünlerin tamamlanma oranı.
                 </p>
-                {client.compliance === null ? (
+                {client.compliance === null || !Number.isFinite(client.compliance) ? (
                   <p className="rounded-xl bg-black/10 px-3 py-2 text-sm text-emerald-50" role="status">
                     Son 7 gün içinde planlanmış öğün bulunmuyor.
                   </p>
