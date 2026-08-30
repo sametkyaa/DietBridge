@@ -423,7 +423,7 @@ try {
   stackStarted = true;
   pass('DISPOSABLE_LOCAL_STACK_STARTED', `project=${projectId}`);
   cli(['db', 'reset', '--local', '--no-seed']);
-  pass('DISPOSABLE_52_MIGRATION_REPLAY');
+  pass('DISPOSABLE_53_MIGRATION_REPLAY');
   local = parseStatus(cli(['status', '--output', 'env']));
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_GUARD', local.API_URL);
   assert(/^postgresql:\/\/postgres:[^@]+@(?:127\.0\.0\.1|localhost):\d+\/postgres$/.test(local.DB_URL ?? ''), 'LOOPBACK_DB_GUARD');

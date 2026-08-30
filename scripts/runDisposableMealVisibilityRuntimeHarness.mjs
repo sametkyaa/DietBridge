@@ -500,7 +500,7 @@ try {
   runCli(disposable.tempRoot, ['start']);
   pass('DISPOSABLE_LOCAL_STACK_STARTED', `project=${projectId}`);
   runCli(disposable.tempRoot, ['db', 'reset', '--local', '--no-seed']);
-  pass('DISPOSABLE_FULL_MIGRATION_REPLAY', '51 canonical migrations + local prerequisite');
+  pass('DISPOSABLE_FULL_MIGRATION_REPLAY', '52 canonical migrations + local prerequisite');
   local = parseStatus(runCli(disposable.tempRoot, ['status', '--output', 'env']));
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_GUARD', local.API_URL);
   assert(Boolean(local.ANON_KEY && local.SERVICE_ROLE_KEY), 'LOCAL_KEYS_PRESENT');

@@ -24,11 +24,12 @@ const reminderSql = readFileSync(join(migrationDirectory, reminderName), 'utf8')
   .replaceAll('\r\n', '\n');
 const reminderHash = createHash('sha256').update(reminderSql).digest('hex');
 
-assert(files.length === 51, 'MIGRATION_INVENTORY_51_WITH_DIPLOMA_STORAGE');
+assert(files.length === 52, 'MIGRATION_INVENTORY_52_WITH_MEAL_PLAN_SAVE');
 assert(files.includes(migrationName), 'PUSH_MIGRATION_REMAINS_CANONICAL');
-assert(files.at(-3) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_BEFORE_STANDALONE_ADMIN');
-assert(files.at(-2) === '20260827084741_standalone_platform_admin_access.sql', 'STANDALONE_ADMIN_MIGRATION_BEFORE_DIPLOMA_STORAGE');
-assert(files.at(-1) === '20260830060342_dietitian_diploma_storage_hardening.sql', 'DIPLOMA_STORAGE_MIGRATION_IS_TAIL');
+assert(files.at(-4) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_BEFORE_STANDALONE_ADMIN');
+assert(files.at(-3) === '20260827084741_standalone_platform_admin_access.sql', 'STANDALONE_ADMIN_MIGRATION_BEFORE_DIPLOMA_STORAGE');
+assert(files.at(-2) === '20260830060342_dietitian_diploma_storage_hardening.sql', 'DIPLOMA_STORAGE_MIGRATION_BEFORE_MEAL_PLAN_SAVE');
+assert(files.at(-1) === '20260830141202_meal_plan_cross_day_identity_preservation.sql', 'MEAL_PLAN_SAVE_MIGRATION_IS_TAIL');
 assert(!/\b(?:pg_net|net\.http_post|http_post|vault\.decrypted_secrets|fetch\s*\()/i.test(sql), 'NO_PROVIDER_NETWORK_OR_SECRET_ACCESS');
 assert(!/alter publication|create publication|create webhook/i.test(sql), 'NO_REALTIME_OR_DATABASE_WEBHOOK');
 assert(!/insert\s+into\s+public\.notifications|update\s+public\.notifications/i.test(sql), 'PUSH_DOES_NOT_MUTATE_NOTIFICATION_SOURCE');

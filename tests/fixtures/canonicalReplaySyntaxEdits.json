@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 41,
+  "expectedCanonicalCount": 42,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2870,6 +2870,13 @@
       "phase": "canonical",
       "sourceSha256": "a08614d6a34e7165be7937c30837c2c449dfc071bd6f95e13536be8304d96f1e",
       "materializedSha256": "a08614d6a34e7165be7937c30837c2c449dfc071bd6f95e13536be8304d96f1e",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260830141202_meal_plan_cross_day_identity_preservation.sql",
+      "phase": "canonical",
+      "sourceSha256": "0017ac580fa57ef5981ea725db83d9ce0f4b43a18481faf85b54d228f1a91a54",
+      "materializedSha256": "0017ac580fa57ef5981ea725db83d9ce0f4b43a18481faf85b54d228f1a91a54",
       "edits": []
     }
   ]

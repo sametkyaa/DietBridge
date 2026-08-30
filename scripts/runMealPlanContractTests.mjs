@@ -270,6 +270,7 @@ fs.readFileSync = (file, ...args) => {
 
 const testFiles = [
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mealPlanCrossDaySaveContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageReadContracts.test.cjs'),
