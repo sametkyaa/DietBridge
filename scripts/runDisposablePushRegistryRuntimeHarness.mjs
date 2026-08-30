@@ -314,8 +314,8 @@ const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(sourceMigrations.length === 52, 'CANONICAL_MIGRATION_INVENTORY_52');
-  assert(sourceMigrations.at(-1) === '20260830141202_meal_plan_cross_day_identity_preservation.sql', 'CANONICAL_MEAL_PLAN_SAVE_MIGRATION_TAIL');
+  assert(sourceMigrations.length === 53, 'CANONICAL_MIGRATION_INVENTORY_53');
+  assert(sourceMigrations.at(-1) === '20260830185101_meal_plan_snapshot_edit_contract.sql', 'CANONICAL_MEAL_PLAN_SAVE_MIGRATION_TAIL');
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-push-registry-'));
   const tempRoot = join(tempParent, 'project');
@@ -335,14 +335,14 @@ const runFlows = async () => {
   const runtimeFiles = readdirSync(runtimeMigrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(runtimeFiles.length === 53, 'DISPOSABLE_MIGRATION_FILES_53');
+  assert(runtimeFiles.length === 54, 'DISPOSABLE_MIGRATION_FILES_54');
 
   await configureDisposableProject(configPath);
   stackStartAttempted = true;
   runCli(tempRoot, ['start']);
   pass('DISPOSABLE_LOCAL_STACK_STARTED', projectId);
   runCli(tempRoot, ['db', 'reset', '--local', '--no-seed']);
-  assert(countBySql('select count(*) from supabase_migrations.schema_migrations;') === 53, 'DISPOSABLE_MIGRATION_REPLAY_52_PLUS_PREREQUISITE');
+  assert(countBySql('select count(*) from supabase_migrations.schema_migrations;') === 54, 'DISPOSABLE_MIGRATION_REPLAY_53_PLUS_PREREQUISITE');
   runCli(tempRoot, ['db', 'advisors', '--local', '--type', 'security', '--level', 'error', '--fail-on', 'error']);
   pass('LOCAL_SECURITY_ADVISORS_NO_ERROR');
   runCli(tempRoot, ['db', 'lint', '--local', '--schema', 'private,public', '--fail-on', 'error']);

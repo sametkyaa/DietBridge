@@ -29,8 +29,8 @@ test('materializer creates the exact current migration copies and an external ma
   const { materializeDisposableReplay } = await import(scriptUrl);
   const runtime = materializeDisposableReplay({ repoRoot, outputRoot });
 
-  assert.deepEqual(runtime.expectedHistory, { canonical: 42, image: 7, total: 49 });
-  assert.equal(runtime.files.length, 49);
+  assert.deepEqual(runtime.expectedHistory, { canonical: 43, image: 7, total: 50 });
+  assert.equal(runtime.files.length, 50);
   assert.equal(runtime.files.filter(({ exactEditsApplied }) => exactEditsApplied > 0).length, 16);
   assert.equal(runtime.files.filter(
     ({ sourceSha256, materializedSha256 }) => sourceSha256 !== materializedSha256,

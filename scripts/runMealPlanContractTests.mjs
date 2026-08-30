@@ -275,6 +275,7 @@ fs.readFileSync = (file, ...args) => {
 const testFiles = [
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealPlanCrossDaySaveContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mealPlanSnapshotEditContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealPlanMoveContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
@@ -302,6 +303,8 @@ const testFiles = [
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
+  : process.argv.includes('--meal-plan-snapshot-edit-only')
+    ? [join(repoRoot, 'tests', 'mealPlanSnapshotEditContracts.test.cjs')]
   : process.argv.includes('--meal-plan-move-only')
     ? [join(repoRoot, 'tests', 'mealPlanMoveContracts.test.cjs')]
   : process.argv.includes('--chat-only')

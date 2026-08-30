@@ -19,7 +19,7 @@ import { addCurrentIsolatedMigrations } from './addCurrentIsolatedMigrations.mjs
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SUPABASE_VERSION = '2.110.0';
 const PASSWORD = 'Disposable-MealPlan-CrossDay-4m!';
-const NEW_MIGRATION = '20260830141202_meal_plan_cross_day_identity_preservation.sql';
+const NEW_MIGRATION = '20260830185101_meal_plan_snapshot_edit_contract.sql';
 const projectId = 'dietbridge-meal-plan-' + process.pid + '-' + randomUUID().slice(0, 8);
 const npxCli = process.env.npm_execpath
   ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
@@ -32,6 +32,7 @@ const subscriptionDietitianIds = [];
 const planIds = [];
 const mealIds = [];
 const recipeIds = [];
+const mealPhotoPaths = [];
 let disposable;
 let local;
 let admin;
@@ -282,22 +283,23 @@ const createMeal = async (week, offset, {
   return row;
 };
 
-const createRecipe = async (dietitian, label) => {
+const createRecipe = async (dietitian, label, overrides = {}) => {
+  const id = overrides.id ?? randomUUID();
   const row = assertNoError(await admin
     .from('recipes')
     .insert({
-      id: randomUUID(),
+      id,
       dietitian_id: dietitian.id,
-      name: 'Disposable ' + label + ' recipe',
-      description: 'Recipe source snapshot',
-      meal_type: 'dinner',
-      calories: 510,
-      protein: 36,
-      carbs: 48,
-      fat: 16,
-      image_path: null,
+      name: overrides.name ?? 'Disposable ' + label + ' recipe',
+      description: overrides.description ?? 'Recipe source snapshot',
+      meal_type: overrides.meal_type ?? 'dinner',
+      calories: overrides.calories ?? 510,
+      protein: overrides.protein ?? 36,
+      carbs: overrides.carbs ?? 48,
+      fat: overrides.fat ?? 16,
+      image_path: overrides.image_path ?? null,
     })
-    .select('id,name,description,calories,protein,carbs,fat,image_path')
+    .select('id,dietitian_id,name,description,meal_type,calories,protein,carbs,fat,image_path,created_at,updated_at')
     .single(), label + ' recipe fixture');
   recipeIds.push(row.id);
   return row;
@@ -339,15 +341,38 @@ const expectRejected = async (client, clientId, week, placements, label) => {
     p_days: weeklyPayload(week, placements),
   });
   assert(Boolean(result?.error), label, redact(result?.error?.message ?? 'RPC unexpectedly succeeded'));
+  return result.error;
 };
 
 const readMeal = async (mealId, label = 'meal read') => {
   const result = await admin
     .from('meals')
-    .select('id,plan_id,type,title,source,recipe_id,is_eaten,completed_at,created_at')
+    .select('id,plan_id,type,title,description,calories,macros,photo_url,time,sort_order,source,recipe_id,is_eaten,completed_at,created_at')
     .eq('id', mealId)
     .maybeSingle();
   return assertNoError(result, label);
+};
+
+const readRecipe = async (recipeId, label = 'recipe read') => {
+  const result = await admin
+    .from('recipes')
+    .select('id,dietitian_id,name,description,meal_type,calories,protein,carbs,fat,image_path,created_at,updated_at')
+    .eq('id', recipeId)
+    .maybeSingle();
+  return assertNoError(result, label);
+};
+
+const createMealPhoto = async (dietitian, client) => {
+  const path = 'meal-plans/' + client.id + '/' + dietitian.id + '/' + randomUUID() + '.webp';
+  const upload = await admin.storage
+    .from('meal-photos')
+    .upload(path, new Blob([new Uint8Array([0x52, 0x49, 0x46, 0x46])], { type: 'image/webp' }), {
+      contentType: 'image/webp',
+      upsert: false,
+    });
+  assertNoError(upload, 'meal photo fixture upload');
+  mealPhotoPaths.push(path);
+  return path;
 };
 
 const readSchema = (sql) => execFileSync('docker', [
@@ -487,55 +512,249 @@ const runFlows = async () => {
   assert(newAfter.plan_id === staleWeek.plans.get(staleWeek.dates[2]).id
     && newAfter.is_eaten === false, 'WEEK_WIDE_CLEANUP_RETAINS_NEW_ROW');
 
-  const recipe = await createRecipe(dietitianA, 'live');
-  const recipeWeek = await createWeek(dietitianA, clientA, '2026-10-05', 'recipe move');
-  const recipeMeal = await createMeal(recipeWeek, 0, {
-    type: 'breakfast',
-    title: 'Old recipe snapshot',
-    source: 'recipe',
-    recipe_id: recipe.id,
-    is_eaten: true,
-    completed_at: '2026-08-30T11:00:00.000Z',
-  }, 'recipe meal');
+  const recipeId = randomUUID();
+  const recipeImagePath = 'recipes/' + dietitianA.id + '/' + recipeId + '/' + randomUUID() + '.webp';
+  const recipe = await createRecipe(dietitianA, 'snapshot-edit', {
+    id: recipeId,
+    image_path: recipeImagePath,
+  });
+  const recipeBeforeInitialPlacement = await readRecipe(recipe.id, 'recipe before initial placement');
+  const recipeWeek = await createWeek(dietitianA, clientA, '2026-10-05', 'recipe snapshot edit');
+  const initialRecipeResponse = await saveWeek(
+    webDietitianA,
+    clientA.id,
+    recipeWeek,
+    new Map([[0, [{
+      type: 'breakfast',
+      title: 'FORGED recipe title',
+      description: 'FORGED recipe description',
+      calories: 1,
+      macros: { protein: 1, carbs: 1, fat: 1 },
+      time: '08:00',
+      sort_order: 0,
+      source: 'recipe',
+      recipe_id: recipe.id,
+      photo_url: null,
+    }]]]),
+    'new recipe placement',
+  );
+  const recipeMealId = initialRecipeResponse.plans
+    .flatMap((plan) => plan.meals ?? [])
+    .find((meal) => meal.source === 'recipe' && meal.recipe_id === recipe.id)?.id;
+  assert(Boolean(recipeMealId), 'NEW_RECIPE_PLACEMENT_RETURNS_MEAL_ID');
+  mealIds.push(recipeMealId);
+  const initialRecipeSnapshot = await readMeal(recipeMealId, 'initial recipe snapshot read');
+  assert(initialRecipeSnapshot.title === recipe.name
+    && initialRecipeSnapshot.description === recipe.description
+    && initialRecipeSnapshot.calories === recipe.calories
+    && initialRecipeSnapshot.macros.protein === recipe.protein
+    && initialRecipeSnapshot.macros.carbs === recipe.carbs
+    && initialRecipeSnapshot.macros.fat === recipe.fat
+    && initialRecipeSnapshot.photo_url === recipe.image_path, 'NEW_RECIPE_FORGED_SNAPSHOT_IGNORED');
+  const recipeAfterInitialPlacement = await readRecipe(recipe.id, 'recipe after initial placement');
+  assert(JSON.stringify(recipeAfterInitialPlacement) === JSON.stringify(recipeBeforeInitialPlacement), 'NEW_RECIPE_PLACEMENT_DOES_NOT_MUTATE_MASTER');
+
+  const mealPhotoPath = await createMealPhoto(dietitianA, clientA);
   await saveWeek(
     webDietitianA,
     clientA.id,
     recipeWeek,
-    new Map([[4, [mealPayload(recipeMeal, { type: 'dinner', time: '19:30' })]]]),
-    'recipe cross-day move',
+    new Map([[0, [mealPayload(initialRecipeSnapshot, {
+      title: 'Edited plan-only recipe snapshot',
+      description: 'Edited snapshot description',
+      calories: 640,
+      macros: { protein: 41, carbs: 52, fat: 19 },
+      photo_url: mealPhotoPath,
+    })]]]),
+    'existing recipe snapshot edit',
   );
-  const recipeAfter = await readMeal(recipeMeal.id, 'recipe after read');
-  assert(recipeAfter.plan_id === recipeWeek.plans.get(recipeWeek.dates[4]).id
-    && recipeAfter.source === 'recipe'
-    && recipeAfter.recipe_id === recipe.id, 'RECIPE_CROSS_DAY_SOURCE_AND_PLACEMENT_PRESERVED');
-  assert(recipeAfter.title === recipe.name
-    && recipeAfter.is_eaten === true
-    && recipeAfter.completed_at === recipeMeal.completed_at, 'RECIPE_CROSS_DAY_SNAPSHOT_AND_COMPLETION_PRESERVED');
+  const editedRecipeSnapshot = await readMeal(recipeMealId, 'edited recipe snapshot read');
+  assert(editedRecipeSnapshot.id === recipeMealId
+    && editedRecipeSnapshot.title === 'Edited plan-only recipe snapshot'
+    && editedRecipeSnapshot.description === 'Edited snapshot description'
+    && editedRecipeSnapshot.calories === 640
+    && editedRecipeSnapshot.macros.protein === 41
+    && editedRecipeSnapshot.macros.carbs === 52
+    && editedRecipeSnapshot.macros.fat === 19, 'EXISTING_RECIPE_SNAPSHOT_FIELDS_EDITED');
+  assert(editedRecipeSnapshot.source === 'recipe'
+    && editedRecipeSnapshot.recipe_id === recipe.id
+    && editedRecipeSnapshot.photo_url === mealPhotoPath, 'EXISTING_RECIPE_PROVENANCE_AND_PHOTO_EDIT_PRESERVED');
+  const recipeAfterSnapshotEdit = await readRecipe(recipe.id, 'recipe after snapshot edit');
+  assert(JSON.stringify(recipeAfterSnapshotEdit) === JSON.stringify(recipeBeforeInitialPlacement), 'EXISTING_RECIPE_EDIT_DOES_NOT_MUTATE_MASTER');
 
+  assertNoError(await admin
+    .from('recipes')
+    .update({
+      name: 'Changed recipe master',
+      description: 'Changed master description',
+      calories: 720,
+      protein: 45,
+      carbs: 61,
+      fat: 22,
+    })
+    .eq('id', recipe.id)
+    .select('id')
+    .single(), 'recipe master drift fixture');
+  const changedRecipeMaster = await readRecipe(recipe.id, 'changed recipe master read');
+  await saveWeek(
+    webDietitianA,
+    clientA.id,
+    recipeWeek,
+    new Map([[0, [mealPayload(editedRecipeSnapshot)]]]),
+    'existing snapshot save after recipe master drift',
+  );
+  const snapshotAfterMasterDrift = await readMeal(recipeMealId, 'snapshot after master drift read');
+  assert(snapshotAfterMasterDrift.title === editedRecipeSnapshot.title
+    && snapshotAfterMasterDrift.calories === editedRecipeSnapshot.calories
+    && JSON.stringify(snapshotAfterMasterDrift.macros) === JSON.stringify(editedRecipeSnapshot.macros), 'EXISTING_SNAPSHOT_DOES_NOT_REFRESH_FROM_MASTER');
+  const recipeAfterExistingSave = await readRecipe(recipe.id, 'recipe after existing snapshot save');
+  assert(JSON.stringify(recipeAfterExistingSave) === JSON.stringify(changedRecipeMaster), 'EXISTING_SNAPSHOT_SAVE_LEAVES_CHANGED_MASTER_UNTOUCHED');
+
+  const secondRecipe = await createRecipe(dietitianA, 'provenance-target');
+  const snapshotBeforeTamper = await readMeal(recipeMealId, 'snapshot before provenance tamper');
+  await expectRejected(
+    webDietitianA,
+    clientA.id,
+    recipeWeek,
+    new Map([[0, [mealPayload(snapshotBeforeTamper, { recipe_id: secondRecipe.id })]]]),
+    'RECIPE_ID_PROVENANCE_TAMPERING_REJECTED',
+  );
+  await expectRejected(
+    webDietitianA,
+    clientA.id,
+    recipeWeek,
+    new Map([[0, [mealPayload(snapshotBeforeTamper, { source: 'manual', recipe_id: null })]]]),
+    'RECIPE_SOURCE_PROVENANCE_TAMPERING_REJECTED',
+  );
+  const snapshotAfterTamper = await readMeal(recipeMealId, 'snapshot after provenance tamper');
+  assert(JSON.stringify(snapshotAfterTamper) === JSON.stringify(snapshotBeforeTamper), 'PROVENANCE_REJECTION_PRESERVES_RECIPE_SNAPSHOT');
+
+  assertNoError(await admin
+    .from('meals')
+    .update({ is_eaten: true, completed_at: '2026-08-30T11:00:00.000Z' })
+    .eq('id', recipeMealId)
+    .select('id')
+    .single(), 'recipe completion fixture');
+  const recipeBeforeMove = await readMeal(recipeMealId, 'recipe before edited move');
+  await saveWeek(
+    webDietitianA,
+    clientA.id,
+    recipeWeek,
+    new Map([[4, [mealPayload(recipeBeforeMove, {
+      type: 'dinner',
+      time: '19:30',
+      title: 'Edited while moving snapshot',
+    })]]]),
+    'recipe edited cross-day move',
+  );
+  const recipeAfterMove = await readMeal(recipeMealId, 'recipe after edited move');
+  assert(recipeAfterMove.plan_id === recipeWeek.plans.get(recipeWeek.dates[4]).id
+    && recipeAfterMove.title === 'Edited while moving snapshot'
+    && recipeAfterMove.source === 'recipe'
+    && recipeAfterMove.recipe_id === recipe.id, 'RECIPE_EDITED_CROSS_DAY_IDENTITY_AND_PLACEMENT_PRESERVED');
+  assert(recipeAfterMove.is_eaten === true
+    && recipeAfterMove.completed_at === recipeBeforeMove.completed_at
+    && recipeAfterMove.created_at === recipeBeforeMove.created_at, 'RECIPE_EDITED_MOVE_PRESERVES_COMPLETION_AND_CREATED_AT');
+
+  const deletedRecipe = await createRecipe(dietitianA, 'deleted-snapshot');
   const deletedRecipeWeek = await createWeek(dietitianA, clientA, '2026-10-12', 'deleted recipe snapshot');
-  const deletedRecipeMeal = await createMeal(deletedRecipeWeek, 0, {
-    type: 'breakfast',
-    title: 'Deleted recipe snapshot',
-    description: 'Frozen snapshot',
-    source: 'recipe',
-    recipe_id: null,
-    is_eaten: true,
-    completed_at: '2026-08-30T12:00:00.000Z',
-  }, 'deleted recipe meal');
+  const deletedPlacement = await saveWeek(
+    webDietitianA,
+    clientA.id,
+    deletedRecipeWeek,
+    new Map([[0, [{
+      type: 'breakfast',
+      title: 'FORGED deleted recipe initial title',
+      description: null,
+      calories: 2,
+      macros: { protein: 2, carbs: 2, fat: 2 },
+      time: '08:00',
+      sort_order: 0,
+      source: 'recipe',
+      recipe_id: deletedRecipe.id,
+      photo_url: null,
+    }]]]),
+    'deleted recipe initial placement',
+  );
+  const deletedMealId = deletedPlacement.plans
+    .flatMap((plan) => plan.meals ?? [])
+    .find((meal) => meal.recipe_id === deletedRecipe.id)?.id;
+  assert(Boolean(deletedMealId), 'DELETED_RECIPE_FIXTURE_MEAL_CREATED');
+  mealIds.push(deletedMealId);
+  assertNoError(await admin.from('recipes').delete().eq('id', deletedRecipe.id), 'deleted recipe master fixture');
+  const deletedAfterFkClear = await readMeal(deletedMealId, 'deleted recipe after FK clear');
+  assert(deletedAfterFkClear.source === 'recipe' && deletedAfterFkClear.recipe_id === null, 'DELETED_RECIPE_FK_CLEARS_WITH_SNAPSHOT_RETAINED');
+
+  const staleDeletionError = await expectRejected(
+    webDietitianA,
+    clientA.id,
+    deletedRecipeWeek,
+    new Map([[0, [mealPayload(deletedAfterFkClear, { recipe_id: deletedRecipe.id })]]]),
+    'STALE_DELETED_RECIPE_PROVENANCE_REJECTED',
+  );
+  assert(staleDeletionError.message.includes('Recipe provenance changed; reload the weekly plan.'), 'STALE_DELETION_ERROR_IS_ACTIONABLE');
+  const deletedAfterStaleReject = await readMeal(deletedMealId, 'deleted snapshot after stale reject');
+  assert(JSON.stringify(deletedAfterStaleReject) === JSON.stringify(deletedAfterFkClear), 'STALE_DELETION_REJECTION_IS_ATOMIC');
+
+  const atomicManual = await createMeal(deletedRecipeWeek, 2, {
+    type: 'lunch',
+    title: 'Atomic manual original',
+    time: '12:30:00',
+  }, 'atomic manual meal');
+  const atomicManualBefore = await readMeal(atomicManual.id, 'atomic manual before provenance failure');
+  await expectRejected(
+    webDietitianA,
+    clientA.id,
+    deletedRecipeWeek,
+    new Map([
+      [0, [mealPayload(deletedAfterFkClear, { recipe_id: deletedRecipe.id })]],
+      [2, [mealPayload(atomicManualBefore, { title: 'Must roll back' })]],
+    ]),
+    'PROVENANCE_FAILURE_ROLLS_BACK_WEEK',
+  );
+  const atomicManualAfterReject = await readMeal(atomicManual.id, 'atomic manual after provenance failure');
+  assert(JSON.stringify(atomicManualAfterReject) === JSON.stringify(atomicManualBefore), 'PROVENANCE_FAILURE_HAS_NO_PARTIAL_WEEKLY_MUTATION');
+
+  await expectRejected(
+    webDietitianA,
+    clientA.id,
+    deletedRecipeWeek,
+    new Map([
+      [0, [mealPayload(deletedAfterFkClear, { title: 'Invalid blank path', recipe_id: null, photo_url: 'recipes/' + dietitianA.id + '/' + secondRecipe.id + '/' + randomUUID() + '.webp' })]],
+      [2, [mealPayload(atomicManualBefore)]],
+    ]),
+    'ARBITRARY_RECIPE_SNAPSHOT_PATH_REJECTED',
+  );
+
   await saveWeek(
     webDietitianA,
     clientA.id,
     deletedRecipeWeek,
-    new Map([[1, [mealPayload(deletedRecipeMeal, { type: 'lunch', time: '13:00' })]]]),
-    'deleted recipe cross-day move',
+    new Map([
+      [1, [mealPayload(deletedAfterFkClear, {
+        type: 'lunch',
+        time: '13:00',
+        title: 'Edited deleted recipe snapshot',
+        description: 'Editable without recipe lookup',
+        calories: 455,
+        macros: { protein: 29, carbs: 44, fat: 13 },
+        recipe_id: null,
+      })]],
+      [2, [mealPayload(atomicManualBefore, { title: 'Manual regression edited' })]],
+    ]),
+    'deleted recipe and manual snapshot edit',
   );
-  const deletedRecipeAfter = await readMeal(deletedRecipeMeal.id, 'deleted recipe after read');
+  const deletedRecipeAfter = await readMeal(deletedMealId, 'deleted recipe after edit');
+  const manualAfterEdit = await readMeal(atomicManual.id, 'manual after edit');
   assert(deletedRecipeAfter.plan_id === deletedRecipeWeek.plans.get(deletedRecipeWeek.dates[1]).id
     && deletedRecipeAfter.source === 'recipe'
     && deletedRecipeAfter.recipe_id === null
-    && deletedRecipeAfter.title === deletedRecipeMeal.title, 'DELETED_RECIPE_SNAPSHOT_CROSS_DAY_PRESERVED');
-  assert(deletedRecipeAfter.is_eaten === true
-    && deletedRecipeAfter.completed_at === deletedRecipeMeal.completed_at, 'DELETED_RECIPE_COMPLETION_PRESERVED');
+    && deletedRecipeAfter.title === 'Edited deleted recipe snapshot'
+    && deletedRecipeAfter.calories === 455
+    && deletedRecipeAfter.macros.protein === 29, 'DELETED_RECIPE_SNAPSHOT_EDIT_PERSISTS');
+  assert(manualAfterEdit.title === 'Manual regression edited'
+    && manualAfterEdit.source === 'manual'
+    && manualAfterEdit.recipe_id === null, 'EXISTING_MANUAL_EDIT_REGRESSION_PASS');
 
   const securityWeek = await createWeek(dietitianA, clientA, '2026-10-19', 'security');
   const authorizedMeal = await createMeal(securityWeek, 0, {
@@ -665,6 +884,13 @@ const runFlows = async () => {
 
 const cleanup = async () => {
   if (!admin) return;
+  if (mealPhotoPaths.length) {
+    assertNoError(
+      await admin.storage.from('meal-photos').remove([...new Set(mealPhotoPaths)]),
+      'meal photo fixture cleanup',
+    );
+    pass('DISPOSABLE_MEAL_PHOTO_RESIDUE_ZERO');
+  }
   if (mealIds.length) {
     assertNoError(await admin.from('meals').delete().in('id', [...new Set(mealIds)]), 'meal fixture cleanup');
     const remaining = assertNoError(await admin.from('meals').select('id').in('id', [...new Set(mealIds)]), 'meal fixture cleanup check');
@@ -725,7 +951,7 @@ try {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   const migrationCount = readSchema('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === '53', 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'repository=52, local-prerequisite=1');
+  assert(migrationCount === '54', 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'repository=53, local-prerequisite=1');
   await runFlows();
 } catch (error) {
   mainError = error;

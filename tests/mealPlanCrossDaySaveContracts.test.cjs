@@ -11,7 +11,7 @@ const migrationPath = path.join(
   'migrations',
   '20260830141202_meal_plan_cross_day_identity_preservation.sql',
 );
-const migration = () => fs.readFileSync(migrationPath, 'utf8');
+const migration = () => fs.readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n');
 
 test('weekly save authorizes selected-week IDs and updates placement without replacing identity', () => {
   const source = migration();

@@ -19,7 +19,7 @@ const readMigrationInventory = () => readdirSync(migrationDirectory)
   .sort();
 
 const files = readMigrationInventory();
-assert(files.length === 52, 'NOTIFICATION_MIGRATION_COUNT_52_WITH_MEAL_PLAN_SAVE', 'count=' + files.length);
+assert(files.length === 53, 'NOTIFICATION_MIGRATION_COUNT_53_WITH_MEAL_PLAN_SAVE', 'count=' + files.length);
 
 const notificationFiles = files.filter((name) => /_notification_core_backend\.sql$/.test(name));
 assert(notificationFiles.length === 1, 'ONE_NOTIFICATION_CORE_MIGRATION', notificationFiles.join(','));
@@ -31,10 +31,11 @@ const pushRegistryMigrationName = '20260817120000_push_registry_outbox_backend.s
 assert(files.includes(markAllReadMigrationName), 'MARK_ALL_READ_MIGRATION_PRESENT', markAllReadMigrationName);
 assert(files.includes(appointmentReminderMigrationName), 'APPOINTMENT_REMINDER_MIGRATION_PRESENT', appointmentReminderMigrationName);
 assert(files.includes(pushRegistryMigrationName), 'PUSH_REGISTRY_MIGRATION_PRESENT', files.at(-1));
-assert(files.at(-4) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_BEFORE_STANDALONE_ADMIN', files.at(-4));
-assert(files.at(-3) === '20260827084741_standalone_platform_admin_access.sql', 'STANDALONE_ADMIN_MIGRATION_BEFORE_DIPLOMA_STORAGE', files.at(-3));
-assert(files.at(-2) === '20260830060342_dietitian_diploma_storage_hardening.sql', 'DIPLOMA_STORAGE_MIGRATION_BEFORE_MEAL_PLAN_SAVE', files.at(-2));
-assert(files.at(-1) === '20260830141202_meal_plan_cross_day_identity_preservation.sql', 'MEAL_PLAN_SAVE_MIGRATION_TAIL', files.at(-1));
+assert(files.at(-5) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_BEFORE_STANDALONE_ADMIN', files.at(-5));
+assert(files.at(-4) === '20260827084741_standalone_platform_admin_access.sql', 'STANDALONE_ADMIN_MIGRATION_BEFORE_DIPLOMA_STORAGE', files.at(-4));
+assert(files.at(-3) === '20260830060342_dietitian_diploma_storage_hardening.sql', 'DIPLOMA_STORAGE_MIGRATION_BEFORE_MEAL_PLAN_SAVE', files.at(-3));
+assert(files.at(-2) === '20260830141202_meal_plan_cross_day_identity_preservation.sql', 'CROSS_DAY_MEAL_PLAN_SAVE_BEFORE_SNAPSHOT_EDIT', files.at(-2));
+assert(files.at(-1) === '20260830185101_meal_plan_snapshot_edit_contract.sql', 'MEAL_PLAN_SAVE_MIGRATION_TAIL', files.at(-1));
 const markAllReadSql = readFileSync(join(migrationDirectory, markAllReadMigrationName), 'utf8');
 const appointmentReminderSql = readFileSync(join(migrationDirectory, appointmentReminderMigrationName), 'utf8');
 
