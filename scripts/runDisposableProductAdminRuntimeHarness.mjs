@@ -15,6 +15,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
 const adminMigrationName = '20260826133224_product_admin_dietitian_verification.sql';
 const standaloneAdminMigrationName = '20260827084741_standalone_platform_admin_access.sql';
+const diplomaStorageMigrationName = '20260830060342_dietitian_diploma_storage_hardening.sql';
 const notificationMigrationName = '20260814214101_notification_core_backend.sql';
 const reminderMigrationName = '20260816194431_appointment_reminders_backend.sql';
 const pushMigrationName = '20260817120000_push_registry_outbox_backend.sql';
@@ -210,6 +211,27 @@ const setVerification = async (admin, actor, status, reason = null) => {
 
 const canonicalDiplomaPath = (userId) => 'diplomas/' + userId + '/diploma.pdf';
 
+const ensureDiplomaBucket = async (admin) => {
+  const current = await admin.storage.getBucket(diplomaBucket);
+  if (current.error && current.error.status !== 404) {
+    throw new Error('dietitian diploma bucket lookup failed: ' + redact(current.error.message));
+  }
+  if (current.error?.status === 404 || !current.data) {
+    assertNoError(await admin.storage.createBucket(diplomaBucket, {
+      public: false,
+      fileSizeLimit: 10485760,
+      allowedMimeTypes: ['application/pdf'],
+    }), 'dietitian diploma bucket fixture');
+  }
+  const verified = assertNoError(await admin.storage.getBucket(diplomaBucket), 'dietitian diploma bucket contract lookup');
+  assert(verified.name === diplomaBucket
+    && verified.public === false
+    && verified.file_size_limit === 10485760
+    && Array.isArray(verified.allowed_mime_types)
+    && verified.allowed_mime_types.length === 1
+    && verified.allowed_mime_types[0] === 'application/pdf', 'DIPLOMA_BUCKET_PRIVATE_PDF_10_MIB');
+};
+
 const uploadDiploma = async (admin, storagePaths, userId, label) => {
   const path = canonicalDiplomaPath(userId);
   storagePaths.push(path);
@@ -249,12 +271,7 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
   const clients = {};
 
   try {
-    assertNoError(await admin.storage.createBucket(diplomaBucket, {
-      public: false,
-      fileSizeLimit: 10485760,
-      allowedMimeTypes: ['application/pdf'],
-    }), 'dietitian diploma bucket fixture');
-    pass('DIPLOMA_BUCKET_PRIVATE_PDF_10_MIB');
+    await ensureDiplomaBucket(admin);
 
     const adminActor = await createActor(admin, actorIds, 'admin', 'dietitian');
     const approvedNonAdmin = await createActor(admin, actorIds, 'approved-nonadmin', 'dietitian');
@@ -428,9 +445,19 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
     const concurrentAuditRows = assertNoError(await admin.from('dietitian_verification_audit').select('id,new_status').eq('subject_user_id_snapshot', concurrentPending.id), 'concurrent audit count');
     assert(concurrentRow.is_verified === (concurrentRow.verification_status === 'approved') && concurrentAuditRows.length === 1, 'CONCURRENT_DECISION_SERIALIZED');
 
+    const nonCanonicalAdminPath = `diplomas/${completePending.id}/diploma-backup.pdf`;
+    assertNoError(await admin.storage.from(diplomaBucket).upload(
+      nonCanonicalAdminPath,
+      Buffer.from('%PDF-1.4 noncanonical admin fixture'),
+      { contentType: 'application/pdf', upsert: false },
+    ), 'noncanonical admin diploma fixture');
+    storagePaths.push(nonCanonicalAdminPath);
+
     const signedUrl = assertNoError(await clients.admin.storage.from(diplomaBucket)
       .createSignedUrl(canonicalDiplomaPath(completePending.id), 120), 'admin diploma signed URL');
     assert(typeof signedUrl?.signedUrl === 'string' && signedUrl.signedUrl.length > 0, 'ADMIN_DIPLOMA_SIGNED_URL_120S');
+    assertRpcError(await clients.admin.storage.from(diplomaBucket)
+      .createSignedUrl(nonCanonicalAdminPath, 120), 'ADMIN_NONCANONICAL_DIPLOMA_READ_DENY');
     const standaloneSignedUrl = assertNoError(await clients.standalone.storage.from(diplomaBucket)
       .createSignedUrl(canonicalDiplomaPath(completePending.id), 120), 'standalone admin diploma signed URL');
     assert(typeof standaloneSignedUrl?.signedUrl === 'string' && standaloneSignedUrl.signedUrl.length > 0,
@@ -439,6 +466,107 @@ const runFullAdminMatrix = async ({ local, admin, project }) => {
       .createSignedUrl(canonicalDiplomaPath(completePending.id), 120), 'NONADMIN_DIPLOMA_READ_DENY');
     assertRpcError(await clients.client.storage.from(diplomaBucket)
       .createSignedUrl(canonicalDiplomaPath(completePending.id), 120), 'CLIENT_DIPLOMA_READ_DENY');
+
+    const pendingDiplomaPath = canonicalDiplomaPath(incompletePending.id);
+    assertNoError(await clients.incomplete.storage.from(diplomaBucket).upload(
+      pendingDiplomaPath,
+      Buffer.from('%PDF-1.4 pending owner diploma'),
+      { contentType: 'application/pdf', upsert: false },
+    ), 'pending owner diploma insert');
+    storagePaths.push(pendingDiplomaPath);
+    pass('PENDING_OWNER_CAN_INSERT_CANONICAL_DIPLOMA');
+
+    const pendingRead = assertNoError(await clients.incomplete.storage.from(diplomaBucket)
+      .download(pendingDiplomaPath), 'pending owner diploma select');
+    const pendingReadBytes = Buffer.from(await pendingRead.arrayBuffer()).toString('utf8');
+    assert(pendingReadBytes.includes('pending owner diploma'), 'PENDING_OWNER_CAN_SELECT_CANONICAL_DIPLOMA');
+
+    assertNoError(await clients.incomplete.storage.from(diplomaBucket).update(
+      pendingDiplomaPath,
+      Buffer.from('%PDF-1.4 pending owner replacement'),
+      { contentType: 'application/pdf' },
+    ), 'pending owner diploma update');
+    pass('PENDING_OWNER_CAN_UPDATE_CANONICAL_DIPLOMA');
+    assertNoError(await clients.incomplete.storage.from(diplomaBucket).upload(
+      pendingDiplomaPath,
+      Buffer.from('%PDF-1.4 pending owner upsert'),
+      { contentType: 'application/pdf', upsert: true },
+    ), 'pending owner diploma upsert');
+    pass('PENDING_OWNER_CAN_UPSERT_CANONICAL_DIPLOMA');
+
+    const foreignPath = canonicalDiplomaPath(approvedNonAdmin.id);
+    assertRpcError(await clients.incomplete.storage.from(diplomaBucket).upload(
+      foreignPath,
+      Buffer.from('%PDF-1.4 foreign owner attempt'),
+      { contentType: 'application/pdf', upsert: false },
+    ), 'PENDING_OWNER_FOREIGN_UID_INSERT_DENY');
+    const arbitraryPaths = [
+      `diplomas/${incompletePending.id}/foo.pdf`,
+      `diplomas/${incompletePending.id}/diploma-2.pdf`,
+      `diplomas/${incompletePending.id}/nested/diploma.pdf`,
+    ];
+    for (const [index, arbitraryPath] of arbitraryPaths.entries()) {
+      assertRpcError(await clients.incomplete.storage.from(diplomaBucket).upload(
+        arbitraryPath,
+        Buffer.from('%PDF-1.4 arbitrary path attempt'),
+        { contentType: 'application/pdf', upsert: false },
+      ), `PENDING_OWNER_ARBITRARY_PATH_${index + 1}_DENY`);
+    }
+
+    assertRpcError(await clients.client.storage.from(diplomaBucket).upload(
+      canonicalDiplomaPath(client.id),
+      Buffer.from('%PDF-1.4 client attempt'),
+      { contentType: 'application/pdf', upsert: false },
+    ), 'CLIENT_DIPLOMA_INSERT_DENY');
+    assertRpcError(await clients.admin.storage.from(diplomaBucket).upload(
+      pendingDiplomaPath,
+      Buffer.from('%PDF-1.4 admin attempt'),
+      { contentType: 'application/pdf', upsert: true },
+    ), 'ADMIN_DIPLOMA_INSERT_DENY');
+    assertRpcError(await clients.anonymous.storage.from(diplomaBucket).upload(
+      pendingDiplomaPath,
+      Buffer.from('%PDF-1.4 anonymous attempt'),
+      { contentType: 'application/pdf', upsert: true },
+    ), 'ANONYMOUS_DIPLOMA_INSERT_DENY');
+
+    assertRpcError(await clients.concurrent.storage.from(diplomaBucket)
+      .download(foreignPath), 'CROSS_USER_NONADMIN_DIPLOMA_SELECT_DENY');
+
+    const approvedBefore = assertNoError(await admin.storage.from(diplomaBucket)
+      .download(foreignPath), 'approved diploma before denied mutation');
+    const approvedBeforeBytes = Buffer.from(await approvedBefore.arrayBuffer()).toString('utf8');
+    assertRpcError(await clients.approvedNonAdmin.storage.from(diplomaBucket).update(
+      foreignPath,
+      Buffer.from('%PDF-1.4 approved mutation attempt'),
+      { contentType: 'application/pdf' },
+    ), 'APPROVED_OWNER_DIPLOMA_UPDATE_DENY');
+    const approvedDelete = await clients.approvedNonAdmin.storage.from(diplomaBucket).remove([foreignPath]);
+    const approvedAfter = assertNoError(await admin.storage.from(diplomaBucket)
+      .download(foreignPath), 'approved diploma after denied mutation');
+    assert(Buffer.from(await approvedAfter.arrayBuffer()).toString('utf8') === approvedBeforeBytes,
+      'APPROVED_OWNER_DIPLOMA_REMAINS_UNCHANGED');
+    pass('APPROVED_OWNER_DIPLOMA_DELETE_DENY', approvedDelete.error ? 'Storage error and object retained' : 'object retained despite Storage API response');
+
+    const rejectedPath = canonicalDiplomaPath(rejectedPending.id);
+    assertRpcError(await clients.rejected.storage.from(diplomaBucket).update(
+      rejectedPath,
+      Buffer.from('%PDF-1.4 rejected mutation attempt'),
+      { contentType: 'application/pdf' },
+    ), 'REJECTED_OWNER_DIPLOMA_UPDATE_DENY');
+    const rejectedBefore = assertNoError(await admin.storage.from(diplomaBucket)
+      .download(rejectedPath), 'rejected diploma before denied delete');
+    const rejectedBeforeBytes = Buffer.from(await rejectedBefore.arrayBuffer()).toString('utf8');
+    const rejectedDelete = await clients.rejected.storage.from(diplomaBucket).remove([rejectedPath]);
+    const rejectedAfter = assertNoError(await admin.storage.from(diplomaBucket)
+      .download(rejectedPath), 'rejected diploma after denied delete');
+    assert(Buffer.from(await rejectedAfter.arrayBuffer()).toString('utf8') === rejectedBeforeBytes,
+      'REJECTED_OWNER_DIPLOMA_DELETE_DENY', rejectedDelete.error ? 'object retained after Storage error' : 'object retained despite Storage API response');
+
+    assertNoError(await clients.incomplete.storage.from(diplomaBucket).remove([pendingDiplomaPath]),
+      'pending owner diploma delete');
+    storagePaths.splice(storagePaths.lastIndexOf(pendingDiplomaPath), 1);
+    pass('PENDING_OWNER_CAN_DELETE_CANONICAL_DIPLOMA');
+
     const unauthorizedUpload = await clients.admin.storage.from(diplomaBucket).upload(
       canonicalDiplomaPath(incompletePending.id), Buffer.from('%PDF unauthorized'), { contentType: 'application/pdf' },
     );
@@ -564,10 +692,11 @@ const runScenario = async ({ includePush }) => {
       copyFileSync(join(migrationDirectory, migrationName), destination, 1);
     }
     const runtimeFiles = readdirSync(runtimeMigrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-    const expectedFiles = includePush ? 51 : 50;
+    const expectedFiles = includePush ? 52 : 51;
     assert(runtimeFiles.length === expectedFiles, scenarioLabel + '_MIGRATION_FILE_COUNT', String(runtimeFiles.length));
-    assert(runtimeFiles.at(-2) === adminMigrationName, scenarioLabel + '_ADMIN_MIGRATION_BEFORE_STANDALONE');
-    assert(runtimeFiles.at(-1) === standaloneAdminMigrationName, scenarioLabel + '_STANDALONE_ADMIN_MIGRATION_TAIL');
+    assert(runtimeFiles.at(-3) === adminMigrationName, scenarioLabel + '_ADMIN_MIGRATION_BEFORE_STANDALONE');
+    assert(runtimeFiles.at(-2) === standaloneAdminMigrationName, scenarioLabel + '_STANDALONE_ADMIN_BEFORE_DIPLOMA');
+    assert(runtimeFiles.at(-1) === diplomaStorageMigrationName, scenarioLabel + '_DIPLOMA_STORAGE_MIGRATION_TAIL');
     if (includePush) assert(runtimeFiles.includes(pushMigrationName), scenarioLabel + '_PUSH_PRESENT');
     else assert(!runtimeFiles.includes(pushMigrationName), scenarioLabel + '_PUSH_ABSENT');
 

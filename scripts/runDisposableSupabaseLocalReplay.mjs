@@ -126,9 +126,99 @@ begin
 end
 $$;
 
+do $$
+declare
+  v_name text;
+  v_public boolean;
+  v_file_size_limit bigint;
+  v_allowed_mime_types text[];
+  v_sorted_mime_types text[];
+begin
+  select b.name, b.public, b.file_size_limit, b.allowed_mime_types
+    into v_name, v_public, v_file_size_limit, v_allowed_mime_types
+    from storage.buckets as b
+   where b.id = 'dietitian-diplomas'
+   for update;
+
+  if not found then
+    if exists (select 1 from storage.buckets where name = 'dietitian-diplomas') then
+      raise exception 'Disposable dietitian-diplomas bucket name is bound to a different id.';
+    end if;
+
+    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    values (
+      'dietitian-diplomas', 'dietitian-diplomas', false, 10485760,
+      array['application/pdf']::text[]
+    );
+  else
+    select array_agg(mime_type order by mime_type)
+      into v_sorted_mime_types
+      from unnest(v_allowed_mime_types) as mime_type;
+
+    if v_name is distinct from 'dietitian-diplomas'
+       or v_public is distinct from false
+       or v_file_size_limit is distinct from 10485760
+       or v_sorted_mime_types is distinct from array['application/pdf']::text[] then
+      raise exception 'Disposable dietitian-diplomas bucket does not match the exact prerequisite contract.';
+    end if;
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+     where schemaname = 'storage' and tablename = 'objects'
+       and policyname = 'Dietitians can view own diplomas'
+  ) then
+    create policy "Dietitians can view own diplomas"
+      on storage.objects for select to authenticated
+      using (bucket_id = 'dietitian-diplomas' and owner = auth.uid());
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+     where schemaname = 'storage' and tablename = 'objects'
+       and policyname = 'Dietitians can upload own diplomas'
+  ) then
+    create policy "Dietitians can upload own diplomas"
+      on storage.objects for insert to authenticated
+      with check (
+        bucket_id = 'dietitian-diplomas'
+        and owner = auth.uid()
+        and (storage.foldername(name))[1] = 'diplomas'
+        and (storage.foldername(name))[2] = auth.uid()::text
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+     where schemaname = 'storage' and tablename = 'objects'
+       and policyname = 'Dietitians can update own diplomas'
+  ) then
+    create policy "Dietitians can update own diplomas"
+      on storage.objects for update to authenticated
+      using (bucket_id = 'dietitian-diplomas' and owner = auth.uid())
+      with check (
+        bucket_id = 'dietitian-diplomas'
+        and owner = auth.uid()
+        and (storage.foldername(name))[1] = 'diplomas'
+        and (storage.foldername(name))[2] = auth.uid()::text
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+     where schemaname = 'storage' and tablename = 'objects'
+       and policyname = 'Dietitians can delete own diplomas'
+  ) then
+    create policy "Dietitians can delete own diplomas"
+      on storage.objects for delete to authenticated
+      using (bucket_id = 'dietitian-diplomas' and owner = auth.uid());
+  end if;
+end
+$$;
+
 commit;
 `;
-export const LOCAL_PREREQUISITE_SHA256 = 'e6741394959079305695116104c26027be19ba8c57af0584d646c96688388d5e';
+export const LOCAL_PREREQUISITE_SHA256 = '3cc06c6b520d585617918ef85c84a860ca96462febf09b643306283a824667fa';
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
@@ -151,11 +241,11 @@ const assertExternalTempPath = ({ repoRoot, tempRoot }) => {
 };
 
 const assertManifestMatchesSourceInventory = ({ repoRoot, runtimeManifest }) => {
-  if (runtimeManifest.expectedHistory?.canonical !== 40
+  if (runtimeManifest.expectedHistory?.canonical !== 41
       || runtimeManifest.expectedHistory?.image !== 7
-      || runtimeManifest.expectedHistory?.total !== 47
-      || runtimeManifest.files?.length !== 47) {
-    throw new Error('Unexpected disposable migration inventory; expected 40 canonical and 7 image migrations.');
+      || runtimeManifest.expectedHistory?.total !== 48
+      || runtimeManifest.files?.length !== 48) {
+    throw new Error('Unexpected disposable migration inventory; expected 41 canonical and 7 image migrations.');
   }
 
   const sourcePaths = readdirSync(join(repoRoot, 'supabase', 'migrations'), { withFileTypes: true })
@@ -213,7 +303,7 @@ const assertDisposableMigrationInventory = ({ repositoryPaths, tempRoot, localPr
   if (localIndex === -1 || avatarPolicyIndex !== localIndex + 1) {
     throw new Error('Local prerequisite must appear immediately before the avatar policy migration.');
   }
-  if (repositoryPaths.length !== 47 || disposablePaths.length !== 48) {
+  if (repositoryPaths.length !== 48 || disposablePaths.length !== 49) {
     throw new Error(`Unexpected repository/disposable counts: ${repositoryPaths.length}/${disposablePaths.length}`);
   }
   return {

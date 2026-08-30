@@ -41,11 +41,11 @@ const runMaterializeOnly = async (options = {}) => {
 test('materializes the exact current migration chain in deterministic order', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
-  assert.deepEqual(result.manifest.expectedHistory, { canonical: 40, image: 7, total: 47 });
-  assert.equal(result.manifest.files.length, 47);
-  assert.equal(result.disposableHistory.repositoryMigrationCount, 47);
+  assert.deepEqual(result.manifest.expectedHistory, { canonical: 41, image: 7, total: 48 });
+  assert.equal(result.manifest.files.length, 48);
+  assert.equal(result.disposableHistory.repositoryMigrationCount, 48);
   assert.equal(result.disposableHistory.localPrerequisiteCount, 1);
-  assert.equal(result.disposableHistory.disposableMigrationCount, 48);
+  assert.equal(result.disposableHistory.disposableMigrationCount, 49);
   assert.deepEqual(
     result.manifest.files.map((file) => file.path),
     [...result.manifest.files.map((file) => file.path)].sort(),
@@ -92,17 +92,21 @@ test('local prerequisite SQL fails closed for public, limit, MIME, and name drif
   assert.match(LOCAL_PREREQUISITE_SQL, /raise exception 'Disposable avatars bucket does not match the exact prerequisite contract\.'/);
 });
 
-test('local prerequisite SQL creates only exact legacy meal-photo policies and no grants, functions, or fixtures', async () => {
+test('local prerequisite SQL creates exact disposable Storage prerequisites and no grants, functions, or fixtures', async () => {
   const { LOCAL_PREREQUISITE_SQL } = await import(wrapperUrl);
-  assert.equal((LOCAL_PREREQUISITE_SQL.match(/\bcreate\s+policy\b/gi) ?? []).length, 2);
+  assert.equal((LOCAL_PREREQUISITE_SQL.match(/\bcreate\s+policy\b/gi) ?? []).length, 6);
   assert.match(LOCAL_PREREQUISITE_SQL, /create policy "Give users access to own folder 1o5iea3_0"/i);
   assert.match(LOCAL_PREREQUISITE_SQL, /create policy "Give users access to own folder 1o5iea3_1"/i);
+  assert.match(LOCAL_PREREQUISITE_SQL, /'dietitian-diplomas'/i);
+  assert.match(LOCAL_PREREQUISITE_SQL, /create policy "Dietitians can upload own diplomas"/i);
+  assert.match(LOCAL_PREREQUISITE_SQL, /create policy "Dietitians can update own diplomas"/i);
+  assert.match(LOCAL_PREREQUISITE_SQL, /create policy "Dietitians can delete own diplomas"/i);
   assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /\bgrant\b/i);
   assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /\bcreate\s+(or\s+replace\s+)?function\b/i);
   assert.doesNotMatch(LOCAL_PREREQUISITE_SQL, /public\.(profiles|dietitian_clients)/i);
 });
 
-test('repository migration order remains unchanged inside the 46-entry disposable history', async (t) => {
+test('repository migration order remains unchanged inside the 48-entry disposable history', async (t) => {
   const result = await runMaterializeOnly({ keepTemp: true });
   t.after(() => rmSync(result.tempRoot, { recursive: true, force: true }));
   const repositoryPaths = result.manifest.files.map((file) => file.path);

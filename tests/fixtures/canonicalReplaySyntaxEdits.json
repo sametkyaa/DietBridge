@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 40,
+  "expectedCanonicalCount": 41,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2863,6 +2863,13 @@
       "phase": "canonical",
       "sourceSha256": "ecb8f02848cd19e758931dc63931f421abdf52ecf096c5d2cb2127c99639181e",
       "materializedSha256": "ecb8f02848cd19e758931dc63931f421abdf52ecf096c5d2cb2127c99639181e",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260830060342_dietitian_diploma_storage_hardening.sql",
+      "phase": "canonical",
+      "sourceSha256": "a08614d6a34e7165be7937c30837c2c449dfc071bd6f95e13536be8304d96f1e",
+      "materializedSha256": "a08614d6a34e7165be7937c30837c2c449dfc071bd6f95e13536be8304d96f1e",
       "edits": []
     }
   ]

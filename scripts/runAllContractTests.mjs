@@ -15,6 +15,7 @@ const commands = [
   ['--test', 'tests/vercelSecurityHeaders.test.cjs'],
   ['--test', 'tests/registerTermsLinkContracts.test.cjs'],
   ['--test', 'tests/registrationReliabilityContracts.test.cjs'],
+  ['--test', 'tests/dietitianDiplomaStorageContracts.test.cjs'],
   ['scripts/runRegistrationReliabilityRuntimeTests.mjs'],
   ['--test', 'tests/productAdminContracts.test.cjs'],
   ['scripts/runNotificationCoreContractTests.mjs'],
