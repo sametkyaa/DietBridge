@@ -26,7 +26,7 @@ assert(notificationFiles.length === 1, 'ONE_NOTIFICATION_CORE_MIGRATION', notifi
 const migrationName = notificationFiles[0];
 assert(migrationName === '20260814214101_notification_core_backend.sql', 'NEXT_CANONICAL_MIGRATION_VERSION', migrationName);
 const markAllReadMigrationName = '20260816101405_mark_all_notifications_read.sql';
-const appointmentReminderMigrationName = '20260816194431_appointment_reminders_backend.sql';
+const appointmentReminderMigrationName = '20260817084531_appointment_reminders_backend.sql';
 const pushRegistryMigrationName = '20260817120000_push_registry_outbox_backend.sql';
 assert(files.includes(markAllReadMigrationName), 'MARK_ALL_READ_MIGRATION_PRESENT', markAllReadMigrationName);
 assert(files.includes(appointmentReminderMigrationName), 'APPOINTMENT_REMINDER_MIGRATION_PRESENT', appointmentReminderMigrationName);

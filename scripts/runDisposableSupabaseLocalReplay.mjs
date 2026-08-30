@@ -20,7 +20,7 @@ const SUPABASE_CLI_VERSION = '2.110.0';
 const TEMP_PREFIX = 'dietbridge-supabase-replay-';
 const ISOLATED_PHASE2_MIGRATIONS = new Set([
   '20260814214101_notification_core_backend.sql',
-  '20260816194431_appointment_reminders_backend.sql',
+  '20260817084531_appointment_reminders_backend.sql',
   '20260817120000_push_registry_outbox_backend.sql',
 ]);
 export const LOCAL_PREREQUISITE_FILE = '20260728155959_disposable_avatar_bucket_prerequisite.sql';
