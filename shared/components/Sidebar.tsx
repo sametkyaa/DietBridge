@@ -11,6 +11,7 @@ import {
   Settings,
   Calendar,
   ShieldCheck,
+  Utensils,
 } from 'lucide-react';
 import { APP_LOGO } from '../constants';
 import { useAuth } from '../../features/auth/context/AuthContext';
@@ -26,6 +27,7 @@ const Sidebar = () => {
     { icon: LayoutDashboard, label: 'Kontrol Paneli', path: '/' },
     { icon: Calendar, label: 'Randevular', path: '/appointments' },
     { icon: Users, label: 'Danışanlar', path: '/clients' },
+    { icon: Utensils, label: 'Öğün Takibi', path: '/meal-tracking' },
     { icon: BarChart2, label: 'Analizler', path: '/analytics' },
     { icon: UtensilsCrossed, label: 'Beslenme Planları', path: '/meal-plans' },
     { icon: BookOpen, label: 'Tarifler', path: '/recipes' },
@@ -38,13 +40,10 @@ const Sidebar = () => {
     : navItems;
 
   // Subset for mobile bottom nav to avoid overcrowding
-  const mobileNavItems = [
-    navItems[0], // Dashboard
-    navItems[1], // Appointments
-    navItems[2], // Clients
-    navItems[4], // Meal Plans
-    navItems[6], // Messages
-  ];
+  const mobileNavPaths = ['/', '/appointments', '/clients', '/meal-plans', '/messages'] as const;
+  const mobileNavItems = mobileNavPaths
+    .map((path) => navItems.find((item) => item.path === path))
+    .filter((item): item is (typeof navItems)[number] => item !== undefined);
 
   return (
     <>

@@ -2,10 +2,23 @@ import { supabase } from '../../../lib/supabaseClient';
 import { isValidUuid } from '../../../shared/utils/uuid';
 import { isCanonicalRecipeImagePath } from '../../recipes/services/recipeService';
 import { isReadableMealPhotoReference } from '../../meal-plans/services/mealPhotoService';
-import { groupMealTrackingDays } from '../utils/mealTrackingContract';
-import type { MealTrackingDay, MealTrackingMeal, MealTrackingMealType } from '../types/mealTracking';
+import { fetchActiveDietitianClientListForUser } from '../../clients/services/clientService';
+import {
+  groupMealTrackingDays,
+  summarizeMealTrackingOverview,
+} from '../utils/mealTrackingContract';
+import type {
+  MealTrackingDay,
+  MealTrackingMeal,
+  MealTrackingMealType,
+  MealTrackingOverviewClient,
+  MealTrackingOverviewView,
+} from '../types/mealTracking';
+import {
+  getIstanbulDateKey,
+  isAnalyticsDate,
+} from '../../analytics/utils/analyticsContract';
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?$/;
 const MEAL_TYPES = new Set<MealTrackingMealType>(['breakfast', 'lunch', 'dinner', 'snack']);
 
@@ -108,24 +121,33 @@ const normalizeMeal = (
   };
 };
 
-const normalizePlans = (
-  data: unknown,
-  clientId: string,
-  dietitianId: string,
-): MealTrackingDay[] => {
-  if (!Array.isArray(data)) throw createContractError('meal_plans');
+interface NormalizedMealTrackingPlan {
+  clientId: string;
+  date: string;
+  meals: MealTrackingMeal[];
+}
 
-  const plans = data.map((rawPlan) => {
+const normalizePlanRows = (
+  data: unknown,
+  dietitianId: string,
+  allowedClientIds: ReadonlySet<string>,
+): NormalizedMealTrackingPlan[] => {
+  if (!Array.isArray(data)) throw createContractError('meal_plans');
+  if (!isValidUuid(dietitianId)) throw createContractError('dietitian_id');
+
+  return data.map((rawPlan) => {
     if (typeof rawPlan !== 'object' || rawPlan === null || Array.isArray(rawPlan)) {
       throw createContractError('meal_plan');
     }
     const plan = rawPlan as Record<string, unknown>;
+    const clientId = plan.client_id;
     if (
       !isValidUuid(plan.id)
-      || plan.client_id !== clientId
+      || !isValidUuid(clientId)
+      || !allowedClientIds.has(clientId)
       || plan.dietitian_id !== dietitianId
       || typeof plan.plan_date !== 'string'
-      || !ISO_DATE_PATTERN.test(plan.plan_date)
+      || !isAnalyticsDate(plan.plan_date)
       || !Array.isArray(plan.meals)
     ) {
       throw createContractError('meal_plan');
@@ -134,12 +156,46 @@ const normalizePlans = (
     const planId = plan.id as string;
     const planDate = plan.plan_date as string;
     return {
+      clientId,
       date: planDate,
       meals: plan.meals.map((meal) => normalizeMeal(meal, planId, planDate)),
     };
   });
+};
 
-  return groupMealTrackingDays(plans);
+const normalizePlans = (
+  data: unknown,
+  clientId: string,
+  dietitianId: string,
+): MealTrackingDay[] => {
+  const plans = normalizePlanRows(data, dietitianId, new Set([clientId]));
+  return groupMealTrackingDays(plans.map(({ date, meals }) => ({ date, meals })));
+};
+
+export const normalizeMealTrackingOverviewPlans = (
+  data: unknown,
+  clientIds: readonly string[],
+  dietitianId: string,
+): Map<string, MealTrackingDay[]> => {
+  if (clientIds.some((clientId) => !isValidUuid(clientId))) {
+    throw createContractError('client_ids');
+  }
+
+  const uniqueClientIds = [...new Set(clientIds)];
+  const plansByClient = new Map<string, Array<{ date: string; meals: MealTrackingMeal[] }>>(
+    uniqueClientIds.map((clientId) => [clientId, []]),
+  );
+  const plans = normalizePlanRows(data, dietitianId, new Set(uniqueClientIds));
+  plans.forEach(({ clientId, date, meals }) => {
+    plansByClient.get(clientId)?.push({ date, meals });
+  });
+
+  return new Map(
+    [...plansByClient.entries()].map(([clientId, clientPlans]) => [
+      clientId,
+      groupMealTrackingDays(clientPlans),
+    ]),
+  );
 };
 
 export const getMealTrackingUserMessage = (error: unknown): string => {
@@ -156,7 +212,7 @@ export const fetchMealTracking = async (
   endDate: string,
 ): Promise<MealTrackingDay[]> => {
   if (!isValidUuid(clientId)) throw new MealTrackingServiceError('CONTRACT', 'Geçersiz danışan kimliği.');
-  if (!ISO_DATE_PATTERN.test(startDate) || !ISO_DATE_PATTERN.test(endDate) || startDate > endDate) {
+  if (!isAnalyticsDate(startDate) || !isAnalyticsDate(endDate) || startDate > endDate) {
     throw new MealTrackingServiceError('CONTRACT', 'Geçersiz öğün takip tarih aralığı.');
   }
 
@@ -195,6 +251,67 @@ export const fetchMealTracking = async (
 
   try {
     return normalizePlans(data, clientId, dietitianId);
+  } catch (cause) {
+    if (cause instanceof MealTrackingServiceError) throw cause;
+    throw new MealTrackingServiceError('CONTRACT', 'Öğün takip yanıtı doğrulanamadı.', cause);
+  }
+};
+
+export const fetchMealTrackingOverview = async (
+  startDate: string,
+  endDate: string,
+  view: MealTrackingOverviewView = startDate === endDate ? 'today' : '7d',
+): Promise<MealTrackingOverviewClient[]> => {
+  if (
+    !isAnalyticsDate(startDate)
+    || !isAnalyticsDate(endDate)
+    || startDate > endDate
+    || (view === 'today' && startDate !== endDate)
+  ) {
+    throw new MealTrackingServiceError('CONTRACT', 'Geçersiz öğün takip tarih aralığı.');
+  }
+
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData.user?.id || !isValidUuid(authData.user.id)) {
+    throw new MealTrackingServiceError('AUTHORIZATION', 'Oturum doğrulanamadı.', authError);
+  }
+  const dietitianId = authData.user.id;
+
+  const clientResult = await fetchActiveDietitianClientListForUser(dietitianId);
+  if (clientResult.status === 'error') {
+    throw new MealTrackingServiceError('FETCH', 'Aktif danışanlar alınamadı.', clientResult.userMessage);
+  }
+
+  const activeClients = clientResult.clients.filter((client) => client.status === 'Aktif');
+  const clientIds = activeClients.map((client) => client.id);
+  if (clientIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('meal_plans')
+    .select(MEAL_TRACKING_SELECT)
+    .eq('dietitian_id', dietitianId)
+    .in('client_id', clientIds)
+    .gte('plan_date', startDate)
+    .lte('plan_date', endDate)
+    .order('plan_date', { ascending: true })
+    .order('id', { ascending: true });
+  if (error) {
+    throw new MealTrackingServiceError('FETCH', 'Öğün takip kayıtları alınamadı.', error);
+  }
+
+  try {
+    const plansByClient = normalizeMealTrackingOverviewPlans(data, clientIds, dietitianId);
+    const today = getIstanbulDateKey();
+    return activeClients.map((client) => summarizeMealTrackingOverview(
+      {
+        clientId: client.id,
+        displayName: client.name,
+        avatar: client.avatar,
+      },
+      plansByClient.get(client.id) ?? [],
+      view,
+      today,
+    ));
   } catch (cause) {
     if (cause instanceof MealTrackingServiceError) throw cause;
     throw new MealTrackingServiceError('CONTRACT', 'Öğün takip yanıtı doğrulanamadı.', cause);

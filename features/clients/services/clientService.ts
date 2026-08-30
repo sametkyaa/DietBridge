@@ -191,14 +191,14 @@ const formatDietDuration = (dietStartDate: string | null): string | null => {
 /**
  * Fetches clients associated with the logged-in dietitian.
  */
-export const fetchDietitianClientList = async (
+const fetchDietitianClientListForUser = async (
+  dietitianId: string,
   relationStatuses: Array<'active' | 'pending'> = ['active', 'pending'],
   options: FetchDietitianClientListOptions = {},
 ): Promise<ClientListResult> => {
   const includeProgress = options.includeProgress ?? true;
   try {
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    if (!isValidUuid(dietitianId)) {
       return { status: 'error', kind: 'auth', userMessage: CLIENT_LIST_LOAD_ERROR };
     }
 
@@ -245,7 +245,7 @@ export const fetchDietitianClientList = async (
           )
         )
       `)
-      .eq('dietitian_id', user.id)
+      .eq('dietitian_id', dietitianId)
       .in('status', relationStatuses);
 
     if (error) {
@@ -354,6 +354,22 @@ export const fetchDietitianClientList = async (
   }
 };
 
+export const fetchDietitianClientList = async (
+  relationStatuses: Array<'active' | 'pending'> = ['active', 'pending'],
+  options: FetchDietitianClientListOptions = {},
+): Promise<ClientListResult> => {
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user || !isValidUuid(user.id)) {
+      return { status: 'error', kind: 'auth', userMessage: CLIENT_LIST_LOAD_ERROR };
+    }
+
+    return fetchDietitianClientListForUser(user.id, relationStatuses, options);
+  } catch {
+    return { status: 'error', kind: 'unexpected', userMessage: CLIENT_LIST_LOAD_ERROR };
+  }
+};
+
 export const fetchDietitianClients = async (): Promise<Client[]> => {
   const result = await fetchDietitianClientList();
   if (result.status === 'error') throw new Error(result.userMessage);
@@ -386,6 +402,27 @@ export const resolveClientIdByRelationId = async (relationId: string): Promise<s
 
 export const fetchActiveDietitianClientList = async (): Promise<ClientListResult> => {
   const result = await fetchDietitianClientList(['active'], { includeProgress: false });
+  if (result.status === 'error') return result;
+
+  return {
+    status: 'success',
+    clients: result.clients.filter((client) => client.status === 'Aktif'),
+  };
+};
+
+/**
+ * Reads the active client display contract for a previously authenticated
+ * dietitian. Keeping identity resolution outside this helper lets bulk
+ * feature services authenticate once and reuse the same client/avatar mapping.
+ */
+export const fetchActiveDietitianClientListForUser = async (
+  dietitianId: string,
+): Promise<ClientListResult> => {
+  const result = await fetchDietitianClientListForUser(
+    dietitianId,
+    ['active'],
+    { includeProgress: false },
+  );
   if (result.status === 'error') return result;
 
   return {
