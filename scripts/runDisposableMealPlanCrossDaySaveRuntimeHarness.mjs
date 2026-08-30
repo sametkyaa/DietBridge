@@ -209,6 +209,7 @@ const createActiveRelation = async (dietitian, client) => {
     .select('id,status')
     .single(), dietitian.label + '/' + client.label + ' relation acceptance');
   assert(active.status === 'active', dietitian.label.toUpperCase() + '_' + client.label.toUpperCase() + '_ACTIVE_RELATION');
+  return active;
 };
 
 const formatDate = (date) => date.toISOString().slice(0, 10);
@@ -370,7 +371,7 @@ const runFlows = async () => {
   await approveDietitian(dietitianB);
   await bootstrapCore(dietitianA);
   await bootstrapCore(dietitianB);
-  await createActiveRelation(dietitianA, clientA);
+  const relationA = await createActiveRelation(dietitianA, clientA);
   await createActiveRelation(dietitianB, clientB);
 
   const webDietitianA = await createActorClient(dietitianA);
@@ -572,6 +573,21 @@ const runFlows = async () => {
   const authorizedAfterWeekReject = await readMeal(authorizedMeal.id, 'authorized after week rejection');
   assert(authorizedAfterWeekReject.plan_id === authorizedBeforeReject.plan_id, 'OTHER_WEEK_ID_REJECTION_PRESERVES_STATE');
 
+  await expectRejected(
+    webDietitianA,
+    clientA.id,
+    securityWeek,
+    new Map([
+      [2, [mealPayload(authorizedMeal, { type: 'lunch', time: '12:30' })]],
+      [3, [mealPayload(authorizedMeal, { type: 'snack', time: '16:00' })]],
+    ]),
+    'DUPLICATE_MEAL_ID_REJECTED',
+  );
+  const authorizedAfterDuplicate = await readMeal(authorizedMeal.id, 'authorized after duplicate rejection');
+  assert(authorizedAfterDuplicate.plan_id === authorizedBeforeReject.plan_id
+    && authorizedAfterDuplicate.is_eaten === authorizedBeforeReject.is_eaten
+    && authorizedAfterDuplicate.completed_at === authorizedBeforeReject.completed_at, 'DUPLICATE_ID_REJECTION_IS_ATOMIC');
+
   const invalidPayload = new Map([
     [2, [mealPayload(authorizedMeal, { type: 'lunch', time: '12:30' })]],
     [3, [{
@@ -613,6 +629,20 @@ const runFlows = async () => {
     securityWeek,
     new Map(),
     'ANONYMOUS_CANNOT_SAVE_WEEKLY_PLAN',
+  );
+  const removedRelation = assertNoError(await admin
+    .from('dietitian_clients')
+    .update({ status: 'removed' })
+    .eq('id', relationA.id)
+    .select('id,status')
+    .single(), 'inactive relation fixture');
+  assert(removedRelation.status === 'removed', 'INACTIVE_RELATION_FIXTURE_CREATED');
+  await expectRejected(
+    webDietitianA,
+    clientA.id,
+    securityWeek,
+    new Map(),
+    'INACTIVE_RELATION_REJECTED',
   );
   const foreignRead = await webDietitianB
     .from('meal_plans')
