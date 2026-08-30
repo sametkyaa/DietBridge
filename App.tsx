@@ -14,6 +14,7 @@ import ResetPasswordPage from './features/auth/pages/ResetPasswordPage';
 // Feature Pages
 import DashboardPage from './features/dashboard/pages/DashboardPage';
 import ClientsPage from './features/clients/pages/ClientsPage';
+import MealTrackingOverviewPage from './features/meal-tracking/pages/MealTrackingOverviewPage';
 import SettingsPage from './features/settings/pages/SettingsPage';
 import ClientDetails from './pages/ClientDetails'; 
 import MealTracking from './pages/MealTracking';
@@ -63,6 +64,7 @@ const App = () => {
                 <Route path="/clients" element={<ClientsPage />} />
                 <Route path="/clients/:id" element={<ClientDetails />} />
                 <Route path="/clients/:id/meal-tracking" element={<MealTracking />} />
+                <Route path="/meal-tracking" element={<MealTrackingOverviewPage />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/meal-plans" element={<MealPlans />} />
                 <Route path="/messages" element={<Messages />} />
