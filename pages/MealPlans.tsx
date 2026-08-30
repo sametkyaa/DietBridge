@@ -44,7 +44,6 @@ import {
   type CanonicalDailyMealPlan,
   type CanonicalMeal,
   type CanonicalMealMacros,
-  type WeeklyMealInput,
   type WeeklyMealPlanDayInput,
 } from '../features/meal-plans/services/mealPlanService';
 import {
@@ -64,6 +63,18 @@ import {
   normalizeMealPlanWeekStart,
   shiftMealPlanWeek,
 } from '../features/meal-plans/services/mealPlanReadModel';
+import {
+  isCompletedMealContent,
+  moveMealPlanContent,
+  parsePlannedMealDragSource,
+  PLANNED_MEAL_DRAG_DATA_TYPE,
+  RECIPE_DRAG_DATA_TYPE,
+  serializePlannedMealDragSource,
+  type MealPlanCellRef,
+  type PlanState,
+  type PlannedMealContent,
+} from '../features/meal-plans/utils/mealPlanMove';
+import { buildWeeklyMealPlanPayload } from '../features/meal-plans/utils/mealPlanPayload';
 import {
   fetchRecipes,
   getRecipeUserMessage,
@@ -96,6 +107,10 @@ const getCurrentMondayIso = (): string => {
   );
 };
 
+const hasDataTransferType = (dataTransfer: DataTransfer, type: string): boolean => (
+  Array.from(dataTransfer.types).includes(type)
+);
+
 const WEEK_RANGE_DAY_MONTH_FORMAT = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' });
 const WEEK_RANGE_FULL_FORMAT = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -109,23 +124,7 @@ const formatMealPlanWeekRangeLabel = (weekStart: string): string => {
   return `${WEEK_RANGE_FULL_FORMAT.format(start)} – ${WEEK_RANGE_FULL_FORMAT.format(end)}`;
 };
 
-interface PlannedMealContent {
-  id: string;
-  mealId?: string;
-  name: string;
-  image: string | null;
-  imagePreview?: string | null;
-  pendingPhoto?: File | null;
-  calories: number;
-  description?: string | null;
-  macros: CanonicalMealMacros;
-  source?: 'manual' | 'recipe';
-  recipeId?: string | null;
-  isEaten?: boolean;
-}
-
 // Plan State: { Day: { MealID: Content } }
-type PlanState = Record<string, Record<string, PlannedMealContent | string | null>>;
 type PlanNotesState = Record<string, string | null>;
 
 interface SaveNotification {
@@ -313,6 +312,12 @@ const MealPlans = () => {
   // Interaction State
   const [activeCell, setActiveCell] = useState<{ day: string; mealId: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ day: string; mealId: string } | null>(null);
+  const [draggedMeal, setDraggedMeal] = useState<MealPlanCellRef | null>(null);
+  const [moveSelectorSource, setMoveSelectorSource] = useState<MealPlanCellRef | null>(null);
+  const [moveTargetDay, setMoveTargetDay] = useState<string>(DAYS[0]);
+  const [moveTargetMealId, setMoveTargetMealId] = useState('');
+  const [moveFeedback, setMoveFeedback] = useState<string | null>(null);
+  const moveTargetDaySelectRef = useRef<HTMLSelectElement | null>(null);
   const [customMealText, setCustomMealText] = useState('');
   const [customMealCalories, setCustomMealCalories] = useState('');
   const [customMealProtein, setCustomMealProtein] = useState('');
@@ -505,6 +510,17 @@ const MealPlans = () => {
     setCopyError(null);
   }, [selectedClient?.id, weekStartDate]);
 
+  useEffect(() => {
+    setDraggedMeal(null);
+    setDropTarget(null);
+    setMoveSelectorSource(null);
+    setMoveFeedback(null);
+  }, [selectedClient?.id, weekStartDate]);
+
+  useEffect(() => {
+    if (moveSelectorSource) moveTargetDaySelectRef.current?.focus();
+  }, [moveSelectorSource]);
+
   const hasEditorMeals = Object.values(weeklyPlan)
     .some((day) => Object.values(day).some(Boolean));
   const filteredRecipes = useMemo(
@@ -590,6 +606,87 @@ const MealPlans = () => {
         setCustomMealText('');
       }
     }
+  };
+
+  const openMoveSelector = (source: MealPlanCellRef) => {
+    const sourceContent = weeklyPlan[source.day]?.[source.mealId];
+    if (sourceContent === undefined || sourceContent === null || typeof sourceContent === 'string') {
+      setMoveFeedback('Taşınacak öğün bulunamadı.');
+      return;
+    }
+    if (isCompletedMealContent(sourceContent)) {
+      setMoveFeedback('Tamamlanmış öğün taşınamaz');
+      return;
+    }
+
+    setMoveFeedback(null);
+    setMoveSelectorSource(source);
+    setMoveTargetDay(source.day);
+    setMoveTargetMealId(source.mealId);
+  };
+
+  const applyMealPlanMove = (source: MealPlanCellRef, target: MealPlanCellRef) => {
+    const moveResult = moveMealPlanContent(weeklyPlan, source, target);
+    if (moveResult.status === 'moved' || moveResult.status === 'swapped') {
+      setWeeklyPlan(moveResult.nextPlan);
+      setActiveCell(null);
+      setMoveFeedback(null);
+      return moveResult;
+    }
+
+    if (moveResult.status === 'blocked') {
+      setMoveFeedback(
+        moveResult.reason === 'TARGET_COMPLETED'
+          ? 'Tamamlanmış bir öğünün yeri değiştirilemez.'
+          : 'Tamamlanmış öğün taşınamaz',
+      );
+    } else if (moveResult.reason === 'SOURCE_NOT_FOUND') {
+      setMoveFeedback('Taşınacak öğün bulunamadı.');
+    }
+    return moveResult;
+  };
+
+  const handleMoveSelectorSubmit = () => {
+    if (!moveSelectorSource || !moveTargetMealId) return;
+    applyMealPlanMove(moveSelectorSource, { day: moveTargetDay, mealId: moveTargetMealId });
+    setMoveSelectorSource(null);
+  };
+
+  const handleMoveSelectorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setMoveSelectorSource(null);
+    }
+  };
+
+  const handleMoveHandleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, source: MealPlanCellRef) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openMoveSelector(source);
+    }
+  };
+
+  const handlePlannedMealDragStart = (
+    event: React.DragEvent<HTMLButtonElement>,
+    source: MealPlanCellRef,
+  ) => {
+    const sourceContent = weeklyPlan[source.day]?.[source.mealId];
+    if (sourceContent === undefined || sourceContent === null || isCompletedMealContent(sourceContent)) {
+      event.preventDefault();
+      return;
+    }
+
+    event.stopPropagation();
+    event.dataTransfer.setData(PLANNED_MEAL_DRAG_DATA_TYPE, serializePlannedMealDragSource(source));
+    event.dataTransfer.effectAllowed = 'move';
+    setDraggedMeal(source);
+    setDropTarget(null);
+    setMoveFeedback(null);
+  };
+
+  const handlePlannedMealDragEnd = () => {
+    setDraggedMeal(null);
+    setDropTarget(null);
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -699,16 +796,29 @@ const MealPlans = () => {
   };
 
   const handleRecipeDragStart = (event: React.DragEvent<HTMLButtonElement>, recipeId: string) => {
-    event.dataTransfer.setData('application/x-dietbridge-recipe-id', recipeId);
+    event.dataTransfer.setData(RECIPE_DRAG_DATA_TYPE, recipeId);
     event.dataTransfer.setData('text/plain', recipeId);
     event.dataTransfer.effectAllowed = 'copy';
+    setMoveFeedback(null);
   };
 
- const handleCellDragOver = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
-   event.preventDefault();
-   event.dataTransfer.dropEffect = 'copy';
-    setDropTarget((previous) => (previous?.day === day && previous?.mealId === mealId ? previous : { day, mealId }));
- };
+  const handleCellDragOver = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
+    event.preventDefault();
+    const isPlannedMealDrag = draggedMeal !== null
+      || hasDataTransferType(event.dataTransfer, PLANNED_MEAL_DRAG_DATA_TYPE);
+    const isCompletedTarget = isCompletedMealContent(weeklyPlan[day]?.[mealId]);
+    event.dataTransfer.dropEffect = isPlannedMealDrag ? 'move' : 'copy';
+
+    if (isPlannedMealDrag && isCompletedTarget) {
+      event.dataTransfer.dropEffect = 'none';
+      setDropTarget(null);
+      return;
+    }
+
+    setDropTarget((previous) => (
+      previous?.day === day && previous?.mealId === mealId ? previous : { day, mealId }
+    ));
+  };
 
   const handleCellDragLeave = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
@@ -719,7 +829,21 @@ const MealPlans = () => {
   const handleCellDrop = (event: React.DragEvent<HTMLDivElement>, day: string, mealId: string) => {
     event.preventDefault();
     setDropTarget(null);
-    const recipeId = event.dataTransfer.getData('application/x-dietbridge-recipe-id') || event.dataTransfer.getData('text/plain');
+    setDraggedMeal(null);
+
+    const hasPlannedMealPayload = hasDataTransferType(event.dataTransfer, PLANNED_MEAL_DRAG_DATA_TYPE);
+    const plannedMealPayload = event.dataTransfer.getData(PLANNED_MEAL_DRAG_DATA_TYPE);
+    if (hasPlannedMealPayload || plannedMealPayload) {
+      const source = parsePlannedMealDragSource(plannedMealPayload);
+      if (!source) {
+        setMoveFeedback('Sürüklenen öğün bilgisi okunamadı.');
+        return;
+      }
+      applyMealPlanMove(source, { day, mealId });
+      return;
+    }
+
+    const recipeId = event.dataTransfer.getData(RECIPE_DRAG_DATA_TYPE) || event.dataTransfer.getData('text/plain');
     if (!recipeId) {
       setRecipeSelectionInfo('Sürüklenen tarif bilgisi okunamadı.');
       return;
@@ -730,6 +854,7 @@ const MealPlans = () => {
       return;
     }
     addRecipeToMealCell(recipe, day, mealId);
+    setMoveFeedback(null);
     const mealRow = meals.find((meal) => meal.id === mealId);
     setRecipeSelectionInfo(`“${recipe.name}” ${day} ${mealRow?.name ?? ''} hücresine eklendi.`);
   };
@@ -873,68 +998,44 @@ const MealPlans = () => {
 
       const normalizedWeekStart = normalizeMealPlanWeekStart(weekStartDate);
       const weekDates = getMealPlanWeekDates(normalizedWeekStart);
-      
-      const weeklyPayload: WeeklyMealPlanDayInput[] = [];
       setIsUploadingPhoto(true);
 
-      // Build the complete Monday-Sunday payload before the single RPC call.
+      const uploadedPhotoPathsByCell = new Map<string, string>();
       for (let i = 0; i < 7; i++) {
-        const dateStr = weekDates[i];
         const dayName = DAYS[i]; // 'Pazartesi', 'Salı', etc.
-
-        // Collect meals for this day
-        const dayMeals: WeeklyMealInput[] = [];
         const dayPlan = weeklyPlan[dayName];
-        
-        if (dayPlan) {
-          for (const mealId of Object.keys(dayPlan)) {
-            const content = dayPlan[mealId];
-            const mealRow = meals.find(m => m.id === mealId);
-            if (!mealRow || !content) continue;
+        if (!dayPlan) continue;
 
-            const mealType = mapMealTypeToDb(mealRow.name);
-            
-            if (typeof content === 'string') {
-              throw new MealPlanValidationError('INVALID_MEAL_MACROS', `days[${i}].meals[${mealId}].macros`);
-            }
+        for (const mealId of Object.keys(dayPlan)) {
+          const content = dayPlan[mealId];
+          if (typeof content !== 'object' || content === null || !content.pendingPhoto) continue;
 
-            const mealData: WeeklyMealInput = {
-              type: mealType,
-              title: content.name,
-              sort_order: meals.findIndex(m => m.id === mealRow.id),
-              time: normalizeMealTime(mealRow.time, `days[${i}].meals[${mealId}].time`),
-              macros: normalizeCanonicalMealMacros(content.macros, `days[${i}].meals[${mealId}].macros`),
-              description: content.description ?? null,
-              source: content.source ?? 'manual',
-              recipe_id: content.source === 'recipe' ? content.recipeId ?? null : null,
-            };
-
-            if (content.mealId) mealData.id = content.mealId;
-            mealData.calories = content.calories;
-            if (content.pendingPhoto) {
-              const uploadedPath = await uploadMealPhoto({
-                file: content.pendingPhoto,
-                clientId: selectedClient.id,
-                dietitianId: user.id,
-              });
-              uploadedPhotoPaths.push(uploadedPath);
-              mealData.photo_url = uploadedPath;
-            } else if (isCanonicalMealPhotoPath(content.image) || isCanonicalRecipeImagePath(content.image)) {
-              mealData.photo_url = content.image;
-            } else {
-              mealData.photo_url = null;
-            }
-
-            dayMeals.push(mealData);
-          }
+          const uploadedPath = await uploadMealPhoto({
+            file: content.pendingPhoto,
+            clientId: selectedClient.id,
+            dietitianId: user.id,
+          });
+          uploadedPhotoPaths.push(uploadedPath);
+          uploadedPhotoPathsByCell.set(`${dayName}\u0000${mealId}`, uploadedPath);
         }
-
-        weeklyPayload.push({
-          plan_date: dateStr,
-          notes: planNotes[dayName] ?? null,
-          meals: dayMeals,
-        });
       }
+
+      const weeklyPayload: WeeklyMealPlanDayInput[] = buildWeeklyMealPlanPayload({
+        days: DAYS,
+        weekDates,
+        meals,
+        weeklyPlan,
+        planNotes,
+        mapMealTypeToDb,
+        normalizeMealTime,
+        normalizeCanonicalMealMacros,
+        resolvePhotoUrl: (content, dayName, mealId) => (
+          uploadedPhotoPathsByCell.get(`${dayName}\u0000${mealId}`)
+          ?? ((isCanonicalMealPhotoPath(content.image) || isCanonicalRecipeImagePath(content.image))
+            ? content.image
+            : null)
+        ),
+      });
 
       const rowNamesByPlacement: MealRowNameByPlacement = new Map(
         meals.map((mealRow, sortOrder) => [
@@ -1181,6 +1282,12 @@ const MealPlans = () => {
                   </div>
                </div>
 
+               {moveFeedback && (
+                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
+                   {moveFeedback}
+                 </div>
+               )}
+
                {/* The Grid */}
                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-auto min-w-[900px] relative flex-1 min-h-0">
                   {/* Loading Overlay */}
@@ -1263,6 +1370,9 @@ const MealPlans = () => {
                        {DAYS.map(day => {
                          const cellContent = weeklyPlan[day]?.[meal.id];
                          const isActive = activeCell?.day === day && activeCell?.mealId === meal.id;
+                         const isCompleted = isCompletedMealContent(cellContent);
+                         const isDraggedSource = draggedMeal?.day === day && draggedMeal?.mealId === meal.id;
+                         const isInvalidMoveTarget = draggedMeal !== null && isCompleted;
 
                          return (
                            <div
@@ -1273,7 +1383,7 @@ const MealPlans = () => {
                              onDrop={(event) => handleCellDrop(event, day, meal.id)}
                              className={`
                                relative min-h-[140px] p-2 transition-all cursor-pointer group
-                               ${isActive ? 'bg-emerald-50 ring-2 ring-inset ring-primary z-10' : dropTarget?.day === day && dropTarget?.mealId === meal.id ? 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400 z-10' : 'hover:bg-slate-50 bg-white'}
+                               ${isActive ? 'bg-emerald-50 ring-2 ring-inset ring-primary z-10' : isInvalidMoveTarget ? 'bg-slate-50/70 cursor-not-allowed' : dropTarget?.day === day && dropTarget?.mealId === meal.id ? 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400 z-10' : 'hover:bg-slate-50 bg-white'}
                              `}
                            >
                              {!cellContent ? (
@@ -1294,7 +1404,25 @@ const MealPlans = () => {
                                </div>
                              ) : (
                                // Manual meal content
-                               <div className="h-full bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex flex-col gap-2 relative group/card animate-in zoom-in-95 duration-200">
+                               <div className={`h-full bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex flex-col gap-2 relative group/card animate-in zoom-in-95 duration-200 ${isDraggedSource ? 'opacity-60' : ''}`}>
+                                  <button
+                                    type="button"
+                                    draggable={!isCompleted}
+                                    disabled={isCompleted}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openMoveSelector({ day, mealId: meal.id });
+                                    }}
+                                    onKeyDown={(event) => handleMoveHandleKeyDown(event, { day, mealId: meal.id })}
+                                    onDragStart={(event) => handlePlannedMealDragStart(event, { day, mealId: meal.id })}
+                                    onDragEnd={handlePlannedMealDragEnd}
+                                    aria-label={isCompleted ? 'Tamamlanmış öğün taşınamaz' : `${cellContent.name} öğününü taşı`}
+                                    aria-disabled={isCompleted}
+                                    title={isCompleted ? 'Tamamlanmış öğün taşınamaz' : 'Öğünü taşı'}
+                                    className={`absolute left-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg border shadow-sm transition-opacity focus:outline-none focus:ring-2 focus:ring-primary/40 ${isCompleted ? 'cursor-not-allowed border-slate-200 bg-slate-100/90 text-slate-300' : 'cursor-grab border-white/80 bg-white/90 text-slate-500 hover:text-primary active:cursor-grabbing sm:opacity-0 sm:group-hover/card:opacity-100'}`}
+                                  >
+                                    <GripVertical className="h-4 w-4" aria-hidden="true" />
+                                  </button>
                                   <button 
                                     onClick={(e) => handleClearCell(e, day, meal.id)}
                                     className="absolute -top-1.5 -right-1.5 bg-white text-slate-400 hover:text-red-500 border border-slate-200 rounded-full p-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity shadow-sm z-20"
@@ -1578,6 +1706,57 @@ const MealPlans = () => {
         </div>
         </div>
       </aside>
+
+      {moveSelectorSource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onKeyDown={handleMoveSelectorKeyDown}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="meal-move-dialog-title"
+            aria-describedby="meal-move-dialog-description"
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl"
+          >
+            <div className="p-6">
+              <h3 id="meal-move-dialog-title" className="text-lg font-bold text-slate-800">Öğünü Taşı</h3>
+              <p id="meal-move-dialog-description" className="mt-1 text-sm text-slate-500">
+                {(() => {
+                  const content = weeklyPlan[moveSelectorSource.day]?.[moveSelectorSource.mealId];
+                  return typeof content === 'object' && content !== null ? content.name : 'Seçili öğün';
+                })()}
+              </p>
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label htmlFor="meal-move-day" className="mb-1.5 block text-sm font-bold text-slate-700">Gün</label>
+                  <select
+                    ref={moveTargetDaySelectRef}
+                    id="meal-move-day"
+                    value={moveTargetDay}
+                    onChange={(event) => setMoveTargetDay(event.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    {DAYS.map((day) => <option key={day} value={day}>{day}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="meal-move-row" className="mb-1.5 block text-sm font-bold text-slate-700">Öğün satırı</label>
+                  <select
+                    id="meal-move-row"
+                    value={moveTargetMealId}
+                    onChange={(event) => setMoveTargetMealId(event.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.name} · {meal.time}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setMoveSelectorSource(null)} className="min-h-11 rounded-lg px-4 py-2 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">Vazgeç</button>
+                <button type="button" onClick={handleMoveSelectorSubmit} disabled={!moveTargetMealId} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary/30 transition-all hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50">Taşı</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {isAddMealModalOpen && (

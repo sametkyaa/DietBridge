@@ -66,6 +66,8 @@ const SOURCES = [
   'features/meal-plans/services/mealPhotoService.ts',
   'features/meal-plans/services/mealPlanService.ts',
   'features/meal-plans/services/mealPlanReadModel.ts',
+  'features/meal-plans/utils/mealPlanMove.ts',
+  'features/meal-plans/utils/mealPlanPayload.ts',
   'features/auth/services/authLifecycle.ts',
   'features/recipes/services/recipeService.ts',
   'features/recipes/utils/filterRecipes.ts',
@@ -121,6 +123,8 @@ const EXPECTED_OUTPUTS = [
   'features/meal-plans/services/mealPhotoService.js',
   'features/meal-plans/services/mealPlanService.js',
   'features/meal-plans/services/mealPlanReadModel.js',
+  'features/meal-plans/utils/mealPlanMove.js',
+  'features/meal-plans/utils/mealPlanPayload.js',
   'features/auth/services/authLifecycle.js',
   'features/recipes/services/recipeService.js',
   'features/recipes/utils/filterRecipes.js',
@@ -271,6 +275,7 @@ fs.readFileSync = (file, ...args) => {
 const testFiles = [
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealPlanCrossDaySaveContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mealPlanMoveContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageReadContracts.test.cjs'),
@@ -297,6 +302,8 @@ const testFiles = [
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
+  : process.argv.includes('--meal-plan-move-only')
+    ? [join(repoRoot, 'tests', 'mealPlanMoveContracts.test.cjs')]
   : process.argv.includes('--chat-only')
     ? testFiles.filter((file) => /chat(?:Contracts|Image|ScrollLifecycle)/i.test(file))
   : process.argv.includes('--daily-tasks-only')
