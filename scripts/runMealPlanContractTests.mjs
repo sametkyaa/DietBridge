@@ -68,6 +68,7 @@ const SOURCES = [
   'features/meal-plans/services/mealPlanReadModel.ts',
   'features/meal-plans/utils/mealPlanMove.ts',
   'features/meal-plans/utils/mealPlanPayload.ts',
+  'features/meal-plans/utils/mealPlanSnapshotEdit.ts',
   'features/auth/services/authLifecycle.ts',
   'features/recipes/services/recipeService.ts',
   'features/recipes/utils/filterRecipes.ts',
@@ -125,6 +126,7 @@ const EXPECTED_OUTPUTS = [
   'features/meal-plans/services/mealPlanReadModel.js',
   'features/meal-plans/utils/mealPlanMove.js',
   'features/meal-plans/utils/mealPlanPayload.js',
+  'features/meal-plans/utils/mealPlanSnapshotEdit.js',
   'features/auth/services/authLifecycle.js',
   'features/recipes/services/recipeService.js',
   'features/recipes/utils/filterRecipes.js',
@@ -278,6 +280,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'mealPlanSnapshotEditContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealPlanNewRecipeCustomSnapshotContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealPlanMoveContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mealPlanStage3BContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageContracts.test.cjs'),
   join(repoRoot, 'tests', 'chatImageReadContracts.test.cjs'),
@@ -308,6 +311,8 @@ const selectedTestFiles = process.argv.includes('--appointments-only')
     ? [join(repoRoot, 'tests', 'mealPlanSnapshotEditContracts.test.cjs')]
   : process.argv.includes('--meal-plan-new-recipe-custom-snapshot-only')
     ? [join(repoRoot, 'tests', 'mealPlanNewRecipeCustomSnapshotContracts.test.cjs')]
+  : process.argv.includes('--meal-plan-stage3b-only')
+    ? [join(repoRoot, 'tests', 'mealPlanStage3BContracts.test.cjs')]
   : process.argv.includes('--meal-plan-move-only')
     ? [join(repoRoot, 'tests', 'mealPlanMoveContracts.test.cjs')]
   : process.argv.includes('--chat-only')

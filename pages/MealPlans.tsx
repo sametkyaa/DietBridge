@@ -50,6 +50,7 @@ import {
   cleanupFailedMealPhotoUploads,
   createMealPhotoLocalPreview,
   isCanonicalMealPhotoPath,
+  isReadableMealPhotoReference,
   processPendingMealPhotoCleanup,
   uploadMealPhoto,
   validateMealPhotoFile,
@@ -65,6 +66,7 @@ import {
 } from '../features/meal-plans/services/mealPlanReadModel';
 import {
   isCompletedMealContent,
+  isPlannedMealContent,
   moveMealPlanContent,
   parsePlannedMealDragSource,
   PLANNED_MEAL_DRAG_DATA_TYPE,
@@ -75,6 +77,12 @@ import {
   type PlannedMealContent,
 } from '../features/meal-plans/utils/mealPlanMove';
 import { buildWeeklyMealPlanPayload } from '../features/meal-plans/utils/mealPlanPayload';
+import {
+  applyMealPlanSnapshotEdit,
+  createMealPlanSnapshotDraft,
+  getMealPlanSnapshotEditUserMessage,
+  type MealPlanSnapshotDraft,
+} from '../features/meal-plans/utils/mealPlanSnapshotEdit';
 import {
   fetchRecipes,
   getRecipeUserMessage,
@@ -133,11 +141,51 @@ interface SaveNotification {
   variant: 'success' | 'error';
 }
 
+interface MealEditSession {
+  cell: MealPlanCellRef;
+  draft: MealPlanSnapshotDraft;
+  error: string | null;
+  initialImagePreview: string | null;
+}
+
 const DEFAULT_MEAL_ROWS: MealRow[] = [
   { id: 'm1', name: 'Kahvaltı', time: '08:00' },
   { id: 'm2', name: 'Öğle', time: '12:30' },
   { id: 'm3', name: 'Akşam', time: '19:00' },
 ];
+
+const MEAL_PHOTO_ERROR_MESSAGE = 'Lütfen en fazla 5 MiB boyutunda JPEG, PNG veya WebP görsel seçin.';
+
+const isLocalObjectUrl = (value: string | null | undefined): value is string => (
+  typeof value === 'string' && value.startsWith('blob:')
+);
+
+const revokeLocalPreviewUrl = (value: string | null | undefined): void => {
+  if (isLocalObjectUrl(value)) URL.revokeObjectURL(value);
+};
+
+const revokeMealContentPreview = (content: PlannedMealContent | null | undefined): void => {
+  revokeLocalPreviewUrl(content?.imagePreview);
+};
+
+const revokePlanLocalPreviews = (plan: PlanState): void => {
+  const revoked = new Set<string>();
+  Object.values(plan).forEach((dayPlan) => {
+    Object.values(dayPlan).forEach((content) => {
+      if (!isPlannedMealContent(content) || !isLocalObjectUrl(content.imagePreview) || revoked.has(content.imagePreview)) return;
+      revoked.add(content.imagePreview);
+      URL.revokeObjectURL(content.imagePreview);
+    });
+  });
+};
+
+const getMealImageSource = (content: PlannedMealContent): string | null => {
+  if (content.imagePreview) return content.imagePreview;
+  if (isReadableMealPhotoReference(content.image) && !isCanonicalMealPhotoPath(content.image)) {
+    return content.image;
+  }
+  return null;
+};
 
 type MealPlanReadMeal = Omit<CanonicalMeal, 'plan_id'>;
 type MealPlanReadDay = Omit<CanonicalDailyMealPlan, 'meals'> & { meals: MealPlanReadMeal[] };
@@ -247,9 +295,11 @@ const createPreviousWeekCopy = (
         image: meal.photo_url,
         imagePreview: null,
         calories: meal.calories ?? 0,
+        description: meal.description,
         macros: meal.macros,
         source: meal.source,
         recipeId: meal.recipe_id,
+        snapshotMode: meal.source === 'recipe' ? 'custom' : undefined,
         isEaten: false,
       };
     });
@@ -302,6 +352,8 @@ const MealPlans = () => {
   const [meals, setMeals] = useState<MealRow[]>(DEFAULT_MEAL_ROWS);
 
   const [weeklyPlan, setWeeklyPlan] = useState<PlanState>({});
+  const weeklyPlanRef = useRef<PlanState>({});
+  weeklyPlanRef.current = weeklyPlan;
 
   // Modal State
   const [isAddMealModalOpen, setIsAddMealModalOpen] = useState(false);
@@ -318,6 +370,10 @@ const MealPlans = () => {
   const [moveTargetMealId, setMoveTargetMealId] = useState('');
   const [moveFeedback, setMoveFeedback] = useState<string | null>(null);
   const moveTargetDaySelectRef = useRef<HTMLSelectElement | null>(null);
+  const [mealDetailCell, setMealDetailCell] = useState<MealPlanCellRef | null>(null);
+  const [mealEditSession, setMealEditSession] = useState<MealEditSession | null>(null);
+  const mealEditSessionRef = useRef<MealEditSession | null>(null);
+  mealEditSessionRef.current = mealEditSession;
   const [customMealText, setCustomMealText] = useState('');
   const [customMealCalories, setCustomMealCalories] = useState('');
   const [customMealProtein, setCustomMealProtein] = useState('');
@@ -325,6 +381,9 @@ const MealPlans = () => {
   const [customMealFat, setCustomMealFat] = useState('');
   const [customMealPhoto, setCustomMealPhoto] = useState<File | null>(null);
   const [customMealPhotoPreview, setCustomMealPhotoPreview] = useState<string | null>(null);
+  const customMealPhotoPreviewRef = useRef<string | null>(null);
+  customMealPhotoPreviewRef.current = customMealPhotoPreview;
+  const [customMealError, setCustomMealError] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoCleanupWarning, setPhotoCleanupWarning] = useState<string | null>(null);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -416,8 +475,15 @@ const MealPlans = () => {
   const loadWeeklyPlan = useCallback(async () => {
     const requestId = ++planRequestRef.current;
     if (!selectedClient || !dietitianId) {
+      revokePlanLocalPreviews(weeklyPlanRef.current);
+      const activeEditSession = mealEditSessionRef.current;
+      if (activeEditSession && activeEditSession.draft.imagePreview !== activeEditSession.initialImagePreview) {
+        revokeLocalPreviewUrl(activeEditSession.draft.imagePreview);
+      }
       setWeeklyPlan({});
       setPlanNotes({});
+      setMealDetailCell(null);
+      setMealEditSession(null);
       setIsPlanEmpty(false);
       setPlanError(null);
       setIsLoadingPlan(false);
@@ -431,6 +497,13 @@ const MealPlans = () => {
     };
     setIsLoadingPlan(true);
     setPlanError(null);
+    revokePlanLocalPreviews(weeklyPlanRef.current);
+    const activeEditSession = mealEditSessionRef.current;
+    if (activeEditSession && activeEditSession.draft.imagePreview !== activeEditSession.initialImagePreview) {
+      revokeLocalPreviewUrl(activeEditSession.draft.imagePreview);
+    }
+    setMealDetailCell(null);
+    setMealEditSession(null);
     setWeeklyPlan({});
     try {
       const plans = await fetchWeeklyMealPlan(
@@ -521,6 +594,35 @@ const MealPlans = () => {
     if (moveSelectorSource) moveTargetDaySelectRef.current?.focus();
   }, [moveSelectorSource]);
 
+  useEffect(() => () => {
+    revokePlanLocalPreviews(weeklyPlanRef.current);
+    const editSession = mealEditSessionRef.current;
+    if (editSession && editSession.draft.imagePreview !== editSession.initialImagePreview) {
+      revokeLocalPreviewUrl(editSession.draft.imagePreview);
+    }
+    revokeLocalPreviewUrl(customMealPhotoPreviewRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!mealDetailCell && !mealEditSession) return undefined;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (mealEditSession) {
+        if (mealEditSession.draft.imagePreview !== mealEditSession.initialImagePreview) {
+          revokeLocalPreviewUrl(mealEditSession.draft.imagePreview);
+        }
+        setMealEditSession(null);
+      } else {
+        setMealDetailCell(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [mealDetailCell, mealEditSession]);
+
   const hasEditorMeals = Object.values(weeklyPlan)
     .some((day) => Object.values(day).some(Boolean));
   const filteredRecipes = useMemo(
@@ -530,7 +632,145 @@ const MealPlans = () => {
 
   const categoryCounts = useMemo(() => countRecipesByCategory(recipes), [recipes]);
 
+  const clearCustomMealForm = (revokePhoto = true) => {
+    if (revokePhoto) revokeLocalPreviewUrl(customMealPhotoPreview);
+    setCustomMealText('');
+    setCustomMealCalories('');
+    setCustomMealProtein('');
+    setCustomMealCarbs('');
+    setCustomMealFat('');
+    setCustomMealPhoto(null);
+    setCustomMealPhotoPreview(null);
+    setCustomMealError(null);
+  };
+
+  const closeMealEdit = () => {
+    const session = mealEditSessionRef.current;
+    if (session && session.draft.imagePreview !== session.initialImagePreview) {
+      revokeLocalPreviewUrl(session.draft.imagePreview);
+    }
+    setMealEditSession(null);
+  };
+
+  const openMealDetail = (cell: MealPlanCellRef) => {
+    const content = weeklyPlan[cell.day]?.[cell.mealId];
+    if (!isPlannedMealContent(content)) return;
+    clearCustomMealForm();
+    closeMealEdit();
+    setActiveCell(null);
+    setMealDetailCell(cell);
+  };
+
+  const openMealEdit = (cell: MealPlanCellRef) => {
+    const content = weeklyPlan[cell.day]?.[cell.mealId];
+    if (!isPlannedMealContent(content)) return;
+    if (isCompletedMealContent(content)) {
+      showSaveNotification('Tamamlanmış bir öğünün içeriği değiştirilemez.', 'error');
+      return;
+    }
+
+    setMealDetailCell(null);
+    setActiveCell(null);
+    setMealEditSession({
+      cell,
+      draft: createMealPlanSnapshotDraft(content),
+      error: null,
+      initialImagePreview: content.imagePreview ?? null,
+    });
+  };
+
+  const handlePlannedMealCardKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    cell: MealPlanCellRef,
+  ) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      event.stopPropagation();
+      openMealDetail(cell);
+    }
+  };
+
+  const updateMealEditDraft = (
+    field: 'name' | 'description' | 'calories' | 'protein' | 'carbs' | 'fat',
+    value: string,
+  ) => {
+    setMealEditSession((session) => session ? {
+      ...session,
+      error: null,
+      draft: { ...session.draft, [field]: value },
+    } : session);
+  };
+
+  const handleMealEditPhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !mealEditSession) return;
+
+    try {
+      validateMealPhotoFile(file);
+      const imagePreview = createMealPhotoLocalPreview(file);
+      if (mealEditSession.draft.imagePreview !== mealEditSession.initialImagePreview) {
+        revokeLocalPreviewUrl(mealEditSession.draft.imagePreview);
+      }
+      setMealEditSession({
+        ...mealEditSession,
+        error: null,
+        draft: {
+          ...mealEditSession.draft,
+          image: null,
+          imagePreview,
+          pendingPhoto: file,
+        },
+      });
+    } catch {
+      setMealEditSession({ ...mealEditSession, error: MEAL_PHOTO_ERROR_MESSAGE });
+    }
+  };
+
+  const handleMealEditRemovePhoto = () => {
+    if (!mealEditSession) return;
+    if (mealEditSession.draft.imagePreview !== mealEditSession.initialImagePreview) {
+      revokeLocalPreviewUrl(mealEditSession.draft.imagePreview);
+    }
+    setMealEditSession({
+      ...mealEditSession,
+      error: null,
+      draft: {
+        ...mealEditSession.draft,
+        image: null,
+        imagePreview: null,
+        pendingPhoto: null,
+      },
+    });
+  };
+
+  const handleApplyMealEdit = () => {
+    if (!mealEditSession) return;
+    const result = applyMealPlanSnapshotEdit(weeklyPlan, mealEditSession.cell, mealEditSession.draft);
+    if (result.status === 'invalid') {
+      setMealEditSession({ ...mealEditSession, error: getMealPlanSnapshotEditUserMessage(result.error) });
+      return;
+    }
+    if (result.status === 'stale' || result.status === 'blocked') {
+      setMealEditSession({ ...mealEditSession, error: result.message });
+      return;
+    }
+
+    const currentContent = weeklyPlan[mealEditSession.cell.day]?.[mealEditSession.cell.mealId];
+    if (isPlannedMealContent(currentContent)
+      && currentContent.imagePreview !== mealEditSession.draft.imagePreview) {
+      revokeMealContentPreview(currentContent);
+    }
+    setWeeklyPlan(result.nextPlan);
+    setMealEditSession(null);
+    setMealDetailCell(null);
+  };
+
   const applyPreviousWeekCopy = (copy: NonNullable<typeof copyConfirmation>) => {
+    revokePlanLocalPreviews(weeklyPlanRef.current);
+    closeMealEdit();
+    setMealDetailCell(null);
+    clearCustomMealForm();
     setMeals(copy.meals);
     setWeeklyPlan(copy.weeklyPlan);
     setPlanNotes(copy.planNotes);
@@ -589,21 +829,14 @@ const MealPlans = () => {
     const currentContent = weeklyPlan[day]?.[mealId];
 
     if (activeCell?.day === day && activeCell?.mealId === mealId) {
-      setActiveCell(null); 
-      setCustomMealText('');
-      setCustomMealCalories('');
-      setCustomMealProtein('');
-      setCustomMealCarbs('');
-      setCustomMealFat('');
-      setCustomMealPhoto(null);
-      setCustomMealPhotoPreview(null);
+      setActiveCell(null);
+      clearCustomMealForm();
     } else {
+      clearCustomMealForm();
       setActiveCell({ day, mealId });
       // If the cell has string content, pre-fill the input
       if (typeof currentContent === 'string') {
         setCustomMealText(currentContent);
-      } else {
-        setCustomMealText('');
       }
     }
   };
@@ -690,16 +923,19 @@ const MealPlans = () => {
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      try {
-        validateMealPhotoFile(file);
-      } catch {
-        alert('Lütfen en fazla 5 MiB boyutunda JPEG, PNG veya WebP görsel seçin.');
-        return;
-      }
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    try {
+      validateMealPhotoFile(file);
+      const preview = createMealPhotoLocalPreview(file);
+      revokeLocalPreviewUrl(customMealPhotoPreview);
       setCustomMealPhoto(file);
-      setCustomMealPhotoPreview(createMealPhotoLocalPreview(file));
+      setCustomMealPhotoPreview(preview);
+      setCustomMealError(null);
+    } catch {
+      setCustomMealError(MEAL_PHOTO_ERROR_MESSAGE);
     }
   };
 
@@ -726,7 +962,7 @@ const MealPlans = () => {
         fat: readManualMacro(customMealFat, 'fat'),
       });
     } catch (error) {
-      alert(getMealPlanUserMessage(error));
+      setCustomMealError(getMealPlanUserMessage(error));
       return;
     }
 
@@ -759,6 +995,7 @@ const MealPlans = () => {
     setCustomMealFat('');
     setCustomMealPhoto(null);
     setCustomMealPhotoPreview(null);
+    setCustomMealError(null);
   };
 
   const handleAddRecipeToActiveCell = (recipe: Recipe) => {
@@ -766,11 +1003,19 @@ const MealPlans = () => {
       setRecipeSelectionInfo('Önce plandan bir öğün hücresi seçin.');
       return;
     }
-    addRecipeToMealCell(recipe, activeCell.day, activeCell.mealId);
+    if (!addRecipeToMealCell(recipe, activeCell.day, activeCell.mealId)) return;
     setRecipeSelectionInfo(`“${recipe.name}” seçili öğün hücresine eklendi.`);
   };
 
-  const addRecipeToMealCell = (recipe: Recipe, day: string, mealId: string) => {
+  const addRecipeToMealCell = (recipe: Recipe, day: string, mealId: string): boolean => {
+    const previousContent = weeklyPlan[day]?.[mealId];
+    if (isCompletedMealContent(previousContent)) {
+      setMoveFeedback('Tamamlanmış bir öğünün içeriği değiştirilemez.');
+      return false;
+    }
+    if (isPlannedMealContent(previousContent)) {
+      revokeMealContentPreview(previousContent);
+    }
     setWeeklyPlan((previous) => ({
       ...previous,
       [day]: {
@@ -793,6 +1038,7 @@ const MealPlans = () => {
         },
       },
     }));
+    return true;
   };
 
   const handleRecipeDragStart = (event: React.DragEvent<HTMLButtonElement>, recipeId: string) => {
@@ -853,7 +1099,7 @@ const MealPlans = () => {
       setRecipeSelectionInfo('Tarif bulunamadı. Lütfen listeyi yenileyin.');
       return;
     }
-    addRecipeToMealCell(recipe, day, mealId);
+    if (!addRecipeToMealCell(recipe, day, mealId)) return;
     setMoveFeedback(null);
     const mealRow = meals.find((meal) => meal.id === mealId);
     setRecipeSelectionInfo(`“${recipe.name}” ${day} ${mealRow?.name ?? ''} hücresine eklendi.`);
@@ -861,6 +1107,12 @@ const MealPlans = () => {
 
   const handleClearCell = (e: React.MouseEvent, day: string, mealId: string) => {
     e.stopPropagation();
+    const currentContent = weeklyPlan[day]?.[mealId];
+    if (isCompletedMealContent(currentContent)) {
+      showSaveNotification('Tamamlanmış bir öğünün içeriği değiştirilemez.', 'error');
+      return;
+    }
+    revokeMealContentPreview(isPlannedMealContent(currentContent) ? currentContent : null);
     setWeeklyPlan(prev => {
       // Create a deep copy for the day being modified
       const newPlan = { ...prev };
@@ -873,7 +1125,8 @@ const MealPlans = () => {
     
     // If clearing the active cell, reset the custom text input too
     if (activeCell?.day === day && activeCell?.mealId === mealId) {
-        setCustomMealText('');
+        setActiveCell(null);
+        clearCustomMealForm();
     }
   };
 
@@ -918,7 +1171,18 @@ const MealPlans = () => {
   const executeRemoveMeal = () => {
     if (!mealToDelete) return;
     const mealId = mealToDelete;
-    
+
+    const removedPreviewUrls = new Set<string>();
+    Object.values(weeklyPlan).forEach((dayPlan) => {
+      const content = dayPlan[mealId];
+      if (isPlannedMealContent(content) && isLocalObjectUrl(content.imagePreview)) {
+        removedPreviewUrls.add(content.imagePreview);
+      }
+    });
+    removedPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+    if (mealEditSession?.cell.mealId === mealId) closeMealEdit();
+    if (mealDetailCell?.mealId === mealId) setMealDetailCell(null);
+
     setMeals(prevMeals => prevMeals.filter(m => m.id !== mealId));
     
     setWeeklyPlan(prevPlan => {
@@ -937,13 +1201,7 @@ const MealPlans = () => {
 
     if (activeCell?.mealId === mealId) {
       setActiveCell(null);
-      setCustomMealText('');
-      setCustomMealCalories('');
-      setCustomMealProtein('');
-      setCustomMealCarbs('');
-      setCustomMealFat('');
-      setCustomMealPhoto(null);
-      setCustomMealPhotoPreview(null);
+      clearCustomMealForm();
     }
     setMealToDelete(null);
   };
@@ -1048,6 +1306,7 @@ const MealPlans = () => {
         savedWeek.plans.flatMap((plan) => plan.meals.map((meal) => meal.photo_url)),
       );
       const editor = mapCanonicalPlansToEditor(savedWeek.plans, normalizedWeekStart, photoPreviews, rowNamesByPlacement);
+      revokePlanLocalPreviews(weeklyPlanRef.current);
       setMeals(editor.meals);
       setWeeklyPlan(editor.weeklyPlan);
       setPlanNotes(editor.planNotes);
@@ -1071,6 +1330,19 @@ const MealPlans = () => {
       setIsSaving(false);
     }
   };
+
+  const detailContent = mealDetailCell
+    ? weeklyPlan[mealDetailCell.day]?.[mealDetailCell.mealId]
+    : null;
+  const detailMealRow = mealDetailCell
+    ? meals.find((meal) => meal.id === mealDetailCell.mealId)
+    : undefined;
+  const editImageSource = mealEditSession
+    ? mealEditSession.draft.imagePreview
+      ?? (isReadableMealPhotoReference(mealEditSession.draft.image) && !isCanonicalMealPhotoPath(mealEditSession.draft.image)
+        ? mealEditSession.draft.image
+        : null)
+    : null;
 
   return (
     <div className="flex h-[100dvh] bg-background-light overflow-hidden">
@@ -1255,7 +1527,7 @@ const MealPlans = () => {
                {/* Grid Controls */}
                <div className="flex justify-between items-center mb-6 flex-shrink-0">
                   <div className="flex gap-2">
-                    <button onClick={() => { setWeeklyPlan({}); setPlanNotes({}); }} className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-sm font-medium shadow-sm">
+                     <button onClick={() => { revokePlanLocalPreviews(weeklyPlanRef.current); closeMealEdit(); setMealDetailCell(null); clearCustomMealForm(); setWeeklyPlan({}); setPlanNotes({}); }} className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-sm font-medium shadow-sm">
                       <Trash2 className="w-4 h-4" /> Temizle
                     </button>
                     <button type="button" onClick={() => void handleCopyPreviousWeek()} disabled={isCopyingPreviousWeek} className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
@@ -1370,9 +1642,10 @@ const MealPlans = () => {
                        {DAYS.map(day => {
                          const cellContent = weeklyPlan[day]?.[meal.id];
                          const isActive = activeCell?.day === day && activeCell?.mealId === meal.id;
-                         const isCompleted = isCompletedMealContent(cellContent);
-                         const isDraggedSource = draggedMeal?.day === day && draggedMeal?.mealId === meal.id;
-                         const isInvalidMoveTarget = draggedMeal !== null && isCompleted;
+                          const isCompleted = isCompletedMealContent(cellContent);
+                          const isDraggedSource = draggedMeal?.day === day && draggedMeal?.mealId === meal.id;
+                          const isInvalidMoveTarget = draggedMeal !== null && isCompleted;
+                          const mealImageSource = isPlannedMealContent(cellContent) ? getMealImageSource(cellContent) : null;
 
                          return (
                            <div
@@ -1402,12 +1675,45 @@ const MealPlans = () => {
                                   </button>
                                  {cellContent}
                                </div>
-                             ) : (
-                               // Manual meal content
-                               <div className={`h-full bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex flex-col gap-2 relative group/card animate-in zoom-in-95 duration-200 ${isDraggedSource ? 'opacity-60' : ''}`}>
-                                  <button
-                                    type="button"
-                                    draggable={!isCompleted}
+                              ) : (
+                                // Manual meal content
+                                <div className={`h-full bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex flex-col gap-2 relative group/card animate-in zoom-in-95 duration-200 ${isDraggedSource ? 'opacity-60' : ''}`}>
+                                   <button
+                                     type="button"
+                                     onClick={(event) => {
+                                       event.stopPropagation();
+                                       openMealDetail({ day, mealId: meal.id });
+                                     }}
+                                     onKeyDown={(event) => handlePlannedMealCardKeyDown(event, { day, mealId: meal.id })}
+                                     aria-label={`Öğün detayını aç: ${cellContent.name}`}
+                                     className="flex min-h-0 w-full flex-1 flex-col gap-2 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-primary/40"
+                                   >
+                                     <div className="h-20 w-full rounded-lg overflow-hidden relative bg-slate-100 flex items-center justify-center">
+                                        {mealImageSource ? (
+                                            <img
+                                              src={mealImageSource}
+                                              alt={cellContent.name}
+                                              className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <span className="text-slate-400 text-xs font-medium px-2 text-center">{cellContent.name}</span>
+                                        )}
+                                        {mealImageSource && (
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2">
+                                               <p className="text-white text-[10px] font-bold line-clamp-1">{cellContent.name}</p>
+                                            </div>
+                                        )}
+                                     </div>
+                                     <div className="flex justify-between items-center px-1">
+                                        <span className="text-[10px] font-bold text-orange-500 flex items-center gap-0.5">
+                                          <Flame className="w-3 h-3" /> {cellContent.calories || 0}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">{cellContent.macros.protein}g Prot</span>
+                                     </div>
+                                   </button>
+                                   <button
+                                     type="button"
+                                     draggable={!isCompleted}
                                     disabled={isCompleted}
                                     onClick={(event) => {
                                       event.stopPropagation();
@@ -1421,37 +1727,32 @@ const MealPlans = () => {
                                     title={isCompleted ? 'Tamamlanmış öğün taşınamaz' : 'Öğünü taşı'}
                                     className={`absolute left-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg border shadow-sm transition-opacity focus:outline-none focus:ring-2 focus:ring-primary/40 ${isCompleted ? 'cursor-not-allowed border-slate-200 bg-slate-100/90 text-slate-300' : 'cursor-grab border-white/80 bg-white/90 text-slate-500 hover:text-primary active:cursor-grabbing sm:opacity-0 sm:group-hover/card:opacity-100'}`}
                                   >
-                                    <GripVertical className="h-4 w-4" aria-hidden="true" />
-                                  </button>
-                                  <button 
-                                    onClick={(e) => handleClearCell(e, day, meal.id)}
-                                    className="absolute -top-1.5 -right-1.5 bg-white text-slate-400 hover:text-red-500 border border-slate-200 rounded-full p-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity shadow-sm z-20"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                  <div className="h-20 w-full rounded-lg overflow-hidden relative bg-slate-100 flex items-center justify-center">
-                                     {(cellContent.imagePreview ?? ((isCanonicalMealPhotoPath(cellContent.image) || isCanonicalRecipeImagePath(cellContent.image)) ? null : cellContent.image)) ? (
-                                         <img
-                                           src={cellContent.imagePreview ?? ((isCanonicalMealPhotoPath(cellContent.image) || isCanonicalRecipeImagePath(cellContent.image)) ? '' : cellContent.image ?? '')}
-                                           alt={cellContent.name}
-                                           className="w-full h-full object-cover"
-                                         />
-                                     ) : (
-                                         <span className="text-slate-400 text-xs font-medium px-2 text-center">{cellContent.name}</span>
-                                     )}
-                                     {(cellContent.imagePreview ?? ((isCanonicalMealPhotoPath(cellContent.image) || isCanonicalRecipeImagePath(cellContent.image)) ? null : cellContent.image)) && (
-                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2">
-                                            <p className="text-white text-[10px] font-bold line-clamp-1">{cellContent.name}</p>
-                                         </div>
-                                     )}
-                                  </div>
-                                  <div className="flex justify-between items-center px-1">
-                                     <span className="text-[10px] font-bold text-orange-500 flex items-center gap-0.5">
-                                       <Flame className="w-3 h-3" /> {cellContent.calories || 0}
-                                     </span>
-                                     <span className="text-[10px] text-slate-400">{cellContent.macros.protein}g Prot</span>
-                                  </div>
-                               </div>
+                                     <GripVertical className="h-4 w-4" aria-hidden="true" />
+                                   </button>
+                                   <button
+                                     type="button"
+                                     disabled={isCompleted}
+                                     onClick={(event) => {
+                                       event.stopPropagation();
+                                       openMealEdit({ day, mealId: meal.id });
+                                     }}
+                                     aria-label={isCompleted ? 'Tamamlanmış öğünün içeriği değiştirilemez' : `${cellContent.name} öğününü düzenle`}
+                                     title={isCompleted ? 'Tamamlanmış öğünün içeriği değiştirilemez' : 'Öğünü düzenle'}
+                                     className="absolute right-9 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg border border-white/80 bg-white/90 text-slate-500 shadow-sm transition-colors hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:text-slate-300"
+                                   >
+                                     <Edit2 className="h-4 w-4" aria-hidden="true" />
+                                   </button>
+                                   <button
+                                     type="button"
+                                     disabled={isCompleted}
+                                     onClick={(e) => handleClearCell(e, day, meal.id)}
+                                     aria-label={isCompleted ? 'Tamamlanmış öğün silinemez' : `${cellContent.name} öğününü plandan kaldır`}
+                                     title={isCompleted ? 'Tamamlanmış öğün silinemez' : 'Öğünü kaldır'}
+                                     className="absolute -right-1.5 -top-1.5 z-20 rounded-full border border-slate-200 bg-white p-0.5 text-slate-400 opacity-0 shadow-sm transition-opacity hover:text-red-500 group-hover/card:opacity-100 disabled:cursor-not-allowed disabled:text-slate-300"
+                                   >
+                                     <X className="w-3 h-3" />
+                                   </button>
+                                </div>
                              )}
                            </div>
                          );
@@ -1523,11 +1824,12 @@ const MealPlans = () => {
               {/* Manual Entry Section (Visible when cell is active) */}
               {activeCell && (
                 <div className="mb-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 animate-in slide-in-from-right-4 duration-300">
-                   <div className="flex items-center gap-2 mb-2 text-indigo-700 font-bold text-xs uppercase tracking-wide">
+                    <div className="flex items-center gap-2 mb-2 text-indigo-700 font-bold text-xs uppercase tracking-wide">
                       <Edit2 className="w-3 h-3" />
                       Manuel Ekleme / Düzenleme
-                   </div>
-                   <div className="flex flex-col gap-3">
+                    </div>
+                    {customMealError && <p className="mb-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" role="alert">{customMealError}</p>}
+                    <div className="flex flex-col gap-3">
                       <input 
                         type="text"
                         value={customMealText}
@@ -1575,10 +1877,11 @@ const MealPlans = () => {
                             <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-indigo-200 flex-shrink-0">
                                <img src={customMealPhotoPreview} className="w-full h-full object-cover" />
                                <button 
-                                 onClick={() => {
-                                    setCustomMealPhoto(null);
-                                    setCustomMealPhotoPreview(null);
-                                 }}
+                                  onClick={() => {
+                                     revokeLocalPreviewUrl(customMealPhotoPreview);
+                                     setCustomMealPhoto(null);
+                                     setCustomMealPhotoPreview(null);
+                                  }}
                                  className="absolute -top-1 -right-1 bg-white rounded-full text-red-500 shadow-sm"
                                >
                                  <X className="w-4 h-4" />
@@ -1704,8 +2007,165 @@ const MealPlans = () => {
              </div>
            </div>
         </div>
-        </div>
+       </div>
       </aside>
+
+      {mealDetailCell && isPlannedMealContent(detailContent) && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setMealDetailCell(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="meal-detail-dialog-title"
+            className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between border-b border-slate-100 p-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Öğün Detayı</p>
+                <h2 id="meal-detail-dialog-title" className="mt-1 text-xl font-bold text-slate-800">{detailContent.name}</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {detailMealRow?.name ?? 'Öğün'} · {detailMealRow?.time ?? '--:--'} · {mealDetailCell.day}
+                </p>
+              </div>
+              <button type="button" onClick={() => setMealDetailCell(null)} aria-label="Öğün detayını kapat" className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-5 p-5">
+              {getMealImageSource(detailContent) ? (
+                <img src={getMealImageSource(detailContent) ?? ''} alt={detailContent.name} className="h-48 w-full rounded-xl object-cover" />
+              ) : (
+                <div className="flex h-32 items-center justify-center rounded-xl bg-slate-100 px-4 text-center text-sm font-semibold text-slate-400">Görsel eklenmemiş</div>
+              )}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-xl bg-orange-50 p-3">
+                  <p className="text-[11px] font-semibold text-orange-700">Kalori</p>
+                  <p className="mt-1 text-sm font-bold text-slate-800">{detailContent.calories == null ? '—' : `${detailContent.calories} kcal`}</p>
+                </div>
+                <div className="rounded-xl bg-emerald-50 p-3">
+                  <p className="text-[11px] font-semibold text-emerald-700">Protein</p>
+                  <p className="mt-1 text-sm font-bold text-slate-800">{detailContent.macros.protein} g</p>
+                </div>
+                <div className="rounded-xl bg-sky-50 p-3">
+                  <p className="text-[11px] font-semibold text-sky-700">Karbonhidrat</p>
+                  <p className="mt-1 text-sm font-bold text-slate-800">{detailContent.macros.carbs} g</p>
+                </div>
+                <div className="rounded-xl bg-violet-50 p-3">
+                  <p className="text-[11px] font-semibold text-violet-700">Yağ</p>
+                  <p className="mt-1 text-sm font-bold text-slate-800">{detailContent.macros.fat} g</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Açıklama</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{detailContent.description || 'Açıklama eklenmemiş.'}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-500">
+                <span className="rounded-full bg-slate-100 px-3 py-1.5">{detailContent.source === 'recipe' ? (detailContent.recipeId ? 'Tariften eklendi' : 'Tarif snapshotı') : 'Manuel öğün'}</span>
+                {detailContent.isEaten && <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-700">Tamamlandı</span>}
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-100 p-5">
+              <button type="button" onClick={() => setMealDetailCell(null)} className="min-h-11 rounded-lg px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700">Kapat</button>
+              <button
+                type="button"
+                disabled={detailContent.isEaten === true}
+                onClick={() => openMealEdit(mealDetailCell)}
+                title={detailContent.isEaten === true ? 'Tamamlanmış öğünün içeriği değiştirilemez' : 'Öğünü düzenle'}
+                className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Düzenle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mealEditSession && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="meal-edit-dialog-title"
+            className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+          >
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleApplyMealEdit();
+              }}
+            >
+              <div className="flex items-start justify-between border-b border-slate-100 p-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">Öğün Snapshot Düzenleme</p>
+                  <h2 id="meal-edit-dialog-title" className="mt-1 text-xl font-bold text-slate-800">Öğün İçeriğini Düzenle</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {mealEditSession.cell.day} · {meals.find((meal) => meal.id === mealEditSession.cell.mealId)?.name ?? 'Öğün'} · {meals.find((meal) => meal.id === mealEditSession.cell.mealId)?.time ?? '--:--'}
+                  </p>
+                </div>
+                <button type="button" onClick={closeMealEdit} aria-label="Öğün düzenlemeyi kapat" className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-4 p-5">
+                {mealEditSession.error && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{mealEditSession.error}</p>}
+                <div>
+                  <label htmlFor="meal-edit-name" className="mb-1.5 block text-sm font-bold text-slate-700">Öğün adı</label>
+                  <input id="meal-edit-name" type="text" value={mealEditSession.draft.name} onChange={(event) => updateMealEditDraft('name', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                </div>
+                <div>
+                  <label htmlFor="meal-edit-description" className="mb-1.5 block text-sm font-bold text-slate-700">Açıklama</label>
+                  <textarea id="meal-edit-description" value={mealEditSession.draft.description} onChange={(event) => updateMealEditDraft('description', event.target.value)} rows={3} className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div>
+                    <label htmlFor="meal-edit-calories" className="mb-1.5 block text-xs font-bold text-slate-700">Kalori</label>
+                    <input id="meal-edit-calories" type="number" min="0" max="100000" step="1" inputMode="numeric" value={mealEditSession.draft.calories} onChange={(event) => updateMealEditDraft('calories', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                  <div>
+                    <label htmlFor="meal-edit-protein" className="mb-1.5 block text-xs font-bold text-slate-700">Protein (g)</label>
+                    <input id="meal-edit-protein" type="number" min="0" max="10000" step="any" inputMode="decimal" value={mealEditSession.draft.protein} onChange={(event) => updateMealEditDraft('protein', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                  <div>
+                    <label htmlFor="meal-edit-carbs" className="mb-1.5 block text-xs font-bold text-slate-700">Karb. (g)</label>
+                    <input id="meal-edit-carbs" type="number" min="0" max="10000" step="any" inputMode="decimal" value={mealEditSession.draft.carbs} onChange={(event) => updateMealEditDraft('carbs', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                  <div>
+                    <label htmlFor="meal-edit-fat" className="mb-1.5 block text-xs font-bold text-slate-700">Yağ (g)</label>
+                    <input id="meal-edit-fat" type="number" min="0" max="10000" step="any" inputMode="decimal" value={mealEditSession.draft.fat} onChange={(event) => updateMealEditDraft('fat', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-1.5 block text-sm font-bold text-slate-700">Görsel</p>
+                  {editImageSource ? (
+                    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+                      <img src={editImageSource} alt="Öğün önizlemesi" className="h-44 w-full object-cover" />
+                      <button type="button" onClick={handleMealEditRemovePhoto} className="absolute right-2 top-2 inline-flex min-h-10 items-center gap-1 rounded-lg bg-white/95 px-3 text-xs font-bold text-rose-600 shadow-sm hover:bg-white"><X className="h-3.5 w-3.5" /> Kaldır</button>
+                    </div>
+                  ) : (
+                    <div className="flex min-h-28 items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 text-sm text-slate-400">Görsel eklenmemiş</div>
+                  )}
+                  <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 hover:border-primary hover:text-primary">
+                    <Upload className="h-4 w-4" />
+                    {editImageSource ? 'Görseli değiştir' : 'Görsel ekle'}
+                    <input type="file" accept="image/jpeg, image/png, image/webp" className="hidden" onChange={handleMealEditPhotoChange} />
+                  </label>
+                </div>
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">Gün, öğün tipi, saat, kaynak, tarif ilişkisi ve tamamlanma durumu bu ekranda değiştirilemez.</p>
+              </div>
+              <div className="flex justify-end gap-3 border-t border-slate-100 p-5">
+                <button type="button" onClick={closeMealEdit} className="min-h-11 rounded-lg px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700">Vazgeç</button>
+                <button type="submit" className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-dark">Değişiklikleri Uygula</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {moveSelectorSource && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onKeyDown={handleMoveSelectorKeyDown}>
