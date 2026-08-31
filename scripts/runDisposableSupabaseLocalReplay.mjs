@@ -241,11 +241,11 @@ const assertExternalTempPath = ({ repoRoot, tempRoot }) => {
 };
 
 const assertManifestMatchesSourceInventory = ({ repoRoot, runtimeManifest }) => {
-  if (runtimeManifest.expectedHistory?.canonical !== 43
+  if (runtimeManifest.expectedHistory?.canonical !== 44
       || runtimeManifest.expectedHistory?.image !== 7
-      || runtimeManifest.expectedHistory?.total !== 50
-      || runtimeManifest.files?.length !== 50) {
-    throw new Error('Unexpected disposable migration inventory; expected 43 canonical and 7 image migrations.');
+      || runtimeManifest.expectedHistory?.total !== 51
+      || runtimeManifest.files?.length !== 51) {
+    throw new Error('Unexpected disposable migration inventory; expected 44 canonical and 7 image migrations.');
   }
 
   const sourcePaths = readdirSync(join(repoRoot, 'supabase', 'migrations'), { withFileTypes: true })
@@ -303,7 +303,7 @@ const assertDisposableMigrationInventory = ({ repositoryPaths, tempRoot, localPr
   if (localIndex === -1 || avatarPolicyIndex !== localIndex + 1) {
     throw new Error('Local prerequisite must appear immediately before the avatar policy migration.');
   }
-  if (repositoryPaths.length !== 50 || disposablePaths.length !== 51) {
+  if (repositoryPaths.length !== 51 || disposablePaths.length !== 52) {
     throw new Error(`Unexpected repository/disposable counts: ${repositoryPaths.length}/${disposablePaths.length}`);
   }
   return {

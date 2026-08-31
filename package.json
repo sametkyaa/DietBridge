@@ -16,6 +16,8 @@
     "test:core": "node scripts/runMealPlanContractTests.mjs",
     "test:backend": "node scripts/runBackendQualityGate.mjs",
     "test:meal-plan-snapshot-edit": "node scripts/runMealPlanContractTests.mjs --meal-plan-snapshot-edit-only",
+    "test:meal-plan-new-recipe-custom-snapshot": "node scripts/runMealPlanContractTests.mjs --meal-plan-new-recipe-custom-snapshot-only",
+    "test:meal-plan-new-recipe-custom-snapshot:runtime": "node scripts/runDisposableMealPlanCrossDaySaveRuntimeHarness.mjs",
     "test:meal-plan-snapshot-edit:runtime": "node scripts/runDisposableMealPlanCrossDaySaveRuntimeHarness.mjs",
     "test:meal-plan-cross-day:runtime": "node scripts/runDisposableMealPlanCrossDaySaveRuntimeHarness.mjs",
     "test:e2e": "node scripts/runCriticalE2E.mjs",

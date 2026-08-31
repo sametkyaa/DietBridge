@@ -19,7 +19,7 @@ import { addCurrentIsolatedMigrations } from './addCurrentIsolatedMigrations.mjs
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SUPABASE_VERSION = '2.110.0';
 const PASSWORD = 'Disposable-MealPlan-CrossDay-4m!';
-const NEW_MIGRATION = '20260830185101_meal_plan_snapshot_edit_contract.sql';
+const NEW_MIGRATION = '20260831071948_meal_plan_new_recipe_custom_snapshot_contract.sql';
 const projectId = 'dietbridge-meal-plan-' + process.pid + '-' + randomUUID().slice(0, 8);
 const npxCli = process.env.npm_execpath
   ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
@@ -317,6 +317,23 @@ const mealPayload = (row, overrides = {}) => ({
   source: overrides.source ?? row.source,
   recipe_id: Object.prototype.hasOwnProperty.call(overrides, 'recipe_id') ? overrides.recipe_id : row.recipe_id,
   photo_url: overrides.photo_url ?? row.photo_url,
+  ...(Object.prototype.hasOwnProperty.call(overrides, 'snapshot_mode')
+    ? { snapshot_mode: overrides.snapshot_mode }
+    : {}),
+});
+
+const newRecipePayload = (recipeId, overrides = {}) => ({
+  type: 'breakfast',
+  title: 'New recipe placement',
+  description: 'New recipe placement description',
+  calories: 500,
+  macros: { protein: 35, carbs: 45, fat: 15 },
+  time: '08:00',
+  sort_order: 0,
+  source: 'recipe',
+  recipe_id: recipeId,
+  photo_url: null,
+  ...overrides,
 });
 
 const weeklyPayload = (week, placements = new Map()) => week.dates.map((planDate, offset) => ({
@@ -553,6 +570,212 @@ const runFlows = async () => {
     && initialRecipeSnapshot.photo_url === recipe.image_path, 'NEW_RECIPE_FORGED_SNAPSHOT_IGNORED');
   const recipeAfterInitialPlacement = await readRecipe(recipe.id, 'recipe after initial placement');
   assert(JSON.stringify(recipeAfterInitialPlacement) === JSON.stringify(recipeBeforeInitialPlacement), 'NEW_RECIPE_PLACEMENT_DOES_NOT_MUTATE_MASTER');
+
+  const explicitMasterRecipe = await createRecipe(dietitianA, 'explicit-master');
+  const explicitMasterBefore = await readRecipe(explicitMasterRecipe.id, 'explicit master before placement');
+  const explicitMasterWeek = await createWeek(dietitianA, clientA, '2026-11-02', 'explicit recipe master');
+  const explicitMasterResponse = await saveWeek(
+    webDietitianA,
+    clientA.id,
+    explicitMasterWeek,
+    new Map([[
+      0,
+      [newRecipePayload(explicitMasterRecipe.id, {
+        snapshot_mode: 'recipe_master',
+        title: 'FORGED explicit master title',
+        description: 'FORGED explicit master description',
+        calories: 1,
+        macros: { protein: 1, carbs: 1, fat: 1 },
+      })],
+    ]]),
+    'explicit recipe master placement',
+  );
+  const explicitMasterMealId = explicitMasterResponse.plans
+    .flatMap((plan) => plan.meals ?? [])
+    .find((meal) => meal.source === 'recipe' && meal.recipe_id === explicitMasterRecipe.id)?.id;
+  assert(Boolean(explicitMasterMealId), 'EXPLICIT_RECIPE_MASTER_RETURNS_MEAL_ID');
+  mealIds.push(explicitMasterMealId);
+  const explicitMasterSnapshot = await readMeal(explicitMasterMealId, 'explicit master snapshot read');
+  assert(explicitMasterSnapshot.title === explicitMasterRecipe.name
+    && explicitMasterSnapshot.description === explicitMasterRecipe.description
+    && explicitMasterSnapshot.calories === explicitMasterRecipe.calories
+    && explicitMasterSnapshot.macros.protein === explicitMasterRecipe.protein
+    && explicitMasterSnapshot.photo_url === explicitMasterRecipe.image_path
+    && explicitMasterSnapshot.source === 'recipe'
+    && explicitMasterSnapshot.recipe_id === explicitMasterRecipe.id, 'EXPLICIT_RECIPE_MASTER_IGNORES_FORGED_SNAPSHOT');
+  const explicitMasterAfter = await readRecipe(explicitMasterRecipe.id, 'explicit master after placement');
+  assert(JSON.stringify(explicitMasterAfter) === JSON.stringify(explicitMasterBefore), 'EXPLICIT_RECIPE_MASTER_DOES_NOT_MUTATE_MASTER');
+
+  const customRecipe = await createRecipe(dietitianA, 'custom-initial');
+  const customRecipeBefore = await readRecipe(customRecipe.id, 'custom recipe before placement');
+  const customWeek = await createWeek(dietitianA, clientA, '2026-11-09', 'custom initial recipe');
+  const customResponse = await saveWeek(
+    webDietitianA,
+    clientA.id,
+    customWeek,
+    new Map([[
+      0,
+      [newRecipePayload(customRecipe.id, {
+        snapshot_mode: 'custom',
+        title: 'Custom initial recipe title',
+        description: 'Custom initial recipe description',
+        calories: 635,
+        macros: { protein: 42, carbs: 57, fat: 21 },
+      })],
+    ]]),
+    'custom initial recipe placement',
+  );
+  const customMealId = customResponse.plans
+    .flatMap((plan) => plan.meals ?? [])
+    .find((meal) => meal.source === 'recipe' && meal.recipe_id === customRecipe.id)?.id;
+  assert(Boolean(customMealId), 'CUSTOM_INITIAL_RECIPE_RETURNS_MEAL_ID');
+  mealIds.push(customMealId);
+  const customSnapshot = await readMeal(customMealId, 'custom initial snapshot read');
+  assert(customSnapshot.title === 'Custom initial recipe title'
+    && customSnapshot.description === 'Custom initial recipe description'
+    && customSnapshot.calories === 635
+    && customSnapshot.macros.protein === 42
+    && customSnapshot.macros.carbs === 57
+    && customSnapshot.macros.fat === 21
+    && customSnapshot.source === 'recipe'
+    && customSnapshot.recipe_id === customRecipe.id, 'CUSTOM_INITIAL_RECIPE_SNAPSHOT_VALUES_PERSIST');
+  const customRecipeAfter = await readRecipe(customRecipe.id, 'custom recipe after placement');
+  assert(JSON.stringify(customRecipeAfter) === JSON.stringify(customRecipeBefore), 'CUSTOM_INITIAL_RECIPE_DOES_NOT_MUTATE_MASTER');
+
+  const customPhotoRecipe = await createRecipe(dietitianA, 'custom-photo');
+  const customPhotoRecipeBefore = await readRecipe(customPhotoRecipe.id, 'custom photo recipe before placement');
+  const customPhotoWeek = await createWeek(dietitianA, clientA, '2026-11-16', 'custom initial photo');
+  const customPhotoPath = await createMealPhoto(dietitianA, clientA);
+  const customPhotoResponse = await saveWeek(
+    webDietitianA,
+    clientA.id,
+    customPhotoWeek,
+    new Map([[
+      0,
+      [newRecipePayload(customPhotoRecipe.id, {
+        snapshot_mode: 'custom',
+        title: 'Custom photo recipe title',
+        photo_url: customPhotoPath,
+      })],
+    ]]),
+    'custom initial recipe photo placement',
+  );
+  const customPhotoMealId = customPhotoResponse.plans
+    .flatMap((plan) => plan.meals ?? [])
+    .find((meal) => meal.source === 'recipe' && meal.recipe_id === customPhotoRecipe.id)?.id;
+  assert(Boolean(customPhotoMealId), 'CUSTOM_INITIAL_RECIPE_PHOTO_RETURNS_MEAL_ID');
+  mealIds.push(customPhotoMealId);
+  const customPhotoSnapshot = await readMeal(customPhotoMealId, 'custom photo snapshot read');
+  assert(customPhotoSnapshot.title === 'Custom photo recipe title'
+    && customPhotoSnapshot.photo_url === customPhotoPath
+    && customPhotoSnapshot.source === 'recipe'
+    && customPhotoSnapshot.recipe_id === customPhotoRecipe.id, 'CUSTOM_INITIAL_RECIPE_PHOTO_PERSISTS');
+  const customPhotoRecipeAfter = await readRecipe(customPhotoRecipe.id, 'custom photo recipe after placement');
+  assert(JSON.stringify(customPhotoRecipeAfter) === JSON.stringify(customPhotoRecipeBefore), 'CUSTOM_INITIAL_RECIPE_PHOTO_DOES_NOT_MUTATE_MASTER');
+
+  const foreignRecipe = await createRecipe(dietitianB, 'foreign-custom');
+  const foreignCustomWeek = await createWeek(dietitianA, clientA, '2026-11-23', 'foreign custom recipe');
+  await expectRejected(
+    webDietitianA,
+    clientA.id,
+    foreignCustomWeek,
+    new Map([[0, [newRecipePayload(foreignRecipe.id, {
+      snapshot_mode: 'custom',
+      title: 'Foreign recipe must fail',
+    })]]]),
+    'NEW_CUSTOM_FOREIGN_RECIPE_REJECTED',
+  );
+  const foreignCustomMeals = assertNoError(
+    await admin.from('meals').select('id').eq('recipe_id', foreignRecipe.id),
+    'foreign custom meal absence check',
+  );
+  assert(foreignCustomMeals.length === 0, 'NEW_CUSTOM_FOREIGN_RECIPE_NOT_CONVERTED_TO_MEAL');
+
+  const missingRecipeId = randomUUID();
+  const missingRecipeWeek = await createWeek(dietitianA, clientA, '2026-11-30', 'missing custom recipe');
+  await expectRejected(
+    webDietitianA,
+    clientA.id,
+    missingRecipeWeek,
+    new Map([[0, [newRecipePayload(missingRecipeId, {
+      snapshot_mode: 'custom',
+      title: 'Missing recipe must fail',
+    })]]]),
+    'NEW_CUSTOM_MISSING_RECIPE_REJECTED',
+  );
+  const missingRecipeMeals = assertNoError(
+    await admin.from('meals').select('id').eq('recipe_id', missingRecipeId),
+    'missing custom meal absence check',
+  );
+  assert(missingRecipeMeals.length === 0, 'NEW_CUSTOM_MISSING_RECIPE_NOT_CONVERTED_TO_MANUAL');
+
+  const deletedBeforeSaveRecipe = await createRecipe(dietitianA, 'deleted-before-save');
+  assertNoError(
+    await admin.from('recipes').delete().eq('id', deletedBeforeSaveRecipe.id),
+    'deleted-before-save recipe fixture',
+  );
+  const deletedBeforeSaveWeek = await createWeek(dietitianA, clientA, '2026-12-07', 'deleted custom recipe');
+  await expectRejected(
+    webDietitianA,
+    clientA.id,
+    deletedBeforeSaveWeek,
+    new Map([[0, [newRecipePayload(deletedBeforeSaveRecipe.id, {
+      snapshot_mode: 'custom',
+      title: 'Deleted recipe must fail',
+    })]]]),
+    'NEW_CUSTOM_DELETED_RECIPE_REJECTED',
+  );
+  const deletedBeforeSaveMeals = assertNoError(
+    await admin.from('meals').select('id').eq('recipe_id', deletedBeforeSaveRecipe.id),
+    'deleted custom meal absence check',
+  );
+  assert(deletedBeforeSaveMeals.length === 0, 'NEW_CUSTOM_DELETED_RECIPE_NOT_CONVERTED_TO_MANUAL');
+
+  const invalidCustomRecipe = await createRecipe(dietitianA, 'invalid-custom');
+  const invalidCustomWeek = await createWeek(dietitianA, clientA, '2026-12-14', 'invalid custom recipe');
+  const invalidCustomExistingMeal = await createMeal(invalidCustomWeek, 0, {
+    title: 'Atomic invalid custom sentinel',
+    is_eaten: true,
+    completed_at: '2026-08-30T12:00:00.000Z',
+  }, 'invalid custom sentinel');
+  const invalidCustomExistingBefore = await readMeal(invalidCustomExistingMeal.id, 'invalid custom sentinel before');
+  const invalidCases = [
+    ['title', { title: '   ' }],
+    ['macros', { macros: { protein: -1, carbs: 1, fat: 1 } }],
+    ['calories', { calories: 100001 }],
+    ['photo', {
+      photo_url: 'meal-plans/' + clientA.id + '/' + dietitianA.id + '/' + randomUUID() + '.webp',
+    }],
+  ];
+  for (const [caseName, overrides] of invalidCases) {
+    await expectRejected(
+      webDietitianA,
+      clientA.id,
+      invalidCustomWeek,
+      new Map([
+        [0, [mealPayload(invalidCustomExistingMeal)]],
+        [1, [newRecipePayload(invalidCustomRecipe.id, {
+          snapshot_mode: 'custom',
+          ...overrides,
+        })]],
+      ]),
+      'NEW_CUSTOM_INVALID_' + caseName.toUpperCase() + '_REJECTED',
+    );
+    const invalidCustomExistingAfter = await readMeal(
+      invalidCustomExistingMeal.id,
+      'invalid custom sentinel after ' + caseName,
+    );
+    assert(
+      JSON.stringify(invalidCustomExistingAfter) === JSON.stringify(invalidCustomExistingBefore),
+      'NEW_CUSTOM_INVALID_' + caseName.toUpperCase() + '_IS_ATOMIC',
+    );
+    const invalidCustomMeals = assertNoError(
+      await admin.from('meals').select('id').eq('recipe_id', invalidCustomRecipe.id),
+      'invalid custom meal absence check ' + caseName,
+    );
+    assert(invalidCustomMeals.length === 0, 'NEW_CUSTOM_INVALID_' + caseName.toUpperCase() + '_NO_PARTIAL_INSERT');
+  }
+  pass('NEW_RECIPE_CUSTOM_SNAPSHOT_DISPOSABLE_MATRIX_PASS');
 
   const mealPhotoPath = await createMealPhoto(dietitianA, clientA);
   await saveWeek(
@@ -951,7 +1174,7 @@ try {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   const migrationCount = readSchema('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === '54', 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'repository=53, local-prerequisite=1');
+  assert(migrationCount === '55', 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'repository=54, local-prerequisite=1');
   await runFlows();
 } catch (error) {
   mainError = error;
