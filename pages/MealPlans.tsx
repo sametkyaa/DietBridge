@@ -1711,37 +1711,39 @@ const MealPlans = () => {
                                         <span className="text-[10px] text-slate-400">{cellContent.macros.protein}g Prot</span>
                                      </div>
                                    </button>
-                                   <button
-                                     type="button"
-                                     draggable={!isCompleted}
-                                    disabled={isCompleted}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openMoveSelector({ day, mealId: meal.id });
-                                    }}
-                                    onKeyDown={(event) => handleMoveHandleKeyDown(event, { day, mealId: meal.id })}
-                                    onDragStart={(event) => handlePlannedMealDragStart(event, { day, mealId: meal.id })}
-                                    onDragEnd={handlePlannedMealDragEnd}
-                                    aria-label={isCompleted ? 'Tamamlanmış öğün taşınamaz' : `${cellContent.name} öğününü taşı`}
-                                    aria-disabled={isCompleted}
-                                    title={isCompleted ? 'Tamamlanmış öğün taşınamaz' : 'Öğünü taşı'}
-                                    className={`absolute left-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg border shadow-sm transition-opacity focus:outline-none focus:ring-2 focus:ring-primary/40 ${isCompleted ? 'cursor-not-allowed border-slate-200 bg-slate-100/90 text-slate-300' : 'cursor-grab border-white/80 bg-white/90 text-slate-500 hover:text-primary active:cursor-grabbing sm:opacity-0 sm:group-hover/card:opacity-100'}`}
-                                  >
-                                     <GripVertical className="h-4 w-4" aria-hidden="true" />
-                                   </button>
-                                   <button
-                                     type="button"
-                                     disabled={isCompleted}
-                                     onClick={(event) => {
-                                       event.stopPropagation();
-                                       openMealEdit({ day, mealId: meal.id });
-                                     }}
-                                     aria-label={isCompleted ? 'Tamamlanmış öğünün içeriği değiştirilemez' : `${cellContent.name} öğününü düzenle`}
-                                     title={isCompleted ? 'Tamamlanmış öğünün içeriği değiştirilemez' : 'Öğünü düzenle'}
-                                     className="absolute right-9 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg border border-white/80 bg-white/90 text-slate-500 shadow-sm transition-colors hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:text-slate-300"
-                                   >
-                                     <Edit2 className="h-4 w-4" aria-hidden="true" />
-                                   </button>
+                                    <div className="absolute left-2 top-2 z-10 flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        draggable={!isCompleted}
+                                        disabled={isCompleted}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openMoveSelector({ day, mealId: meal.id });
+                                        }}
+                                        onKeyDown={(event) => handleMoveHandleKeyDown(event, { day, mealId: meal.id })}
+                                        onDragStart={(event) => handlePlannedMealDragStart(event, { day, mealId: meal.id })}
+                                        onDragEnd={handlePlannedMealDragEnd}
+                                        aria-label={isCompleted ? 'Tamamlanmış öğün taşınamaz' : `${cellContent.name} öğününü taşı`}
+                                        aria-disabled={isCompleted}
+                                        title={isCompleted ? 'Tamamlanmış öğün taşınamaz' : 'Öğünü taşı'}
+                                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border shadow-sm transition-opacity focus:outline-none focus:ring-2 focus:ring-primary/40 ${isCompleted ? 'cursor-not-allowed border-slate-200 bg-slate-100/90 text-slate-300' : 'cursor-grab border-white/80 bg-white/90 text-slate-500 hover:text-primary active:cursor-grabbing sm:opacity-0 sm:group-hover/card:opacity-100'}`}
+                                      >
+                                        <GripVertical className="h-4 w-4" aria-hidden="true" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={isCompleted}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openMealEdit({ day, mealId: meal.id });
+                                        }}
+                                        aria-label={isCompleted ? 'Tamamlanmış öğünün içeriği değiştirilemez' : `${cellContent.name} öğününü düzenle`}
+                                        title={isCompleted ? 'Tamamlanmış öğünün içeriği değiştirilemez' : 'Öğünü düzenle'}
+                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/80 bg-white/90 text-slate-500 shadow-sm transition-colors hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:text-slate-300"
+                                      >
+                                        <Edit2 className="h-4 w-4" aria-hidden="true" />
+                                      </button>
+                                    </div>
                                    <button
                                      type="button"
                                      disabled={isCompleted}

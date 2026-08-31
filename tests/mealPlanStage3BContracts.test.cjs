@@ -102,6 +102,18 @@ test('3. edit action is a separate button and stops card propagation', () => {
   assert.match(mealPlansSource, /aria-label=\{isCompleted \? 'Tamamlanmış öğünün içeriği değiştirilemez'/);
 });
 
+test('3b. meal card action buttons use separated flex hit areas', () => {
+  const actionRegion = mealPlansSource.match(
+    /<div className="absolute left-2 top-2 z-10 flex items-center gap-1">[\s\S]*?<\/div>/,
+  )?.[0];
+  assert.ok(actionRegion, 'meal card action region should be present');
+  assert.equal((actionRegion.match(/<button/g) ?? []).length, 2);
+  assert.match(actionRegion, /className=\{`flex h-8 w-8 shrink-0 items-center/);
+  assert.match(actionRegion, /className="flex h-8 w-8 shrink-0 items-center/);
+  assert.doesNotMatch(actionRegion, /right-9/);
+  assert.match(mealPlansSource, /className="absolute -right-1\.5 -top-1\.5/);
+});
+
 test('4. existing move handle and move helper remain active', () => {
   assert.match(mealPlansSource, /draggable=\{!isCompleted\}/);
   assert.match(mealPlansSource, /onKeyDown=\{\(event\) => handleMoveHandleKeyDown/);
