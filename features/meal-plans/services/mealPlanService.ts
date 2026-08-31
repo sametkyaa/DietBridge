@@ -105,6 +105,7 @@ export interface WeeklyMealInput {
   time: string;
   source: 'manual' | 'recipe';
   recipe_id?: string | null;
+  snapshot_mode?: 'recipe_master' | 'custom';
 }
 
 export interface WeeklyMealPlanDayInput {
@@ -113,7 +114,7 @@ export interface WeeklyMealPlanDayInput {
   meals: WeeklyMealInput[];
 }
 
-export interface CanonicalMeal extends Required<Omit<WeeklyMealInput, 'recipe_id' | 'calories' | 'photo_url' | 'description'>> {
+export interface CanonicalMeal extends Required<Omit<WeeklyMealInput, 'recipe_id' | 'calories' | 'photo_url' | 'description' | 'snapshot_mode'>> {
   id: string;
   plan_id: string;
   calories: number | null;
