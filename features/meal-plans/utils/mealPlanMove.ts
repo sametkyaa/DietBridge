@@ -10,11 +10,12 @@ export interface PlannedMealContent {
   image: string | null;
   imagePreview?: string | null;
   pendingPhoto?: File | null;
-  calories: number;
+  calories: number | null;
   description?: string | null;
   macros: CanonicalMealMacros;
   source?: 'manual' | 'recipe';
   recipeId?: string | null;
+  snapshotMode?: 'recipe_master' | 'custom';
   isEaten?: boolean;
 }
 

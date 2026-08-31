@@ -73,6 +73,9 @@ export const buildWeeklyMealPlanPayload = ({
         };
 
         if (content.mealId) mealData.id = content.mealId;
+        if (content.source === 'recipe' && content.snapshotMode) {
+          mealData.snapshot_mode = content.snapshotMode;
+        }
         dayMeals.push(mealData);
       }
     }
