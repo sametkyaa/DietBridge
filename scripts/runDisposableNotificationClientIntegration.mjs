@@ -114,7 +114,7 @@ const compileClient = (outputRoot) => {
 const run = async () => {
   const sourceMigrations = readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
   assert(sourceMigrations.includes(appointmentReminderMigrationName), 'CLIENT_RUNTIME_REMINDER_MIGRATION_PRESENT');
-  assert(sourceMigrations.at(-1) === '20260831190352_meal_completion_photo_contract.sql', 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
+  assert(sourceMigrations.at(-1) === '20260901083212_client_grocery_list.sql', 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
 
   tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-client-runtime-'));
   tempRoot = join(tempParent, 'project');
@@ -127,7 +127,7 @@ const run = async () => {
     copyFileSync(join(migrationDirectory, notificationCoreMigrationName), join(runtimeMigrationDirectory, notificationCoreMigrationName));
     copyFileSync(join(migrationDirectory, appointmentReminderMigrationName), join(runtimeMigrationDirectory, appointmentReminderMigrationName));
     writeFileSync(join(runtimeMigrationDirectory, LOCAL_PREREQUISITE_FILE), LOCAL_PREREQUISITE_SQL, { flag: 'wx' });
-    assert(manifest.expectedHistory.total === 52, 'CLIENT_RUNTIME_BASELINE_52');
+    assert(manifest.expectedHistory.total === 53, 'CLIENT_RUNTIME_BASELINE_53');
     await configureProject(configPath);
     stackStartAttempted = true;
     runCli(tempRoot, ['start']);

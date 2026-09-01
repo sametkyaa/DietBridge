@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 45,
+  "expectedCanonicalCount": 46,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2898,6 +2898,13 @@
       "phase": "canonical",
       "sourceSha256": "2692e26aa4a86843565dac466cea1b47d94526114bb5b02e634a46c31e70984c",
       "materializedSha256": "2692e26aa4a86843565dac466cea1b47d94526114bb5b02e634a46c31e70984c",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260901083212_client_grocery_list.sql",
+      "phase": "canonical",
+      "sourceSha256": "69343228b77ea94dbb56824bf8f891f15263d78e11aac367a940410bcec99bf7",
+      "materializedSha256": "69343228b77ea94dbb56824bf8f891f15263d78e11aac367a940410bcec99bf7",
       "edits": []
     }
   ]
