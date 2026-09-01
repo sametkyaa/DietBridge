@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getMealImagePreviewUrls } from '../../meal-plans/services/mealImagePreviewService';
 import type { MealActivity } from '../types/mealActivity';
+import { getMealActivityPhotoPath } from '../utils/mealActivity';
 
 export interface MealActivityPhotoState {
   url: string | null;
@@ -12,7 +13,7 @@ const EMPTY_PHOTO_STATE: MealActivityPhotoState = { url: null, loading: false, e
 
 export const useMealActivityPhotoUrls = (activities: readonly MealActivity[]) => {
   const photoKey = useMemo(
-    () => activities.map((activity) => `${activity.id}:${activity.photoPath ?? ''}`).join('|'),
+    () => activities.map((activity) => `${activity.id}:${getMealActivityPhotoPath(activity) ?? ''}`).join('|'),
     [activities],
   );
   const [states, setStates] = useState<Record<string, MealActivityPhotoState>>({});
@@ -20,14 +21,15 @@ export const useMealActivityPhotoUrls = (activities: readonly MealActivity[]) =>
   useEffect(() => {
     const nextStates: Record<string, MealActivityPhotoState> = {};
     activities.forEach((activity) => {
-      nextStates[activity.id] = activity.photoPath
+      const photoPath = getMealActivityPhotoPath(activity);
+      nextStates[activity.id] = photoPath
         ? { url: null, loading: true, error: false }
         : EMPTY_PHOTO_STATE;
     });
     setStates(nextStates);
 
     const references = activities
-      .map((activity) => activity.photoPath)
+      .map((activity) => getMealActivityPhotoPath(activity))
       .filter((path): path is string => path !== null);
     if (references.length === 0) return undefined;
 
@@ -38,8 +40,9 @@ export const useMealActivityPhotoUrls = (activities: readonly MealActivity[]) =>
         setStates((current) => {
           const resolved: Record<string, MealActivityPhotoState> = {};
           activities.forEach((activity) => {
-            const url = activity.photoPath ? previews.get(activity.photoPath) ?? null : null;
-            resolved[activity.id] = activity.photoPath
+            const photoPath = getMealActivityPhotoPath(activity);
+            const url = photoPath ? previews.get(photoPath) ?? null : null;
+            resolved[activity.id] = photoPath
               ? { url, loading: false, error: url === null }
               : EMPTY_PHOTO_STATE;
           });
@@ -51,7 +54,7 @@ export const useMealActivityPhotoUrls = (activities: readonly MealActivity[]) =>
         setStates((current) => {
           const failed: Record<string, MealActivityPhotoState> = {};
           activities.forEach((activity) => {
-            failed[activity.id] = activity.photoPath
+            failed[activity.id] = getMealActivityPhotoPath(activity)
               ? { url: null, loading: false, error: true }
               : EMPTY_PHOTO_STATE;
           });

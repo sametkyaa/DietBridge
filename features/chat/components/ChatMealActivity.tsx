@@ -2,6 +2,7 @@ import React from 'react';
 import { Image as ImageIcon, Utensils } from 'lucide-react';
 import type { MealActivity } from '../types/mealActivity';
 import type { MealActivityPhotoState } from '../hooks/useMealActivityPhotoUrls';
+import { getMealActivityPhotoPath } from '../utils/mealActivity';
 import { formatMealTrackingCompletionTime, MEAL_TYPE_LABELS } from '../../meal-tracking/utils/mealTrackingContract';
 
 interface ChatMealActivityProps {
@@ -13,6 +14,7 @@ interface ChatMealActivityProps {
 const ChatMealActivity: React.FC<ChatMealActivityProps> = ({ activity, photoState, onOpenPhoto }) => {
   const mealLabel = MEAL_TYPE_LABELS[activity.mealType];
   const completionTime = formatMealTrackingCompletionTime(activity.completedAt);
+  const photoPath = getMealActivityPhotoPath(activity);
 
   return (
     <article
@@ -35,7 +37,7 @@ const ChatMealActivity: React.FC<ChatMealActivityProps> = ({ activity, photoStat
             </div>
           </div>
         </div>
-        {activity.photoPath && photoState.url && (
+        {photoPath && photoState.url && (
           <button
             type="button"
             onClick={onOpenPhoto}
@@ -45,13 +47,13 @@ const ChatMealActivity: React.FC<ChatMealActivityProps> = ({ activity, photoStat
             <img src={photoState.url} alt={`${mealLabel} öğün fotoğrafı`} className="max-h-64 w-full object-cover" />
           </button>
         )}
-        {activity.photoPath && photoState.loading && (
+        {photoPath && photoState.loading && (
           <div className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white/70 px-3 py-4 text-xs text-emerald-700" role="status">
             <ImageIcon className="h-4 w-4" aria-hidden="true" />
             Görsel yükleniyor…
           </div>
         )}
-        {activity.photoPath && photoState.error && !photoState.loading && (
+        {photoPath && photoState.error && !photoState.loading && (
           <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800" role="status">
             <ImageIcon className="h-4 w-4" aria-hidden="true" />
             Görsel kullanılamıyor.

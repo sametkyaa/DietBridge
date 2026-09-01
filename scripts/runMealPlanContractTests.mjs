@@ -275,6 +275,7 @@ fs.readFileSync = (file, ...args) => {
 `, 'utf8');
 
 const testFiles = [
+  join(repoRoot, 'tests', 'mealCompletionPhotoContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealPlanContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealPlanCrossDaySaveContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealPlanSnapshotEditContracts.test.cjs'),

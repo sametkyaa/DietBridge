@@ -21,10 +21,15 @@ export const isMealActivity = (value: unknown): value is MealActivity => {
     && typeof activity.mealTime === 'string'
     && typeof activity.completedAt === 'string'
     && activity.createdAt === activity.completedAt
-    && (activity.photoPath === null || typeof activity.photoPath === 'string')
+    && (activity.completionPhotoPath === null || typeof activity.completionPhotoPath === 'string')
+    && (activity.mealPhotoPath === null || typeof activity.mealPhotoPath === 'string')
     && activity.isHumanMessage === false
     && activity.requiresRead === false;
 };
+
+export const getMealActivityPhotoPath = (activity: MealActivity): string | null => (
+  activity.completionPhotoPath || activity.mealPhotoPath || null
+);
 export const compareMealActivities = (left: MealActivity, right: MealActivity): number => (
   left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
 );

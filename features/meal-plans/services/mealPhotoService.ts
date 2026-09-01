@@ -4,9 +4,13 @@ import { isValidUuid } from '../../../shared/utils/uuid';
 export const MEAL_PHOTO_BUCKET = 'meal-photos';
 export const MEAL_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 export const MEAL_PHOTO_SIGNED_URL_SECONDS = 5 * 60;
+export const MEAL_COMPLETION_PHOTO_BUCKET = 'meal-completion-photos';
+export const MEAL_COMPLETION_PHOTO_MAX_BYTES = 4 * 1024 * 1024;
+export const MEAL_COMPLETION_PHOTO_SIGNED_URL_SECONDS = 5 * 60;
 
 const SIGNED_URL_REFRESH_WINDOW_MS = 4 * 60 * 1000;
 const CANONICAL_MEAL_PHOTO_PATH = /^meal-plans\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpe?g|png|webp)$/;
+const CANONICAL_MEAL_COMPLETION_PHOTO_PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$/;
 
 const MIME_TO_EXTENSION: Record<string, 'jpg' | 'png' | 'webp'> = {
   'image/jpeg': 'jpg',
@@ -33,6 +37,7 @@ interface SignedPhotoCacheEntry {
 }
 
 const signedPhotoCache = new Map<string, SignedPhotoCacheEntry>();
+const signedCompletionPhotoCache = new Map<string, SignedPhotoCacheEntry>();
 
 export const isCanonicalMealPhotoPath = (value: unknown): value is string => (
   typeof value === 'string' && CANONICAL_MEAL_PHOTO_PATH.test(value)
@@ -158,6 +163,48 @@ export const getMealPhotoPreviewUrls = async (objectPaths: string[]): Promise<Ma
   const previews = await Promise.allSettled(uniquePaths.map(async (path) => {
     assertCanonicalMealPhotoPath(path);
     return [path, await getMealPhotoPreviewUrl(path)] as const;
+  }));
+
+  return new Map(previews.flatMap((result) => (
+    result.status === 'fulfilled' ? [result.value] : []
+  )));
+};
+
+export const isCanonicalMealCompletionPhotoPath = (value: unknown): value is string => (
+  typeof value === 'string' && CANONICAL_MEAL_COMPLETION_PHOTO_PATH.test(value)
+);
+
+export function assertCanonicalMealCompletionPhotoPath(value: unknown): asserts value is string {
+  if (!isCanonicalMealCompletionPhotoPath(value)) {
+    throw new MealPhotoValidationError('INVALID_MEAL_PHOTO_PATH');
+  }
+}
+
+export const getMealCompletionPhotoPreviewUrl = async (objectPath: string): Promise<string> => {
+  assertCanonicalMealCompletionPhotoPath(objectPath);
+  const cached = signedCompletionPhotoCache.get(objectPath);
+  if (cached && cached.refreshAfter > Date.now()) return cached.url;
+
+  const { data, error } = await supabase.storage
+    .from(MEAL_COMPLETION_PHOTO_BUCKET)
+    .createSignedUrl(objectPath, MEAL_COMPLETION_PHOTO_SIGNED_URL_SECONDS);
+
+  if (error || !data?.signedUrl) {
+    throw new MealPhotoValidationError('INVALID_MEAL_PHOTO_PATH');
+  }
+
+  signedCompletionPhotoCache.set(objectPath, {
+    url: data.signedUrl,
+    refreshAfter: Date.now() + SIGNED_URL_REFRESH_WINDOW_MS,
+  });
+  return data.signedUrl;
+};
+
+export const getMealCompletionPhotoPreviewUrls = async (objectPaths: string[]): Promise<Map<string, string>> => {
+  const uniquePaths = Array.from(new Set(objectPaths));
+  const previews = await Promise.allSettled(uniquePaths.map(async (path) => {
+    assertCanonicalMealCompletionPhotoPath(path);
+    return [path, await getMealCompletionPhotoPreviewUrl(path)] as const;
   }));
 
   return new Map(previews.flatMap((result) => (

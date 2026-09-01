@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hashAlgorithm": "sha256",
-  "expectedCanonicalCount": 44,
+  "expectedCanonicalCount": 45,
   "expectedImageCount": 7,
   "rules": "Exact source byte hash and exact line before/after only; no regex or inference.",
   "files": [
@@ -2891,6 +2891,13 @@
       "phase": "canonical",
       "sourceSha256": "4c75b2101f3046a584b8bc45e4e498ee832f4e99a75f926f51bc1d971be04139",
       "materializedSha256": "4c75b2101f3046a584b8bc45e4e498ee832f4e99a75f926f51bc1d971be04139",
+      "edits": []
+    },
+    {
+      "path": "supabase/migrations/20260831190352_meal_completion_photo_contract.sql",
+      "phase": "canonical",
+      "sourceSha256": "2692e26aa4a86843565dac466cea1b47d94526114bb5b02e634a46c31e70984c",
+      "materializedSha256": "2692e26aa4a86843565dac466cea1b47d94526114bb5b02e634a46c31e70984c",
       "edits": []
     }
   ]

@@ -3,7 +3,10 @@ import { isValidUuid } from '../../../shared/utils/uuid';
 import {
   isCanonicalRecipeImagePath,
 } from '../../recipes/services/recipeService';
-import { isReadableMealPhotoReference } from '../../meal-plans/services/mealPhotoService';
+import {
+  isCanonicalMealCompletionPhotoPath,
+  isReadableMealPhotoReference,
+} from '../../meal-plans/services/mealPhotoService';
 import { MEAL_ACTIVITY_KIND, MealActivity } from '../types/mealActivity';
 import { createMealActivityId, mergeMealActivities } from '../utils/mealActivity';
 
@@ -25,7 +28,8 @@ const ACTIVITY_SELECT = `
     sort_order,
     is_eaten,
     completed_at,
-    photo_url
+    photo_url,
+    completion_photo_url
   )
 `;
 
@@ -61,11 +65,19 @@ const normalizeMealTime = (value: unknown): string => {
   return `${match[1]}:${match[2]}`;
 };
 
-const normalizePhotoPath = (value: unknown): string | null => {
+const normalizeMealPhotoPath = (value: unknown): string | null => {
   if (value === null || value === undefined) return null;
   if (typeof value !== 'string') throw invalidPayload('meal.photo_url');
   if (!isReadableMealPhotoReference(value) && !isCanonicalRecipeImagePath(value)) {
     throw invalidPayload('meal.photo_url');
+  }
+  return value;
+};
+
+const normalizeCompletionPhotoPath = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string' || !isCanonicalMealCompletionPhotoPath(value)) {
+    throw invalidPayload('meal.completion_photo_url');
   }
   return value;
 };
@@ -120,6 +132,8 @@ const normalizeActivities = (
       const mealId = meal.id as string;
       const planId = plan.id as string;
       const planDate = plan.plan_date as string;
+      const completionPhotoPath = normalizeCompletionPhotoPath(meal.completion_photo_url);
+      const mealPhotoPath = normalizeMealPhotoPath(meal.photo_url);
       activities.push({
         id: createMealActivityId(mealId),
         kind: MEAL_ACTIVITY_KIND,
@@ -135,7 +149,8 @@ const normalizeActivities = (
         mealTime: normalizeMealTime(meal.time),
         completedAt,
         createdAt: completedAt,
-        photoPath: normalizePhotoPath(meal.photo_url),
+        completionPhotoPath,
+        mealPhotoPath,
         isHumanMessage: false,
         requiresRead: false,
       });
