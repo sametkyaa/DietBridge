@@ -44,7 +44,7 @@ test('historical migrations stay immutable while disposable syntax edits are exp
     path.join(repoRoot, 'tests', 'fixtures', 'canonicalReplaySyntaxEdits.json'),
     'utf8',
   ));
-  assert.equal(rules.files.filter(({ phase }) => phase === 'canonical').length, 44);
+  assert.equal(rules.files.filter(({ phase }) => phase === 'canonical').length, 45);
   assert.equal(rules.files.filter(({ phase }) => phase === 'image').length, 7);
   assert.equal(rules.files.filter(({ edits }) => edits.length > 0).length, 16);
   for (const rule of rules.files) {

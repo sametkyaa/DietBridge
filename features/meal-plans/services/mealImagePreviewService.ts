@@ -1,4 +1,6 @@
 import {
+  getMealCompletionPhotoPreviewUrls,
+  isCanonicalMealCompletionPhotoPath,
   getMealPhotoPreviewUrls,
   isCanonicalMealPhotoPath,
   isLegacyMealPhotoUrl,
@@ -19,6 +21,11 @@ export const getMealImagePreviewUrls = async (
   const previews = new Map<string, string>();
 
   uniqueReferences.filter(isLegacyMealPhotoUrl).forEach((url) => previews.set(url, url));
+
+  const completionPhotoPreviews = await getMealCompletionPhotoPreviewUrls(
+    uniqueReferences.filter(isCanonicalMealCompletionPhotoPath),
+  );
+  completionPhotoPreviews.forEach((url, path) => previews.set(path, url));
 
   const mealPhotoPreviews = await getMealPhotoPreviewUrls(uniqueReferences.filter(isCanonicalMealPhotoPath));
   mealPhotoPreviews.forEach((url, path) => previews.set(path, url));

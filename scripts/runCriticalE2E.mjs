@@ -179,7 +179,7 @@ try {
   disposable = await runDisposableSupabaseLocalReplay({ materializeOnly: true, keepTemp: true });
   const migrationDirectory = join(disposable.tempRoot, 'supabase', 'migrations');
   for (const migration of isolatedMigrations) copyFileSync(join(repoRoot, 'supabase', 'migrations', migration), join(migrationDirectory, migration), 1);
-  assert(readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length === 55, 'E2E_DISPOSABLE_MIGRATION_COUNT_55');
+  assert(readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length === 56, 'E2E_DISPOSABLE_MIGRATION_COUNT_56');
   await configurePorts(disposable.configPath);
   cli(['start']);
   stackStarted = true;

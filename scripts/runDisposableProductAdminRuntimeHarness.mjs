@@ -695,14 +695,15 @@ const runScenario = async ({ includePush }) => {
       copyFileSync(join(migrationDirectory, migrationName), destination, 1);
     }
     const runtimeFiles = readdirSync(runtimeMigrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-    const expectedFiles = includePush ? 55 : 54;
+    const expectedFiles = includePush ? 56 : 55;
     assert(runtimeFiles.length === expectedFiles, scenarioLabel + '_MIGRATION_FILE_COUNT', String(runtimeFiles.length));
-    assert(runtimeFiles.at(-6) === adminMigrationName, scenarioLabel + '_ADMIN_MIGRATION_BEFORE_STANDALONE');
-    assert(runtimeFiles.at(-5) === standaloneAdminMigrationName, scenarioLabel + '_STANDALONE_ADMIN_BEFORE_DIPLOMA');
-    assert(runtimeFiles.at(-4) === diplomaStorageMigrationName, scenarioLabel + '_DIPLOMA_STORAGE_BEFORE_MEAL_PLAN_SAVE');
-    assert(runtimeFiles.at(-3) === mealPlanSaveMigrationName, scenarioLabel + '_CROSS_DAY_MEAL_PLAN_SAVE_BEFORE_SNAPSHOT_EDIT');
-    assert(runtimeFiles.at(-2) === mealPlanSnapshotEditMigrationName, scenarioLabel + '_MEAL_PLAN_SNAPSHOT_EDIT_BEFORE_NEW_RECIPE_CUSTOM_SNAPSHOT');
-    assert(runtimeFiles.at(-1) === mealPlanNewRecipeCustomSnapshotMigrationName, scenarioLabel + '_NEW_RECIPE_CUSTOM_SNAPSHOT_MIGRATION_TAIL');
+    assert(runtimeFiles.at(-7) === adminMigrationName, scenarioLabel + '_ADMIN_MIGRATION_BEFORE_STANDALONE');
+    assert(runtimeFiles.at(-6) === standaloneAdminMigrationName, scenarioLabel + '_STANDALONE_ADMIN_BEFORE_DIPLOMA');
+    assert(runtimeFiles.at(-5) === diplomaStorageMigrationName, scenarioLabel + '_DIPLOMA_BEFORE_MEAL_PLAN_SAVE');
+    assert(runtimeFiles.at(-4) === mealPlanSaveMigrationName, scenarioLabel + '_CROSS_DAY_MEAL_PLAN_SAVE_BEFORE_SNAPSHOT_EDIT');
+    assert(runtimeFiles.at(-3) === mealPlanSnapshotEditMigrationName, scenarioLabel + '_MEAL_PLAN_SNAPSHOT_EDIT_BEFORE_NEW_RECIPE_CUSTOM_SNAPSHOT');
+    assert(runtimeFiles.at(-2) === mealPlanNewRecipeCustomSnapshotMigrationName, scenarioLabel + '_NEW_RECIPE_CUSTOM_SNAPSHOT_BEFORE_MEAL_COMPLETION_PHOTO');
+    assert(runtimeFiles.at(-1) === '20260831190352_meal_completion_photo_contract.sql', scenarioLabel + '_MEAL_COMPLETION_PHOTO_MIGRATION_TAIL');
     if (includePush) assert(runtimeFiles.includes(pushMigrationName), scenarioLabel + '_PUSH_PRESENT');
     else assert(!runtimeFiles.includes(pushMigrationName), scenarioLabel + '_PUSH_ABSENT');
 

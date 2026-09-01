@@ -17,6 +17,7 @@ import ChatImageViewer from "./ChatImageViewer";
 import { useChatImageUrls } from "../hooks/useChatImageUrls";
 import { useMealActivityPhotoUrls } from "../hooks/useMealActivityPhotoUrls";
 import ChatMealActivity from "./ChatMealActivity";
+import { getMealActivityPhotoPath } from "../utils/mealActivity";
 import { getChatImageBubbleLabel } from "../utils/chatImageUiState";
 import {
   shouldFollowLatestChat,
@@ -357,7 +358,7 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
   )) || messages.some((message) => (
     message.messageKind === "image" && imageStates[message.id]?.loading === true
   )) || mealActivities.some((activity) => (
-    activity.photoPath !== null
+    getMealActivityPhotoPath(activity) !== null
     && mealActivityPhotoStates[activity.id]?.loading === true
   ));
 

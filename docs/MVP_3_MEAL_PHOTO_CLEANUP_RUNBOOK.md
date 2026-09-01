@@ -4,6 +4,8 @@
 
 The forward-only migration `20260810055845_mvp3_meal_photo_lifecycle_closure.sql` creates the durable queue and service-role-only claim/complete RPC contract. The `cleanup-meal-photos` Edge Function removes exact `meal-photos` object paths and completes a queue row only after PostgreSQL confirms that neither an object nor a meal reference remains.
 
+The same `cleanup-meal-photos` Edge Function also processes the `meal-completion-photos` queue from `20260831190352_meal_completion_photo_contract.sql` during the same scheduled invocation. It validates and deletes only canonical `<client-uuid>/<meal-uuid>/<uuid>.jpg` paths, then calls the completion-photo queue's service-role complete RPC. No second Edge Function, cron job, scheduler secret, or Vault entry is needed.
+
 The migration does not deploy the Edge Function, set project secrets, create Vault entries, or schedule a cron job.
 
 ## Separately gated production actions

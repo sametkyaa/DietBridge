@@ -15,7 +15,8 @@ export interface MealActivity {
   mealTime: string;
   completedAt: string;
   createdAt: string;
-  photoPath: string | null;
+  completionPhotoPath: string | null;
+  mealPhotoPath: string | null;
   isHumanMessage: false;
   requiresRead: false;
 }

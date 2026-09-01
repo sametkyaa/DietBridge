@@ -324,7 +324,7 @@ try {
   stackStarted = true;
   pass('DISPOSABLE_LOCAL_STACK_STARTED', `project=${projectId}`);
   cli(['db', 'reset', '--local', '--no-seed']);
-  pass('DISPOSABLE_55_MIGRATION_REPLAY');
+  pass('DISPOSABLE_56_MIGRATION_REPLAY');
 
   local = parseStatus(cli(['status', '--output', 'env']));
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_GUARD', local.API_URL);

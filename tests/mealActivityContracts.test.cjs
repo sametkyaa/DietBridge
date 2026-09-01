@@ -26,7 +26,8 @@ const activity = (mealId, overrides = {}) => ({
   mealTime: '08:30',
   completedAt: '2026-08-14T05:42:00.000Z',
   createdAt: '2026-08-14T05:42:00.000Z',
-  photoPath: null,
+  completionPhotoPath: null,
+  mealPhotoPath: null,
   isHumanMessage: false,
   requiresRead: false,
   ...overrides,
@@ -44,11 +45,21 @@ test('one meal completion has one deterministic activity identity and no human s
 test('photo updates replace the same activity instead of appending a second row', () => {
   const mealId = '77777777-7777-4777-8777-777777777777';
   const first = activity(mealId);
-  const updated = activity(mealId, { photoPath: 'meal-plans/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/88888888-8888-4888-8888-888888888888.jpg' });
+  const updated = activity(mealId, { mealPhotoPath: 'meal-plans/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444/88888888-8888-4888-8888-888888888888.jpg' });
   const merged = activityContract.mergeMealActivities([first], [updated]);
   assert.equal(merged.length, 1);
   assert.equal(merged[0].id, first.id);
-  assert.equal(merged[0].photoPath, updated.photoPath);
+  assert.equal(merged[0].mealPhotoPath, updated.mealPhotoPath);
+});
+
+test('completion photo wins over the meal snapshot without overwriting either provenance field', () => {
+  const item = activity('88888888-8888-4888-8888-888888888888', {
+    completionPhotoPath: '33333333-3333-4333-8333-333333333333/88888888-8888-4888-8888-888888888888/99999999-9999-4999-8999-999999999999.jpg',
+    mealPhotoPath: 'recipes/44444444-4444-4444-8444-444444444444/image.jpg',
+  });
+  assert.equal(activityContract.isMealActivity(item), true);
+  assert.equal(activityContract.getMealActivityPhotoPath(item), item.completionPhotoPath);
+  assert.equal(item.mealPhotoPath, 'recipes/44444444-4444-4444-8444-444444444444/image.jpg');
 });
 
 test('activity ordering uses completed time and stable activity id tie-break', () => {
