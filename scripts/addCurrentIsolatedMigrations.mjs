@@ -16,6 +16,6 @@ export const addCurrentIsolatedMigrations = ({ repoRoot, tempRoot }) => {
     copyFileSync(join(sourceDirectory, migration), destination, 1);
   }
   const count = readdirSync(destinationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length;
-  if (count !== 56) throw new Error(`Current disposable migration count must be 56, received ${count}.`);
-  return { canonical: 55, localPrerequisite: 1, total: count };
+  if (count !== 57) throw new Error(`Current disposable migration count must be 57, received ${count}.`);
+  return { canonical: 56, localPrerequisite: 1, total: count };
 };
