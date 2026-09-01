@@ -9,11 +9,13 @@ const test = require('node:test');
 
 const root = path.join(__dirname, '..');
 const migrationName = '20260901165402_client_account_deletion_backend.sql';
+const hardeningMigrationName = '20260901193000_client_account_deletion_hardening.sql';
 const migrationPath = path.join(root, 'supabase', 'migrations', migrationName);
+const hardeningMigrationPath = path.join(root, 'supabase', 'migrations', hardeningMigrationName);
 const functionPath = path.join(root, 'supabase', 'functions', 'delete-client-account', 'handler.ts');
 const configPath = path.join(root, 'supabase', 'config.toml');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
-const migration = () => fs.readFileSync(migrationPath, 'utf8');
+const migration = () => fs.readFileSync(hardeningMigrationPath, 'utf8');
 const handler = () => fs.readFileSync(functionPath, 'utf8');
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex').toUpperCase();
 
@@ -22,6 +24,14 @@ const functionBody = () => {
     const start = source.indexOf('create or replace function public.delete_client_account_data');
     const end = source.indexOf('\n$function$;', start);
     assert.ok(start >= 0 && end > start, 'cleanup function body is present');
+    return source.slice(start, end);
+};
+
+const preparationBody = () => {
+    const source = migration();
+    const start = source.indexOf('create function public.prepare_client_account_deletion');
+    const end = source.indexOf('\n$function$;', start);
+    assert.ok(start >= 0 && end > start, 'preparation function body is present');
     return source.slice(start, end);
 };
 
@@ -39,11 +49,11 @@ test('account deletion migration is a forward-only isolated canonical tail', () 
     const files = fs.readdirSync(path.join(root, 'supabase/migrations'))
         .filter((name) => /^\d+_.+\.sql$/.test(name))
         .sort();
-    assert.equal(files.at(-1), migrationName);
+    assert.equal(files.at(-1), hardeningMigrationName);
     assert.match(source, /^begin;\s*$/m);
     assert.match(source, /commit;\s*$/m);
-    assert.match(read('scripts/runDisposableSupabaseLocalReplay.mjs'), new RegExp(`'${migrationName}'`));
-    assert.match(read('scripts/addCurrentIsolatedMigrations.mjs'), new RegExp(`'${migrationName}'`));
+    assert.match(read('scripts/runDisposableSupabaseLocalReplay.mjs'), new RegExp(`'${hardeningMigrationName}'`));
+    assert.match(read('scripts/addCurrentIsolatedMigrations.mjs'), new RegExp(`'${hardeningMigrationName}'`));
     assert.doesNotMatch(read('scripts/runDisposableClientAccountDeletionRuntimeHarness.mjs'), /addCurrentIsolatedMigrations/);
     assert.doesNotMatch(source, /supabase_migrations|db\s+push|storage\.objects|net\.http|vault\./i);
 });
@@ -51,19 +61,31 @@ test('account deletion migration is a forward-only isolated canonical tail', () 
 test('the service-only RPC validates service role, client role, and admin entitlement', () => {
     const source = migration();
     const body = functionBody();
+    const preparation = preparationBody();
     assert.match(body, /auth\.jwt\(\)\s*->>\s*'role'[\s\S]*is distinct from 'service_role'/i);
     assert.match(body, /p_client_id is null/i);
-    assert.match(body, /v_role is distinct from 'client'::public\.user_role/i);
-    assert.match(body, /from public\.platform_admins as pa/i);
-    assert.match(body, /pa\.revoked_at is null/i);
+    assert.match(preparation, /v_role is distinct from 'client'::public\.user_role/i);
+    assert.match(preparation, /from public\.platform_admins as pa/i);
+    assert.match(preparation, /pa\.revoked_at is null/i);
+    assert.match(preparation, /v_is_retry/);
+    assert.match(preparation, /p_storage_objects <> '\[\]'::jsonb/i);
+    assert.match(preparation, /on conflict \(user_id\) do nothing/i);
     assert.match(source, /security definer/i);
     assert.match(source, /set search_path = ''/i);
     assert.match(source, /alter function public\.delete_client_account_data\(uuid\) owner to postgres/i);
-    assert.match(source, /revoke all on function public\.delete_client_account_data\(uuid\)[\s\S]*from public, anon, authenticated, service_role/i);
-    assert.match(source, /grant execute on function public\.delete_client_account_data\(uuid\) to service_role/i);
-    assert.match(source, /not has_function_privilege\('service_role', 'public\.delete_client_account_data\(uuid\)', 'EXECUTE'\)/i);
-    assert.match(source, /has_function_privilege\('anon', 'public\.delete_client_account_data\(uuid\)', 'EXECUTE'\)/i);
-    assert.match(source, /has_function_privilege\('authenticated', 'public\.delete_client_account_data\(uuid\)', 'EXECUTE'\)/i);
+    for (const functionName of [
+        'delete_client_account_data(uuid)',
+        'prepare_client_account_deletion(uuid, jsonb)',
+        'get_client_account_deletion_state(uuid)',
+        'mark_client_account_storage_cleaned(uuid)',
+    ]) {
+        const escaped = functionName.replace(/[() ,]/g, '\\$&');
+        assert.match(source, new RegExp(`revoke all on function public\\.${escaped}[\\s\\S]*from public, anon, authenticated, service_role`, 'i'));
+        assert.match(source, new RegExp(`grant execute on function public\\.${escaped} to service_role`, 'i'));
+    }
+    assert.match(source, /has_function_privilege\('anon', v_function, 'EXECUTE'\)/i);
+    assert.match(source, /has_function_privilege\('authenticated', v_function, 'EXECUTE'\)/i);
+    assert.match(source, /has_function_privilege\('service_role', v_function, 'EXECUTE'\)/i);
 });
 
 test('the relational cleanup order covers every discovered client-linked table', () => {
@@ -92,8 +114,8 @@ test('the relational cleanup order covers every discovered client-linked table',
         'delete from public.client_medical_conditions',
         'delete from public.client_medications',
         'delete from public.client_profiles',
+        'delete from public.profiles',
     ], 'dependency order');
-    assert.match(body, /Do not delete public\.profiles here/i);
     for (const protectedTable of [
         'public.recipes',
         'public.dietitian_profiles',
@@ -169,8 +191,10 @@ test('owned Storage cleanup is exact and excludes dietitian/global buckets', () 
         assert.doesNotMatch(source, new RegExp(forbiddenBucket));
     }
     assert.match(source, /storage\/v1\/object\/list\//);
-    assert.match(source, /storage\/v1\/object\/\$\{encodeURIComponent\(bucket\)\}/);
+    assert.match(source, /storage\/v1\/object\/\$\{\s*encodeURIComponent\(bucket\)\s*\}/);
     assert.match(source, /body: JSON\.stringify\(\{ prefixes: batch \}\)/);
+    assert.match(source, /chat_conversations/);
+    assert.match(source, /conversation_id: `eq\.\$\{conversationId\}`/);
     assert.match(source, /created_by: `eq\.\$\{userId\}`/);
     assert.match(source, /CHAT_IMAGE_PATH_PATTERN/);
     assert.match(source, /COMPLETION_FILE_PATTERN/);
@@ -196,20 +220,37 @@ test('Edge Function uses validated JWT identity, rejects target bodies, and gate
 
 test('service cleanup, relational cleanup, and Auth deletion have fail-closed ordering', () => {
     const source = handler();
+    const requestBody = source.slice(source.indexOf('async function handleRequest'));
     assert.match(source, /SUPABASE_SERVICE_ROLE_KEY/);
     assert.match(source, /createClient\(baseUrl, serviceRoleKey/);
     assert.match(source, /admin\.auth\.admin\.deleteUser\(userId, false\)/);
-    assertInOrder(source, [
+    assertInOrder(requestBody, [
         'collectOwnedStoragePaths',
+        'invokeTransactionalDeletion',
         'removeExactStoragePaths',
-        'invokeRelationalCleanup',
+        'markStorageCleanupComplete',
         'dependencies.deleteAuthUser',
     ], 'side-effect ordering');
     assert.match(source, /if \(!response\.ok\) throw new Error\("storage_delete_failed"\)/);
-    assert.match(source, /if \(!response\.ok\) throw new Error\("relational_cleanup_failed"\)/);
+    assert.match(source, /if \(!response\.ok\) throw new Error\("transactional_deletion_failed"\)/);
+    assert.match(source, /if \(!response\.ok\) throw new Error\("storage_cleanup_marker_failed"\)/);
     assert.match(source, /client_account_deletion_failed/);
     assert.doesNotMatch(source, /console\.log/);
     assert.doesNotMatch(source, /log\([^)]*(?:email|health|token|object_path|userId)/i);
+});
+
+test('tombstone and exact manifest are Auth-cascaded, browser-inaccessible, and profile-independent', () => {
+    const source = migration();
+    assert.match(source, /create table public\.client_account_deletion_tombstones/);
+    assert.match(source, /create table public\.client_account_deletion_storage_manifest/);
+    assert.match(source, /references auth\.users\(id\) on delete cascade/gi);
+    assert.doesNotMatch(source, /client_account_deletion_(?:tombstones|storage_manifest)[\s\S]*references public\.profiles/i);
+    assert.match(source, /alter table public\.client_account_deletion_tombstones enable row level security/i);
+    assert.match(source, /alter table public\.client_account_deletion_storage_manifest enable row level security/i);
+    assert.match(source, /storage_objects jsonb/i);
+    assert.match(source, /delete from public\.profiles as p/i);
+    assert.match(source, /relational_cleanup_at is not null/i);
+    assert.match(source, /storage_cleanup_at = coalesce\(storage_cleanup_at, now\(\)\)/i);
 });
 
 test('deferred Push migration remains byte-for-byte unchanged', () => {

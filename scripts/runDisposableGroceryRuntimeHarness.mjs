@@ -31,6 +31,7 @@ const isolatedMigrations = [
   '20260817084531_appointment_reminders_backend.sql',
   '20260817120000_push_registry_outbox_backend.sql',
   '20260901165402_client_account_deletion_backend.sql',
+  '20260901193000_client_account_deletion_hardening.sql',
 ];
 const npxCli = process.env.npm_execpath
   ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
@@ -140,7 +141,7 @@ try {
   const migrationFiles = readdirSync(join(tempRoot, 'supabase', 'migrations'))
     .filter((name) => /^\d+_.+\.sql$/.test(name));
   assert(manifest.expectedHistory.total === 53, 'GROCERY_REPLAY_CANONICAL_53');
-  assert(migrationFiles.length === 58, 'GROCERY_REPLAY_WITH_ISOLATED_MIGRATIONS_58');
+  assert(migrationFiles.length === 59, 'GROCERY_REPLAY_WITH_ISOLATED_MIGRATIONS_59');
   await configureProject(configPath);
 
   runCli(tempRoot, ['start']);

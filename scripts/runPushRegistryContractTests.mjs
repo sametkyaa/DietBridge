@@ -24,16 +24,16 @@ const reminderSql = readFileSync(join(migrationDirectory, reminderName), 'utf8')
   .replaceAll('\r\n', '\n');
 const reminderHash = createHash('sha256').update(reminderSql).digest('hex');
 
-assert(files.length === 57, 'MIGRATION_INVENTORY_57_WITH_CLIENT_ACCOUNT_DELETION');
+assert(files.length === 58, 'MIGRATION_INVENTORY_58_WITH_CLIENT_ACCOUNT_DELETION');
 assert(files.includes(migrationName), 'PUSH_MIGRATION_REMAINS_CANONICAL');
-assert(files.at(-9) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_BEFORE_STANDALONE_ADMIN');
-assert(files.at(-8) === '20260827084741_standalone_platform_admin_access.sql', 'STANDALONE_ADMIN_MIGRATION_BEFORE_DIPLOMA_STORAGE');
-assert(files.at(-7) === '20260830060342_dietitian_diploma_storage_hardening.sql', 'DIPLOMA_STORAGE_MIGRATION_BEFORE_MEAL_PLAN_SAVE');
-assert(files.at(-6) === '20260830141202_meal_plan_cross_day_identity_preservation.sql', 'CROSS_DAY_MEAL_PLAN_SAVE_BEFORE_SNAPSHOT_EDIT');
-assert(files.at(-5) === '20260830185101_meal_plan_snapshot_edit_contract.sql', 'SNAPSHOT_EDIT_BEFORE_NEW_RECIPE_CUSTOM_SNAPSHOT');
-assert(files.at(-4) === '20260831071948_meal_plan_new_recipe_custom_snapshot_contract.sql', 'NEW_RECIPE_CUSTOM_SNAPSHOT_BEFORE_MEAL_COMPLETION_PHOTO');
-assert(files.at(-3) === '20260831190352_meal_completion_photo_contract.sql', 'MEAL_COMPLETION_PHOTO_BEFORE_GROCERY_LIST');
-assert(files.at(-1) === '20260901165402_client_account_deletion_backend.sql', 'CLIENT_ACCOUNT_DELETION_MIGRATION_IS_TAIL');
+assert(files.at(-10) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_BEFORE_STANDALONE_ADMIN');
+assert(files.at(-9) === '20260827084741_standalone_platform_admin_access.sql', 'STANDALONE_ADMIN_MIGRATION_BEFORE_DIPLOMA_STORAGE');
+assert(files.at(-8) === '20260830060342_dietitian_diploma_storage_hardening.sql', 'DIPLOMA_STORAGE_MIGRATION_BEFORE_MEAL_PLAN_SAVE');
+assert(files.at(-7) === '20260830141202_meal_plan_cross_day_identity_preservation.sql', 'CROSS_DAY_MEAL_PLAN_SAVE_BEFORE_SNAPSHOT_EDIT');
+assert(files.at(-6) === '20260830185101_meal_plan_snapshot_edit_contract.sql', 'SNAPSHOT_EDIT_BEFORE_NEW_RECIPE_CUSTOM_SNAPSHOT');
+assert(files.at(-5) === '20260831071948_meal_plan_new_recipe_custom_snapshot_contract.sql', 'NEW_RECIPE_CUSTOM_SNAPSHOT_BEFORE_MEAL_COMPLETION_PHOTO');
+assert(files.at(-4) === '20260831190352_meal_completion_photo_contract.sql', 'MEAL_COMPLETION_PHOTO_BEFORE_GROCERY_LIST');
+assert(files.at(-1) === '20260901193000_client_account_deletion_hardening.sql', 'CLIENT_ACCOUNT_DELETION_MIGRATION_IS_TAIL');
 assert(!/\b(?:pg_net|net\.http_post|http_post|vault\.decrypted_secrets|fetch\s*\()/i.test(sql), 'NO_PROVIDER_NETWORK_OR_SECRET_ACCESS');
 assert(!/alter publication|create publication|create webhook/i.test(sql), 'NO_REALTIME_OR_DATABASE_WEBHOOK');
 assert(!/insert\s+into\s+public\.notifications|update\s+public\.notifications/i.test(sql), 'PUSH_DOES_NOT_MUTATE_NOTIFICATION_SOURCE');

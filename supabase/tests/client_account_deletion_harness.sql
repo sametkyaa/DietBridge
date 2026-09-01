@@ -129,7 +129,20 @@ do $$
 begin
   if has_function_privilege('anon', 'public.delete_client_account_data(uuid)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.delete_client_account_data(uuid)', 'EXECUTE')
-     or not has_function_privilege('service_role', 'public.delete_client_account_data(uuid)', 'EXECUTE') then
+     or not has_function_privilege('service_role', 'public.delete_client_account_data(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.prepare_client_account_deletion(uuid,jsonb)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.prepare_client_account_deletion(uuid,jsonb)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.prepare_client_account_deletion(uuid,jsonb)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.get_client_account_deletion_state(uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.get_client_account_deletion_state(uuid)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.get_client_account_deletion_state(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.mark_client_account_storage_cleaned(uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.mark_client_account_storage_cleaned(uuid)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.mark_client_account_storage_cleaned(uuid)', 'EXECUTE')
+     or has_table_privilege('anon', 'public.client_account_deletion_tombstones', 'SELECT')
+     or has_table_privilege('authenticated', 'public.client_account_deletion_tombstones', 'SELECT')
+     or has_table_privilege('anon', 'public.client_account_deletion_storage_manifest', 'SELECT')
+     or has_table_privilege('authenticated', 'public.client_account_deletion_storage_manifest', 'SELECT') then
     raise exception 'FAIL: CLIENT_DELETE_RPC_GRANTS';
   end if;
 end
@@ -201,7 +214,10 @@ select set_config('request.jwt.claims', jsonb_build_object(
 do $$
 begin
   begin
-    perform public.delete_client_account_data((select dietitian_a from client_account_deletion_context));
+    perform public.prepare_client_account_deletion(
+      (select dietitian_a from client_account_deletion_context),
+      '[]'::jsonb
+    );
     raise exception 'FAIL: DIETITIAN_TARGET_DELETED';
   exception when others then
     if sqlerrm like 'FAIL:%' then raise; end if;
@@ -211,15 +227,85 @@ $$;
 do $$
 begin
   begin
-    perform public.delete_client_account_data((select client_b from client_account_deletion_context));
+    perform public.prepare_client_account_deletion(
+      (select client_b from client_account_deletion_context),
+      '[]'::jsonb
+    );
     raise exception 'FAIL: PLATFORM_ADMIN_TARGET_DELETED';
   exception when others then
     if sqlerrm like 'FAIL:%' then raise; end if;
   end;
 end
 $$;
-select public.delete_client_account_data((select client_a from client_account_deletion_context));
-select public.delete_client_account_data((select client_a from client_account_deletion_context));
+
+reset role;
+
+create temp table client_account_deletion_manifest_input (
+  manifest jsonb not null
+) on commit preserve rows;
+
+do $$
+begin
+  if not exists (
+    select 1
+      from public.meal_completion_photo_cleanup_queue as q
+      join client_account_deletion_context as ctx on ctx.client_a = q.client_id
+     where q.bucket_id = 'meal-completion-photos'
+  ) then
+    raise exception 'FAIL: COMPLETION_MANIFEST_FIXTURE_MISSING';
+  end if;
+end
+$$;
+
+insert into client_account_deletion_manifest_input (manifest)
+select jsonb_build_array(
+         jsonb_build_object(
+           'bucket_id', 'avatars',
+           'object_path', ctx.client_a::text || '/avatar.jpg'
+         ),
+         jsonb_build_object(
+           'bucket_id', 'meal-completion-photos',
+           'object_path', (
+             select q.object_path
+               from public.meal_completion_photo_cleanup_queue as q
+              where q.client_id = ctx.client_a
+                and q.bucket_id = 'meal-completion-photos'
+              order by q.object_path
+              limit 1
+           )
+         )
+       ) || coalesce(
+         (
+           select jsonb_agg(
+                    jsonb_build_object(
+                      'bucket_id', i.bucket_id,
+                      'object_path', i.object_path
+                    ) order by i.object_path
+                  )
+             from public.chat_upload_intents as i
+             join public.chat_conversations as c on c.id = i.conversation_id
+            where c.client_id = ctx.client_a
+         ),
+         '[]'::jsonb
+       )
+  from client_account_deletion_context as ctx;
+grant select on client_account_deletion_manifest_input to service_role;
+
+set local role service_role;
+select set_config('request.jwt.claim.sub', (select client_a::text from client_account_deletion_context), true);
+select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('request.jwt.claims', jsonb_build_object(
+  'sub', (select client_a::text from client_account_deletion_context),
+  'role', 'service_role'
+)::text, true);
+select public.prepare_client_account_deletion(
+  (select client_a from client_account_deletion_context),
+  (select manifest from client_account_deletion_manifest_input)
+);
+select public.prepare_client_account_deletion(
+  (select client_a from client_account_deletion_context),
+  '[]'::jsonb
+);
 reset role;
 
 do $$
@@ -228,10 +314,42 @@ declare
   v_client_a uuid := (select client_a from client_account_deletion_context);
   v_client_b uuid := (select client_b from client_account_deletion_context);
 begin
-  if not exists (select 1 from public.profiles where id = v_client_a and role = 'client'::public.user_role)
+  if exists (select 1 from public.profiles where id = v_client_a)
      or not exists (select 1 from public.profiles where id = v_dietitian and role = 'dietitian'::public.user_role)
      or not exists (select 1 from public.profiles where id = v_client_b and role = 'client'::public.user_role) then
-    raise exception 'FAIL: PROFILE_FIXTURE_OR_AUTH_CASCADE_STATE';
+    raise exception 'FAIL: PROFILE_TOMBSTONE_CLEANUP_STATE';
+  end if;
+
+  if not exists (select 1 from public.client_account_deletion_tombstones where user_id = v_client_a)
+     or not exists (select 1 from public.client_account_deletion_storage_manifest where user_id = v_client_a)
+     or not exists (select 1 from public.client_account_deletion_tombstones where user_id = v_client_a and storage_cleanup_at is null) then
+    raise exception 'FAIL: RETRYABLE_TOMBSTONE_MANIFEST_STATE';
+  end if;
+
+  if (select count(*)
+        from public.client_account_deletion_storage_manifest
+       where user_id = v_client_a) <> 4
+     or not exists (
+       select 1
+         from public.client_account_deletion_storage_manifest
+        where user_id = v_client_a
+          and bucket_id = 'avatars'
+          and object_path = v_client_a::text || '/avatar.jpg'
+     )
+     or not exists (
+       select 1
+         from public.client_account_deletion_storage_manifest as m
+        where m.user_id = v_client_a
+          and m.bucket_id = 'meal-completion-photos'
+          and m.object_path ~ (
+            '^' || v_client_a::text || '/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jpg$'
+          )
+     )
+     or (select count(*)
+           from public.client_account_deletion_storage_manifest
+          where user_id = v_client_a
+            and bucket_id = 'chat-images') <> 2 then
+    raise exception 'FAIL: EXACT_STORAGE_MANIFEST_PATHS';
   end if;
 
   if exists (select 1 from public.client_profiles where user_id = v_client_a)
@@ -249,9 +367,10 @@ begin
      or exists (select 1 from public.meals as m join public.meal_plans as mp on mp.id = m.plan_id where mp.client_id = v_client_a)
      or exists (select 1 from public.chat_conversations where client_id = v_client_a)
      or exists (select 1 from public.chat_read_states where user_id = v_client_a)
-     or exists (select 1 from public.chat_upload_intents where created_by = v_client_a)
-     or exists (select 1 from public.chat_attachments as a join public.chat_upload_intents as i on i.id = a.intent_id where i.created_by = v_client_a)
-     or exists (select 1 from public.chat_image_cleanup_queue as q join public.chat_upload_intents as i on i.id = q.intent_id where i.created_by = v_client_a)
+      or exists (select 1 from public.chat_upload_intents where created_by = v_client_a)
+      or exists (select 1 from public.chat_upload_intents as i join public.chat_conversations as c on c.id = i.conversation_id where c.client_id = v_client_a)
+      or exists (select 1 from public.chat_attachments as a join public.chat_upload_intents as i on i.id = a.intent_id where i.created_by = v_client_a)
+      or exists (select 1 from public.chat_image_cleanup_queue as q join public.chat_upload_intents as i on i.id = q.intent_id where i.created_by = v_client_a)
      or exists (select 1 from public.meal_completion_photo_cleanup_queue where client_id = v_client_a)
      or exists (select 1 from public.notifications where recipient_id = v_client_a or actor_id = v_client_a) then
     raise exception 'FAIL: CLIENT_A_RELATIONAL_RESIDUE';

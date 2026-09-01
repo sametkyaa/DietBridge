@@ -48,6 +48,11 @@ interface ChatUploadIntentRow {
   object_path: unknown;
 }
 
+interface DeletionStateRow {
+  user_id: unknown;
+  storage_objects: unknown;
+}
+
 interface ProfileRow {
   id: unknown;
   role: unknown;
@@ -81,18 +86,19 @@ const jsonResponse = (
   status: number,
   body: Record<string, unknown> | null,
   extraHeaders: Record<string, string> = {},
-): Response => new Response(
-  body === null ? null : JSON.stringify(body),
-  {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      ...CORS_HEADERS,
-      ...extraHeaders,
+): Response =>
+  new Response(
+    body === null ? null : JSON.stringify(body),
+    {
+      status,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        ...CORS_HEADERS,
+        ...extraHeaders,
+      },
     },
-  },
-);
+  );
 
 const errorResponse = (status: number, code: string): Response =>
   jsonResponse(status, { error: { code, retryable: status >= 500 } });
@@ -216,8 +222,40 @@ const hasActivePlatformAdminEntitlement = async (
   );
   if (!response.ok) throw new Error("admin_entitlement_lookup_failed");
   const rows = await parseJson(response);
-  if (!Array.isArray(rows)) throw new Error("admin_entitlement_lookup_malformed");
+  if (!Array.isArray(rows)) {
+    throw new Error("admin_entitlement_lookup_malformed");
+  }
   return rows.length > 0;
+};
+
+const listRestRows = async (
+  configuration: ServiceConfiguration,
+  resource: string,
+  filters: Record<string, string>,
+  malformedCode: string,
+  dependencies: DeleteClientAccountDependencies,
+): Promise<unknown[]> => {
+  const rows: unknown[] = [];
+  let offset = 0;
+  while (true) {
+    const query = new URLSearchParams({
+      ...filters,
+      limit: String(STORAGE_PAGE_SIZE),
+      offset: String(offset),
+    });
+    const response = await dependencies.fetch(
+      `${configuration.baseUrl}/rest/v1/${resource}?${query.toString()}`,
+      { headers: serviceHeaders(configuration.serviceRoleKey) },
+    );
+    if (!response.ok) throw new Error(`${malformedCode}_lookup_failed`);
+    const page = await parseJson(response);
+    if (!Array.isArray(page)) {
+      throw new Error(`${malformedCode}_lookup_malformed`);
+    }
+    rows.push(...page);
+    if (page.length < STORAGE_PAGE_SIZE) return rows;
+    offset += STORAGE_PAGE_SIZE;
+  }
 };
 
 const listStorageObjects = async (
@@ -230,7 +268,9 @@ const listStorageObjects = async (
   let offset = 0;
   while (true) {
     const response = await dependencies.fetch(
-      `${configuration.baseUrl}/storage/v1/object/list/${encodeURIComponent(bucket)}`,
+      `${configuration.baseUrl}/storage/v1/object/list/${
+        encodeURIComponent(bucket)
+      }`,
       {
         method: "POST",
         headers: serviceHeaders(configuration.serviceRoleKey),
@@ -307,22 +347,64 @@ const collectCompletionPhotoPaths = async (
   return paths;
 };
 
-const fetchClientChatImagePaths = async (
-  configuration: ServiceConfiguration,
+const validateStorageManifestPath = (
   userId: string,
+  bucket: string,
+  objectPath: string,
+): void => {
+  if (bucket === AVATAR_BUCKET) {
+    const prefix = `${userId}/`;
+    const name = objectPath.startsWith(prefix)
+      ? objectPath.slice(prefix.length)
+      : null;
+    if (!name || name.includes("/") || !AVATAR_FILE_PATTERN.test(name)) {
+      throw new Error("avatar_path_contract_failed");
+    }
+    return;
+  }
+  if (bucket === COMPLETION_PHOTO_BUCKET) {
+    const prefix = `${userId}/`;
+    if (!objectPath.startsWith(prefix)) {
+      throw new Error("completion_path_contract_failed");
+    }
+    const remainder = objectPath.slice(prefix.length);
+    const parts = remainder.split("/");
+    if (
+      parts.length !== 2 || !UUID_PATTERN.test(parts[0]) ||
+      !COMPLETION_FILE_PATTERN.test(parts[1])
+    ) throw new Error("completion_path_contract_failed");
+    return;
+  }
+  if (bucket === CHAT_IMAGE_BUCKET) {
+    if (!CHAT_IMAGE_PATH_PATTERN.test(objectPath)) {
+      throw new Error("chat_intent_path_contract_failed");
+    }
+    return;
+  }
+  throw new Error("storage_manifest_bucket_contract_failed");
+};
+
+const toStorageManifestRow = (
+  userId: string,
+  bucket: string,
+  objectPath: string,
+): { bucket_id: string; object_path: string } => {
+  validateStorageManifestPath(userId, bucket, objectPath);
+  return { bucket_id: bucket, object_path: objectPath };
+};
+
+const fetchChatUploadIntentPaths = async (
+  configuration: ServiceConfiguration,
+  filter: Record<string, string>,
   dependencies: DeleteClientAccountDependencies,
 ): Promise<string[]> => {
-  const query = new URLSearchParams({
-    select: "bucket_id,object_path",
-    created_by: `eq.${userId}`,
-  });
-  const response = await dependencies.fetch(
-    `${configuration.baseUrl}/rest/v1/chat_upload_intents?${query.toString()}`,
-    { headers: serviceHeaders(configuration.serviceRoleKey) },
+  const rows = await listRestRows(
+    configuration,
+    "chat_upload_intents",
+    { select: "bucket_id,object_path", ...filter },
+    "chat_intent",
+    dependencies,
   );
-  if (!response.ok) throw new Error("chat_intent_lookup_failed");
-  const rows = await parseJson(response);
-  if (!Array.isArray(rows)) throw new Error("chat_intent_lookup_malformed");
   return rows.map((row) => {
     if (!isRecord(row)) throw new Error("chat_intent_row_malformed");
     const intent = row as unknown as ChatUploadIntentRow;
@@ -333,6 +415,51 @@ const fetchClientChatImagePaths = async (
     ) throw new Error("chat_intent_path_contract_failed");
     return intent.object_path;
   });
+};
+
+const fetchClientChatImagePaths = async (
+  configuration: ServiceConfiguration,
+  userId: string,
+  dependencies: DeleteClientAccountDependencies,
+): Promise<string[]> => {
+  const conversationRows = await listRestRows(
+    configuration,
+    "chat_conversations",
+    { select: "id", client_id: `eq.${userId}` },
+    "chat_conversation",
+    dependencies,
+  );
+  const conversationIds = conversationRows.map((row) => {
+    if (
+      !isRecord(row) || typeof row.id !== "string" || !UUID_PATTERN.test(row.id)
+    ) {
+      throw new Error("chat_conversation_row_malformed");
+    }
+    return row.id;
+  });
+
+  const paths = [] as string[];
+  for (const conversationId of conversationIds) {
+    paths.push(
+      ...await fetchChatUploadIntentPaths(
+        configuration,
+        { conversation_id: `eq.${conversationId}` },
+        dependencies,
+      ),
+    );
+  }
+
+  // Keep cleaning client-created orphan intents as well. The conversation
+  // queries above are what ensure dietitian-uploaded images in the client's
+  // conversations are included too.
+  paths.push(
+    ...await fetchChatUploadIntentPaths(
+      configuration,
+      { created_by: `eq.${userId}` },
+      dependencies,
+    ),
+  );
+  return [...new Set(paths)];
 };
 
 const collectOwnedStoragePaths = async (
@@ -352,6 +479,59 @@ const collectOwnedStoragePaths = async (
   ]);
 };
 
+const invokeDeletionState = async (
+  configuration: ServiceConfiguration,
+  userId: string,
+  dependencies: DeleteClientAccountDependencies,
+): Promise<Map<string, string[]> | null> => {
+  const response = await dependencies.fetch(
+    `${configuration.baseUrl}/rest/v1/rpc/get_client_account_deletion_state`,
+    {
+      method: "POST",
+      headers: serviceHeaders(configuration.serviceRoleKey),
+      body: JSON.stringify({ p_client_id: userId }),
+    },
+  );
+  if (!response.ok) throw new Error("deletion_state_lookup_failed");
+  const value = await parseJson(response);
+  if (!Array.isArray(value)) throw new Error("deletion_state_lookup_malformed");
+  if (value.length === 0) return null;
+  if (value.length !== 1 || !isRecord(value[0])) {
+    throw new Error("deletion_state_lookup_ambiguous");
+  }
+  const state = value[0] as unknown as DeletionStateRow;
+  if (
+    typeof state.user_id !== "string" ||
+    state.user_id.toLowerCase() !== userId.toLowerCase()
+  ) {
+    throw new Error("deletion_state_identity_mismatch");
+  }
+  if (!Array.isArray(state.storage_objects)) {
+    throw new Error("deletion_state_manifest_malformed");
+  }
+  const pathsByBucket = new Map<string, string[]>();
+  for (const value of state.storage_objects) {
+    if (
+      !isRecord(value) || typeof value.bucket_id !== "string" ||
+      typeof value.object_path !== "string"
+    ) {
+      throw new Error("deletion_state_manifest_row_malformed");
+    }
+    const row = toStorageManifestRow(
+      userId,
+      value.bucket_id,
+      value.object_path,
+    );
+    const paths = pathsByBucket.get(row.bucket_id) ?? [];
+    paths.push(row.object_path);
+    pathsByBucket.set(row.bucket_id, paths);
+  }
+  for (const [bucket, paths] of pathsByBucket) {
+    pathsByBucket.set(bucket, [...new Set(paths)]);
+  }
+  return pathsByBucket;
+};
+
 const removeExactStoragePaths = async (
   configuration: ServiceConfiguration,
   pathsByBucket: Map<string, string[]>,
@@ -365,7 +545,9 @@ const removeExactStoragePaths = async (
     ) {
       const batch = paths.slice(start, start + STORAGE_DELETE_BATCH_SIZE);
       const response = await dependencies.fetch(
-        `${configuration.baseUrl}/storage/v1/object/${encodeURIComponent(bucket)}`,
+        `${configuration.baseUrl}/storage/v1/object/${
+          encodeURIComponent(bucket)
+        }`,
         {
           method: "DELETE",
           headers: serviceHeaders(configuration.serviceRoleKey),
@@ -379,20 +561,40 @@ const removeExactStoragePaths = async (
   }
 };
 
-const invokeRelationalCleanup = async (
+const invokeTransactionalDeletion = async (
+  configuration: ServiceConfiguration,
+  userId: string,
+  storageObjects: { bucket_id: string; object_path: string }[],
+  dependencies: DeleteClientAccountDependencies,
+): Promise<void> => {
+  const response = await dependencies.fetch(
+    `${configuration.baseUrl}/rest/v1/rpc/prepare_client_account_deletion`,
+    {
+      method: "POST",
+      headers: serviceHeaders(configuration.serviceRoleKey),
+      body: JSON.stringify({
+        p_client_id: userId,
+        p_storage_objects: storageObjects,
+      }),
+    },
+  );
+  if (!response.ok) throw new Error("transactional_deletion_failed");
+};
+
+const markStorageCleanupComplete = async (
   configuration: ServiceConfiguration,
   userId: string,
   dependencies: DeleteClientAccountDependencies,
 ): Promise<void> => {
   const response = await dependencies.fetch(
-    `${configuration.baseUrl}/rest/v1/rpc/delete_client_account_data`,
+    `${configuration.baseUrl}/rest/v1/rpc/mark_client_account_storage_cleaned`,
     {
       method: "POST",
       headers: serviceHeaders(configuration.serviceRoleKey),
       body: JSON.stringify({ p_client_id: userId }),
     },
   );
-  if (!response.ok) throw new Error("relational_cleanup_failed");
+  if (!response.ok) throw new Error("storage_cleanup_marker_failed");
 };
 
 const requestBodyIsEmptyObject = async (request: Request): Promise<boolean> => {
@@ -432,26 +634,64 @@ async function handleRequest(
   const userId = await authenticateUser(configuration, token, dependencies);
   if (!userId) return errorResponse(401, "unauthorized");
 
-  const profile = await fetchProfile(configuration, userId, dependencies);
-  if (
-    !profile || profile.id !== userId || profile.role !== "client" ||
-    await hasActivePlatformAdminEntitlement(configuration, userId, dependencies)
-  ) {
-    return errorResponse(403, "forbidden");
-  }
-
-  // Collect and validate every owned path before deleting any object. If a
-  // lookup or path contract fails, no Storage/Auth mutation is attempted.
-  const pathsByBucket = await collectOwnedStoragePaths(
+  // A service-created tombstone is the retry discriminator. A retry never
+  // re-reads profile/relationship rows or reconstructs ownership from live
+  // data; it uses only the exact manifest committed by the first transaction.
+  const existingManifest = await invokeDeletionState(
     configuration,
     userId,
     dependencies,
   );
-  await removeExactStoragePaths(configuration, pathsByBucket, dependencies);
-  await invokeRelationalCleanup(configuration, userId, dependencies);
+  if (existingManifest === null) {
+    const profile = await fetchProfile(configuration, userId, dependencies);
+    if (
+      !profile || profile.id !== userId || profile.role !== "client" ||
+      await hasActivePlatformAdminEntitlement(
+        configuration,
+        userId,
+        dependencies,
+      )
+    ) {
+      return errorResponse(403, "forbidden");
+    }
+
+    // Collect and validate every owned path before the transaction. If a
+    // lookup or path contract fails, no Storage/Auth mutation is attempted.
+    const collectedPaths = await collectOwnedStoragePaths(
+      configuration,
+      userId,
+      dependencies,
+    );
+    const storageObjects = [...collectedPaths.entries()].flatMap((
+      [bucket, paths],
+    ) =>
+      paths.map((objectPath) =>
+        toStorageManifestRow(userId, bucket, objectPath)
+      )
+    );
+    await invokeTransactionalDeletion(
+      configuration,
+      userId,
+      storageObjects,
+      dependencies,
+    );
+  } else {
+    await invokeTransactionalDeletion(configuration, userId, [], dependencies);
+  }
+
+  const persistedManifest = await invokeDeletionState(
+    configuration,
+    userId,
+    dependencies,
+  );
+  if (persistedManifest === null) {
+    throw new Error("deletion_state_missing_after_transaction");
+  }
+  await removeExactStoragePaths(configuration, persistedManifest, dependencies);
+  await markStorageCleanupComplete(configuration, userId, dependencies);
 
   // This is intentionally the final side effect. Auth deletion cascades the
-  // retained profile row and makes normal login impossible.
+  // tombstone, manifest, and any remaining Auth-owned state.
   await dependencies.deleteAuthUser(
     configuration.baseUrl,
     configuration.serviceRoleKey,
@@ -468,7 +708,10 @@ export async function handleDeleteClientAccountRequest(
   try {
     return await handleRequest(request, dependencies);
   } catch {
-    dependencies.log({ level: "error", code: "client_account_deletion_failed" });
+    dependencies.log({
+      level: "error",
+      code: "client_account_deletion_failed",
+    });
     return errorResponse(503, "deletion_retryable");
   }
 }

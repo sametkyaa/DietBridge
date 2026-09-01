@@ -21,6 +21,7 @@ const isolatedMigrations = [
   '20260817084531_appointment_reminders_backend.sql',
   '20260817120000_push_registry_outbox_backend.sql',
   '20260901165402_client_account_deletion_backend.sql',
+  '20260901193000_client_account_deletion_hardening.sql',
 ];
 const actorIds = [];
 const relationshipIds = [];
@@ -180,7 +181,7 @@ try {
   disposable = await runDisposableSupabaseLocalReplay({ materializeOnly: true, keepTemp: true });
   const migrationDirectory = join(disposable.tempRoot, 'supabase', 'migrations');
   for (const migration of isolatedMigrations) copyFileSync(join(repoRoot, 'supabase', 'migrations', migration), join(migrationDirectory, migration), 1);
-  assert(readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length === 58, 'E2E_DISPOSABLE_MIGRATION_COUNT_58');
+  assert(readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length === 59, 'E2E_DISPOSABLE_MIGRATION_COUNT_59');
   await configurePorts(disposable.configPath);
   cli(['start']);
   stackStarted = true;

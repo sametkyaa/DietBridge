@@ -379,8 +379,8 @@ const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(sourceMigrations.length === 57, 'CANONICAL_MIGRATION_INVENTORY_57');
-  assert(sourceMigrations.at(-1) === '20260901165402_client_account_deletion_backend.sql', 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
+  assert(sourceMigrations.length === 58, 'CANONICAL_MIGRATION_INVENTORY_58');
+  assert(sourceMigrations.at(-1) === '20260901193000_client_account_deletion_hardening.sql', 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-core-'));
   const tempRoot = join(tempParent, 'project');

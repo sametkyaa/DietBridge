@@ -1174,7 +1174,7 @@ try {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   const migrationCount = readSchema('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === '58', 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'repository=57, local-prerequisite=1');
+  assert(migrationCount === '59', 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'repository=58, local-prerequisite=1');
   await runFlows();
 } catch (error) {
   mainError = error;

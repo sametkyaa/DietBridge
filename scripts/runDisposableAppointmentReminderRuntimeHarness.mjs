@@ -345,8 +345,8 @@ const cleanupFixtures = async () => {
 const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  assert(sourceMigrations.length === 57, 'REMINDER_CANONICAL_MIGRATION_INVENTORY_57');
-  assert(sourceMigrations.at(-1) === '20260901165402_client_account_deletion_backend.sql', 'REMINDER_CANONICAL_MIGRATION_TAIL');
+  assert(sourceMigrations.length === 58, 'REMINDER_CANONICAL_MIGRATION_INVENTORY_58');
+  assert(sourceMigrations.at(-1) === '20260901193000_client_account_deletion_hardening.sql', 'REMINDER_CANONICAL_MIGRATION_TAIL');
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-appointment-reminders-'));
   const tempRoot = join(tempParent, 'project');

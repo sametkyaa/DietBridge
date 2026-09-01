@@ -27,6 +27,7 @@ const supabaseVersion = '2.110.0';
 const password = 'Disposable-ClientDeletion-11m!';
 const projectId = `dietbridge-client-delete-${process.pid}-${randomUUID().slice(0, 8)}`;
 const migrationName = '20260901165402_client_account_deletion_backend.sql';
+const hardeningMigrationName = '20260901193000_client_account_deletion_hardening.sql';
 const notificationMigrationName = '20260814214101_notification_core_backend.sql';
 const fixturePrefix = `client-delete-${randomUUID()}`;
 const imageBytes = Buffer.from('JFIF-disposable-client-account-deletion-image');
@@ -89,14 +90,14 @@ const assertNoError = (result, label) => {
 const addClientAccountDeletionMigrations = ({ repoRoot: sourceRoot, tempRoot }) => {
   const sourceDirectory = join(sourceRoot, 'supabase', 'migrations');
   const destinationDirectory = join(tempRoot, 'supabase', 'migrations');
-  for (const migration of [notificationMigrationName, migrationName]) {
+  for (const migration of [notificationMigrationName, migrationName, hardeningMigrationName]) {
     const destination = join(destinationDirectory, migration);
     if (existsSync(destination)) throw new Error(`Disposable migration already exists: ${migration}`);
     copyFileSync(join(sourceDirectory, migration), destination, 1);
   }
   const count = readdirSync(destinationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name)).length;
-  if (count !== 56) throw new Error(`Client account disposable migration count must be 56, received ${count}.`);
+  if (count !== 57) throw new Error(`Client account disposable migration count must be 57, received ${count}.`);
   return count;
 };
 
@@ -199,6 +200,32 @@ const runDeletionSqlHarness = (dietitianId, clientAId, clientBId) => {
       timeout: 5 * 60 * 1000,
     },
   );
+};
+
+const runDeletionTransactionRollbackProbe = (clientId) => {
+  runSql(`
+begin;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+do $$
+begin
+  begin
+    perform public.prepare_client_account_deletion(
+      ${sqlLiteral(clientId)}::uuid,
+      jsonb_build_array(jsonb_build_object(
+        'bucket_id', 'avatars',
+        'object_path', 'not-a-client-path.jpg'
+      ))
+    );
+    raise exception 'FAIL: TRANSACTION_ROLLBACK_PROBE_NOT_REJECTED';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+end
+$$;
+reset role;
+commit;
+`);
 };
 
 const createAnonymousClient = () => createClient(local.API_URL, local.ANON_KEY, {
@@ -315,6 +342,7 @@ const setupFixtures = async () => {
 
   const clientAApi = await createActorClient(clientA);
   const clientBApi = await createActorClient(clientB);
+  const dietitianAApi = await createActorClient(dietitianA);
 
   const condition = await insertOne('medical_conditions', {
     name: `Client deletion fixture condition ${fixturePrefix}`,
@@ -521,7 +549,8 @@ const setupFixtures = async () => {
   pass('CLIENT_A_COMPLETION_CLEANUP_QUEUE_FIXTURE');
 
   const conversationId = randomUUID();
-  conversationIds.push(conversationId);
+  const preservedConversationId = randomUUID();
+  conversationIds.push(conversationId, preservedConversationId);
   await insertOne('chat_conversations', {
     id: conversationId,
     dietitian_client_id: relationA.id,
@@ -557,6 +586,66 @@ const setupFixtures = async () => {
   runSql(`insert into public.chat_read_states (conversation_id, user_id, last_read_message_id, last_delivered_message_id) values (${sqlLiteral(conversationId)}::uuid, ${sqlLiteral(clientA.id)}::uuid, ${sqlLiteral(message.id)}::uuid, ${sqlLiteral(message.id)}::uuid);`);
   pass('CLIENT_A_CHAT_READ_STATE_FIXTURE');
 
+  await insertOne('chat_conversations', {
+    id: preservedConversationId,
+    dietitian_client_id: relationB.id,
+    dietitian_id: dietitianA.id,
+    client_id: clientB.id,
+  }, 'Client B preserved chat conversation fixture', 'id');
+
+  const dietitianMessageId = randomUUID();
+  const dietitianIntent = assertNoError(await dietitianAApi.rpc('create_chat_image_upload_intent', {
+    p_conversation_id: conversationId,
+    p_client_message_id: dietitianMessageId,
+    p_expected_mime: 'image/jpeg',
+  }), 'Dietitian A chat upload intent in Client A conversation');
+  intentIds.push(dietitianIntent.id);
+  const dietitianChatPath = dietitianIntent.object_path;
+  await uploadFixture('chat-images', dietitianChatPath, 'Dietitian A chat image in Client A conversation', dietitianAApi);
+  assertNoError(await admin.rpc('record_chat_image_validation', {
+    p_intent_id: dietitianIntent.id,
+    p_validated_mime: 'image/jpeg',
+    p_validated_byte_size: imageBytes.length,
+    p_validated_width: 10,
+    p_validated_height: 10,
+  }), 'Dietitian A chat image validation');
+  const dietitianMessage = assertNoError(await dietitianAApi.rpc('finalize_chat_image_message', {
+    p_intent_id: dietitianIntent.id,
+    p_caption: 'Dietitian A private chat image',
+  }), 'Dietitian A chat image finalization');
+  messageIds.push(dietitianMessage.id);
+  const dietitianAttachmentId = runSql(`select id::text from public.chat_attachments where message_id = ${sqlLiteral(dietitianMessage.id)}::uuid;`);
+  assert(Boolean(dietitianAttachmentId), 'DIETITIAN_CHAT_ATTACHMENT_FIXTURE');
+  attachmentIds.push(dietitianAttachmentId);
+  runSql(`insert into public.chat_image_cleanup_queue (intent_id, attachment_id, bucket_id, object_path, reason, available_at) values (${sqlLiteral(dietitianIntent.id)}::uuid, ${sqlLiteral(dietitianAttachmentId)}::uuid, 'chat-images', ${sqlLiteral(dietitianChatPath)}, 'message_tombstone', '2099-12-10T12:00:00.000Z');`);
+  pass('DIETITIAN_CHAT_CLEANUP_QUEUE_FIXTURE');
+
+  const preservedClientMessageId = randomUUID();
+  const preservedIntent = assertNoError(await clientBApi.rpc('create_chat_image_upload_intent', {
+    p_conversation_id: preservedConversationId,
+    p_client_message_id: preservedClientMessageId,
+    p_expected_mime: 'image/jpeg',
+  }), 'Client B chat upload intent');
+  intentIds.push(preservedIntent.id);
+  const preservedChatPath = preservedIntent.object_path;
+  await uploadFixture('chat-images', preservedChatPath, 'Client B preserved chat image', clientBApi);
+  assertNoError(await admin.rpc('record_chat_image_validation', {
+    p_intent_id: preservedIntent.id,
+    p_validated_mime: 'image/jpeg',
+    p_validated_byte_size: imageBytes.length,
+    p_validated_width: 10,
+    p_validated_height: 10,
+  }), 'Client B chat image validation');
+  const preservedMessage = assertNoError(await clientBApi.rpc('finalize_chat_image_message', {
+    p_intent_id: preservedIntent.id,
+    p_caption: 'Client B preserved chat image',
+  }), 'Client B chat image finalization');
+  messageIds.push(preservedMessage.id);
+  const preservedAttachmentId = runSql(`select id::text from public.chat_attachments where message_id = ${sqlLiteral(preservedMessage.id)}::uuid;`);
+  assert(Boolean(preservedAttachmentId), 'CLIENT_B_CHAT_ATTACHMENT_FIXTURE');
+  attachmentIds.push(preservedAttachmentId);
+  pass('CLIENT_B_CHAT_PRESERVED_FIXTURE');
+
   const clientAvatarPath = `${clientA.id}/avatar.jpg`;
   const clientBAvatarPath = `${clientB.id}/avatar.jpg`;
   const dietitianAvatarPath = `${dietitianA.id}/avatar.jpg`;
@@ -573,6 +662,8 @@ const setupFixtures = async () => {
     mealSnapshotPath,
     completionPath,
     chatPath,
+    dietitianChatPath,
+    preservedChatPath,
     clientAvatarPath,
     clientBAvatarPath,
     dietitianAvatarPath,
@@ -588,8 +679,9 @@ const deleteClientOwnedStorage = async (fixtures) => {
     (bucket === 'avatars' && path === fixtures.clientAvatarPath)
     || (bucket === 'meal-completion-photos' && path === fixtures.completionPath)
     || (bucket === 'chat-images' && path === fixtures.chatPath)
+    || (bucket === 'chat-images' && path === fixtures.dietitianChatPath)
   ));
-  assert(owned.length === 3, 'CLIENT_OWNED_STORAGE_FIXTURE_COUNT');
+  assert(owned.length === 4, 'CLIENT_OWNED_STORAGE_FIXTURE_COUNT');
   await removeStorageDescriptors(owned);
   for (const { bucket, path } of owned) {
     assert(!(await storageObjectExists(bucket, path)), 'CLIENT_OWNED_STORAGE_EXACTLY_REMOVED', `${bucket}/${path}`);
@@ -599,6 +691,7 @@ const deleteClientOwnedStorage = async (fixtures) => {
     { bucket: 'avatars', path: fixtures.dietitianAvatarPath },
     { bucket: 'meal-photos', path: fixtures.mealSnapshotPath },
     { bucket: 'recipe-images', path: fixtures.recipePath },
+    { bucket: 'chat-images', path: fixtures.preservedChatPath },
   ]) {
     assert(await storageObjectExists(bucket, path), 'UNRELATED_STORAGE_PRESERVED', `${bucket}/${path}`);
   }
@@ -675,8 +768,9 @@ const run = async () => {
   const migrationDirectory = join(disposable.tempRoot, 'supabase', 'migrations');
   const migrationFiles = readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name));
   assert(migrationFiles.includes(migrationName), 'CLIENT_DELETE_MIGRATION_MATERIALIZED');
-  assert(migrationFiles.length === 56, 'CLIENT_DELETE_DISPOSABLE_MIGRATION_CHAIN_56');
-  assert(isolatedCount === 56, 'CLIENT_DELETE_CURRENT_CHAIN_METADATA');
+  assert(migrationFiles.includes(hardeningMigrationName), 'CLIENT_DELETE_HARDENING_MIGRATION_MATERIALIZED');
+  assert(migrationFiles.length === 57, 'CLIENT_DELETE_DISPOSABLE_MIGRATION_CHAIN_57');
+  assert(isolatedCount === 57, 'CLIENT_DELETE_CURRENT_CHAIN_METADATA');
   assert(!migrationFiles.includes('20260817120000_push_registry_outbox_backend.sql'), 'CLIENT_DELETE_DEFERRED_PUSH_NOT_MATERIALIZED');
 
   await configureProject(disposable.configPath);
@@ -698,7 +792,7 @@ const run = async () => {
   admin = createClient(local.API_URL, local.SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
-  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === '56', 'CLIENT_DELETE_SCHEMA_MIGRATION_REPLAY_56');
+  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === '57', 'CLIENT_DELETE_SCHEMA_MIGRATION_REPLAY_57');
   runCli(disposable.tempRoot, ['db', 'advisors', '--local', '--type', 'security', '--level', 'error', '--fail-on', 'error']);
   pass('CLIENT_DELETE_LOCAL_SECURITY_ADVISORS_NO_ERROR');
   runCli(disposable.tempRoot, ['db', 'lint', '--local', '--schema', 'private,public', '--fail-on', 'error']);
@@ -706,23 +800,39 @@ const run = async () => {
 
   const fixtures = await setupFixtures();
   assert(runSql(`select count(*) from public.profiles where id in (${sqlLiteral(fixtures.dietitianA.id)},${sqlLiteral(fixtures.clientA.id)},${sqlLiteral(fixtures.clientB.id)})`) === '3', 'CLIENT_DELETE_PROFILE_FIXTURES_PRESENT');
-  await deleteClientOwnedStorage(fixtures);
+  runDeletionTransactionRollbackProbe(fixtures.clientA.id);
+  for (const { bucket, path } of storageDescriptors.filter(({ bucket, path }) => (
+    (bucket === 'avatars' && path === fixtures.clientAvatarPath)
+    || (bucket === 'meal-completion-photos' && path === fixtures.completionPath)
+    || (bucket === 'chat-images' && (path === fixtures.chatPath || path === fixtures.dietitianChatPath))
+  ))) {
+    assert(await storageObjectExists(bucket, path), 'CLIENT_DELETE_ROLLBACK_LEFT_STORAGE_PRESENT', `${bucket}/${path}`);
+  }
+  pass('CLIENT_DELETE_SQL_FAILURE_ROLLBACK_AND_STORAGE_NOT_TOUCHED');
   runDeletionSqlHarness(fixtures.dietitianA.id, fixtures.clientA.id, fixtures.clientB.id);
   pass('CLIENT_DELETE_RELATIONAL_SQL_HARNESS_PASS');
 
-  const clientAProfileBeforeAuthDelete = assertNoError(await admin.from('profiles').select('id,role').eq('id', fixtures.clientA.id).single(), 'Client A retained profile before Auth final step');
-  assert(clientAProfileBeforeAuthDelete.role === 'client', 'CLIENT_A_PROFILE_RETRY_STATE');
+  await deleteClientOwnedStorage(fixtures);
+  assertNoError(await admin.rpc('mark_client_account_storage_cleaned', { p_client_id: fixtures.clientA.id }), 'Client A Storage completion marker');
+  assert(runSql(`select count(*) from public.client_account_deletion_tombstones where user_id = ${sqlLiteral(fixtures.clientA.id)} and relational_cleanup_at is not null and storage_cleanup_at is not null`) === '1', 'CLIENT_A_PROFILE_FREE_STORAGE_COMPLETE_RETRY_STATE');
+  const clientAProfileBeforeAuthDelete = assertNoError(await admin.from('profiles').select('id').eq('id', fixtures.clientA.id), 'Client A profile lookup before Auth final step');
+  assert(clientAProfileBeforeAuthDelete.length === 0, 'CLIENT_A_PROFILE_REMOVED_BEFORE_AUTH');
+  pass('CLIENT_DELETE_STORAGE_FAILURE_AND_AUTH_RETRY_STATE');
   assertNoError(await admin.auth.admin.deleteUser(fixtures.clientA.id, false), 'Client A final Auth deletion');
   const clientAProfileAfterAuthDelete = assertNoError(await admin.from('profiles').select('id').eq('id', fixtures.clientA.id), 'Client A final profile lookup');
   assert(clientAProfileAfterAuthDelete.length === 0, 'CLIENT_A_PROFILE_REMOVED_BY_AUTH_CASCADE');
   const clientAAuth = await admin.auth.admin.getUserById(fixtures.clientA.id);
   assert(Boolean(clientAAuth.error), 'CLIENT_A_AUTH_ACCOUNT_REMOVED');
+  assert(runSql(`select count(*) from public.client_account_deletion_tombstones where user_id = ${sqlLiteral(fixtures.clientA.id)}`) === '0', 'CLIENT_A_TOMBSTONE_CASCADE_REMOVED');
+  assert(runSql(`select count(*) from public.client_account_deletion_storage_manifest where user_id = ${sqlLiteral(fixtures.clientA.id)}`) === '0', 'CLIENT_A_MANIFEST_CASCADE_REMOVED');
   assert(await storageObjectExists('avatars', fixtures.clientBAvatarPath), 'CLIENT_B_AVATAR_REMAINS');
   assert(await storageObjectExists('avatars', fixtures.dietitianAvatarPath), 'DIETITIAN_AVATAR_REMAINS');
   assert(await storageObjectExists('meal-photos', fixtures.mealSnapshotPath), 'DIETITIAN_MEAL_PHOTO_REMAINS');
   assert(await storageObjectExists('recipe-images', fixtures.recipePath), 'DIETITIAN_RECIPE_IMAGE_REMAINS');
   assert(runSql(`select count(*) from public.recipes where id = ${sqlLiteral(recipeIds[0])}`) === '1', 'DIETITIAN_RECIPE_ROW_REMAINS');
   assert(runSql(`select count(*) from public.grocery_items where client_id = ${sqlLiteral(fixtures.clientB.id)}`) === '1', 'CLIENT_B_GROCERY_REMAINS');
+  assert(await storageObjectExists('chat-images', fixtures.preservedChatPath), 'CLIENT_B_CHAT_IMAGE_REMAINS');
+  assert(runSql(`select count(*) from public.chat_upload_intents as i join public.chat_conversations as c on c.id = i.conversation_id where c.client_id = ${sqlLiteral(fixtures.clientB.id)}`) === '1', 'CLIENT_B_CHAT_ROW_REMAINS');
   assert(runSql(`select count(*) from public.platform_admins where user_id = ${sqlLiteral(fixtures.clientB.id)} and revoked_at is null`) === '1', 'CLIENT_B_ADMIN_ENTITLEMENT_REMAINS');
   pass('CLIENT_DELETE_AUTH_FINAL_STEP_AND_TENANT_ISOLATION_PASS');
 };

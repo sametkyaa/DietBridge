@@ -6,6 +6,7 @@ const isolatedMigrations = [
   '20260817084531_appointment_reminders_backend.sql',
   '20260817120000_push_registry_outbox_backend.sql',
   '20260901165402_client_account_deletion_backend.sql',
+  '20260901193000_client_account_deletion_hardening.sql',
 ];
 
 export const addCurrentIsolatedMigrations = ({ repoRoot, tempRoot }) => {
@@ -17,6 +18,6 @@ export const addCurrentIsolatedMigrations = ({ repoRoot, tempRoot }) => {
     copyFileSync(join(sourceDirectory, migration), destination, 1);
   }
   const count = readdirSync(destinationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length;
-  if (count !== 58) throw new Error(`Current disposable migration count must be 58, received ${count}.`);
-  return { canonical: 57, localPrerequisite: 1, total: count };
+  if (count !== 59) throw new Error(`Current disposable migration count must be 59, received ${count}.`);
+  return { canonical: 58, localPrerequisite: 1, total: count };
 };
