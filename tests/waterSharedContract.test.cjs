@@ -81,10 +81,34 @@ test('Web and Mobile source paths preserve the same persisted water unit', () =>
   assert.doesNotMatch(clientDetails, /recordedWaterValues\.reduce[\s\S]{0,180}\/\s*1000/);
   assert.match(analyticsPage, /points=\{report\.waterTrend\}/);
   assert.doesNotMatch(analyticsPage, /point\.value\s*\/\s*1000/);
-  assert.match(mobileDashboard, /setWater\(log\.water_intake\)/);
-  assert.match(mobileDashboard, /water \+ amount \/ 1000/);
-  assert.match(mobileDailyLog, /water_intake: waterAmount/);
-  assert.match(mobileAnalytics, /amount: Number\(log\.water_intake\)/);
+  assert.match(
+    mobileDashboard,
+    /normalizePersistedWaterLiters\(\s*log\?\.\s*water_intake\s*\)/,
+  );
+  assert.match(mobileDashboard, /setWater\(\s*nextWater\s*\)/);
+  assert.match(mobileDashboard, /addWaterLiters\(/);
+  assert.match(mobileDashboard, /removeWaterLiters\(/);
+  assert.match(
+    mobileDashboard,
+    /upsertWaterIntake\(\s*mutationDateKey\s*,\s*nextWater\s*\)/,
+  );
+  assert.match(
+    mobileDashboard,
+    /normalizePersistedWaterLiters\(\s*persistedWater\s*\)/,
+  );
+  assert.doesNotMatch(mobileDashboard, /water_intake\s*\/\s*1000/);
+  assert.match(mobileDailyLog, /water_intake:\s*normalizedWater/);
+  assert.match(
+    mobileDailyLog,
+    /normalizePersistedWaterLiters\(\s*data\?\.\s*water_intake\s*\)/,
+  );
+  assert.doesNotMatch(mobileDailyLog, /water_intake\s*\/\s*1000/);
+  assert.match(
+    mobileAnalytics,
+    /normalizePersistedWaterLiters\(\s*log\.\s*water_intake\s*\)/,
+  );
+  assert.match(mobileAnalytics, /amount:\s*log\.amount/);
+  assert.doesNotMatch(mobileAnalytics, /water_intake\s*\/\s*1000/);
   assert.match(mobileWaterCard, /water\.toFixed\(2\)/);
 });
 
