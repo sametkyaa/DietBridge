@@ -314,8 +314,8 @@ const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(sourceMigrations.length === 58, 'CANONICAL_MIGRATION_INVENTORY_58');
-  assert(sourceMigrations.at(-1) === '20260901193000_client_account_deletion_hardening.sql', 'CANONICAL_CLIENT_ACCOUNT_DELETION_MIGRATION_TAIL');
+  assert(sourceMigrations.length === 59, 'CANONICAL_MIGRATION_INVENTORY_59');
+  assert(sourceMigrations.at(-1) === '20260901200413_client_account_deletion_scope_tightening.sql', 'CANONICAL_CLIENT_ACCOUNT_DELETION_MIGRATION_TAIL');
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-push-registry-'));
   const tempRoot = join(tempParent, 'project');

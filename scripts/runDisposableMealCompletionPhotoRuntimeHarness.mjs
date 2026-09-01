@@ -526,7 +526,7 @@ const run = async () => {
   const migrationDirectory = join(disposable.tempRoot, 'supabase', 'migrations');
   const migrationFiles = readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name));
   assert(migrationFiles.includes(migrationName), 'COMPLETION_MIGRATION_MATERIALIZED');
-  assert(migrationFiles.length === 59, 'DISPOSABLE_MIGRATION_CHAIN_59');
+  assert(migrationFiles.length === 60, 'DISPOSABLE_MIGRATION_CHAIN_60');
   await configureDisposableProject(disposable.configPath);
   stackStartAttempted = true;
   runCli(disposable.tempRoot, ['start']);
@@ -540,7 +540,7 @@ const run = async () => {
   admin = createClient(local.API_URL, local.SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
-  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === '59', 'SCHEMA_MIGRATION_REPLAY_59');
+  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === '60', 'SCHEMA_MIGRATION_REPLAY_60');
   assert(runSql("select count(*) from pg_proc where proname = 'set_my_meal_completion_with_photo' and pronamespace = 'public'::regnamespace") === '1', 'COMPLETION_RPC_PRESENT');
   await runFlows();
   pass('MEAL_COMPLETION_PHOTO_RUNTIME_PASS');

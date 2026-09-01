@@ -24,6 +24,7 @@ const ISOLATED_PHASE2_MIGRATIONS = new Set([
   '20260817120000_push_registry_outbox_backend.sql',
   '20260901165402_client_account_deletion_backend.sql',
   '20260901193000_client_account_deletion_hardening.sql',
+  '20260901200413_client_account_deletion_scope_tightening.sql',
 ]);
 export const LOCAL_PREREQUISITE_FILE = '20260728155959_disposable_avatar_bucket_prerequisite.sql';
 export const LOCAL_PREREQUISITE_SQL = `-- Local-only disposable prerequisite. Never add this file to repository migrations.

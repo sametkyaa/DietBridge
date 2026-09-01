@@ -28,6 +28,7 @@ const password = 'Disposable-ClientDeletion-11m!';
 const projectId = `dietbridge-client-delete-${process.pid}-${randomUUID().slice(0, 8)}`;
 const migrationName = '20260901165402_client_account_deletion_backend.sql';
 const hardeningMigrationName = '20260901193000_client_account_deletion_hardening.sql';
+const scopeTighteningMigrationName = '20260901200413_client_account_deletion_scope_tightening.sql';
 const notificationMigrationName = '20260814214101_notification_core_backend.sql';
 const fixturePrefix = `client-delete-${randomUUID()}`;
 const imageBytes = Buffer.from('JFIF-disposable-client-account-deletion-image');
@@ -90,14 +91,14 @@ const assertNoError = (result, label) => {
 const addClientAccountDeletionMigrations = ({ repoRoot: sourceRoot, tempRoot }) => {
   const sourceDirectory = join(sourceRoot, 'supabase', 'migrations');
   const destinationDirectory = join(tempRoot, 'supabase', 'migrations');
-  for (const migration of [notificationMigrationName, migrationName, hardeningMigrationName]) {
+  for (const migration of [notificationMigrationName, migrationName, hardeningMigrationName, scopeTighteningMigrationName]) {
     const destination = join(destinationDirectory, migration);
     if (existsSync(destination)) throw new Error(`Disposable migration already exists: ${migration}`);
     copyFileSync(join(sourceDirectory, migration), destination, 1);
   }
   const count = readdirSync(destinationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name)).length;
-  if (count !== 57) throw new Error(`Client account disposable migration count must be 57, received ${count}.`);
+  if (count !== 58) throw new Error(`Client account disposable migration count must be 58, received ${count}.`);
   return count;
 };
 
@@ -769,8 +770,9 @@ const run = async () => {
   const migrationFiles = readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name));
   assert(migrationFiles.includes(migrationName), 'CLIENT_DELETE_MIGRATION_MATERIALIZED');
   assert(migrationFiles.includes(hardeningMigrationName), 'CLIENT_DELETE_HARDENING_MIGRATION_MATERIALIZED');
-  assert(migrationFiles.length === 57, 'CLIENT_DELETE_DISPOSABLE_MIGRATION_CHAIN_57');
-  assert(isolatedCount === 57, 'CLIENT_DELETE_CURRENT_CHAIN_METADATA');
+  assert(migrationFiles.includes(scopeTighteningMigrationName), 'CLIENT_DELETE_SCOPE_TIGHTENING_MIGRATION_MATERIALIZED');
+  assert(migrationFiles.length === 58, 'CLIENT_DELETE_DISPOSABLE_MIGRATION_CHAIN_58');
+  assert(isolatedCount === 58, 'CLIENT_DELETE_CURRENT_CHAIN_METADATA');
   assert(!migrationFiles.includes('20260817120000_push_registry_outbox_backend.sql'), 'CLIENT_DELETE_DEFERRED_PUSH_NOT_MATERIALIZED');
 
   await configureProject(disposable.configPath);
@@ -792,7 +794,7 @@ const run = async () => {
   admin = createClient(local.API_URL, local.SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
-  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === '57', 'CLIENT_DELETE_SCHEMA_MIGRATION_REPLAY_57');
+  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === '58', 'CLIENT_DELETE_SCHEMA_MIGRATION_REPLAY_58');
   runCli(disposable.tempRoot, ['db', 'advisors', '--local', '--type', 'security', '--level', 'error', '--fail-on', 'error']);
   pass('CLIENT_DELETE_LOCAL_SECURITY_ADVISORS_NO_ERROR');
   runCli(disposable.tempRoot, ['db', 'lint', '--local', '--schema', 'private,public', '--fail-on', 'error']);

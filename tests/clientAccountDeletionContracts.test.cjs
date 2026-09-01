@@ -10,17 +10,20 @@ const test = require('node:test');
 const root = path.join(__dirname, '..');
 const migrationName = '20260901165402_client_account_deletion_backend.sql';
 const hardeningMigrationName = '20260901193000_client_account_deletion_hardening.sql';
+const scopeTighteningMigrationName = '20260901200413_client_account_deletion_scope_tightening.sql';
 const migrationPath = path.join(root, 'supabase', 'migrations', migrationName);
 const hardeningMigrationPath = path.join(root, 'supabase', 'migrations', hardeningMigrationName);
+const scopeTighteningMigrationPath = path.join(root, 'supabase', 'migrations', scopeTighteningMigrationName);
 const functionPath = path.join(root, 'supabase', 'functions', 'delete-client-account', 'handler.ts');
 const configPath = path.join(root, 'supabase', 'config.toml');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const migration = () => fs.readFileSync(hardeningMigrationPath, 'utf8');
+const scopeTighteningMigration = () => fs.readFileSync(scopeTighteningMigrationPath, 'utf8');
 const handler = () => fs.readFileSync(functionPath, 'utf8');
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex').toUpperCase();
 
 const functionBody = () => {
-    const source = migration();
+    const source = scopeTighteningMigration();
     const start = source.indexOf('create or replace function public.delete_client_account_data');
     const end = source.indexOf('\n$function$;', start);
     assert.ok(start >= 0 && end > start, 'cleanup function body is present');
@@ -28,8 +31,8 @@ const functionBody = () => {
 };
 
 const preparationBody = () => {
-    const source = migration();
-    const start = source.indexOf('create function public.prepare_client_account_deletion');
+    const source = scopeTighteningMigration();
+    const start = source.indexOf('create or replace function public.prepare_client_account_deletion');
     const end = source.indexOf('\n$function$;', start);
     assert.ok(start >= 0 && end > start, 'preparation function body is present');
     return source.slice(start, end);
@@ -46,16 +49,24 @@ const assertInOrder = (source, fragments, label) => {
 
 test('account deletion migration is a forward-only isolated canonical tail', () => {
     const source = migration();
+    const scopeSource = scopeTighteningMigration();
     const files = fs.readdirSync(path.join(root, 'supabase/migrations'))
         .filter((name) => /^\d+_.+\.sql$/.test(name))
         .sort();
-    assert.equal(files.at(-1), hardeningMigrationName);
+    assert.equal(files.at(-2), hardeningMigrationName);
+    assert.equal(files.at(-1), scopeTighteningMigrationName);
     assert.match(source, /^begin;\s*$/m);
     assert.match(source, /commit;\s*$/m);
+    assert.match(scopeSource, /^begin;\s*$/m);
+    assert.match(scopeSource, /commit;\s*$/m);
     assert.match(read('scripts/runDisposableSupabaseLocalReplay.mjs'), new RegExp(`'${hardeningMigrationName}'`));
+    assert.match(read('scripts/runDisposableSupabaseLocalReplay.mjs'), new RegExp(`'${scopeTighteningMigrationName}'`));
     assert.match(read('scripts/addCurrentIsolatedMigrations.mjs'), new RegExp(`'${hardeningMigrationName}'`));
+    assert.match(read('scripts/addCurrentIsolatedMigrations.mjs'), new RegExp(`'${scopeTighteningMigrationName}'`));
+    assert.match(read('scripts/runDisposableClientAccountDeletionRuntimeHarness.mjs'), new RegExp(`'${scopeTighteningMigrationName}'`));
     assert.doesNotMatch(read('scripts/runDisposableClientAccountDeletionRuntimeHarness.mjs'), /addCurrentIsolatedMigrations/);
     assert.doesNotMatch(source, /supabase_migrations|db\s+push|storage\.objects|net\.http|vault\./i);
+    assert.doesNotMatch(scopeSource, /supabase_migrations|db\s+push|storage\.objects|net\.http|vault\./i);
 });
 
 test('the service-only RPC validates service role, client role, and admin entitlement', () => {
@@ -129,6 +140,27 @@ test('the relational cleanup order covers every discovered client-linked table',
     ]) {
         assert.doesNotMatch(body, new RegExp(`delete\\s+from\\s+${protectedTable.replace('.', '\\.')}`, 'i'), protectedTable);
     }
+});
+
+test('client deletion scope stays client-side and matches Edge chat discovery', () => {
+    const source = scopeTighteningMigration();
+    const forbiddenDietitianTarget = /(?:chat_conversations|dietitian_clients|appointments|meal_change_requests|daily_tasks|dietitian_notes|meal_plans)[\s\S]{0,180}dietitian_id\s*=\s*p_client_id/i;
+    assert.doesNotMatch(source, forbiddenDietitianTarget);
+    assert.doesNotMatch(source, /(?:sender_id|receiver_id|deleted_by)\s*=\s*p_client_id/i);
+    assert.match(source, /where c\.client_id\s*=\s*p_client_id/i);
+    for (const predicate of [
+        /where a\.client_id\s*=\s*p_client_id/i,
+        /where dc\.client_id\s*=\s*p_client_id/i,
+        /where r\.client_id\s*=\s*p_client_id/i,
+        /where t\.client_id\s*=\s*p_client_id/i,
+        /where n\.client_id\s*=\s*p_client_id/i,
+        /where mp\.client_id\s*=\s*p_client_id/i,
+    ]) assert.match(source, predicate);
+    assert.match(source, /i\.created_by\s*=\s*p_client_id/);
+    assert.match(source, /i\.conversation_id\s*=\s*any\(v_conversation_ids\)/);
+    assert.match(source, /i\.conversation_id\s+in\s*\(\s*select c\.id[\s\S]*where c\.client_id\s*=\s*p_client_id/i);
+    assert.match(source, /caller deletes the persisted exact Storage manifest only after commit/i);
+    assert.doesNotMatch(source, /exact Storage objects have already been removed by the caller/i);
 });
 
 test('the schema coverage regression assertion names every current profiles dependency', () => {
