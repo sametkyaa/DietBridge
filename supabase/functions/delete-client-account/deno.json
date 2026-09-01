@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.window", "dom", "dom.iterable", "esnext"]
+  },
+  "tasks": {
+    "check": "deno check index.ts handler.ts",
+    "test": "deno test --allow-net handler.test.ts"
+  }
+}

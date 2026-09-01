@@ -114,7 +114,7 @@ const compileClient = (outputRoot) => {
 const run = async () => {
   const sourceMigrations = readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
   assert(sourceMigrations.includes(appointmentReminderMigrationName), 'CLIENT_RUNTIME_REMINDER_MIGRATION_PRESENT');
-  assert(sourceMigrations.at(-1) === '20260901083212_client_grocery_list.sql', 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
+  assert(sourceMigrations.at(-1) === '20260901165402_client_account_deletion_backend.sql', 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
 
   tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-client-runtime-'));
   tempRoot = join(tempParent, 'project');

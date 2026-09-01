@@ -22,6 +22,7 @@
     "test:meal-plan-snapshot-edit:runtime": "node scripts/runDisposableMealPlanCrossDaySaveRuntimeHarness.mjs",
     "test:meal-plan-cross-day:runtime": "node scripts/runDisposableMealPlanCrossDaySaveRuntimeHarness.mjs",
     "test:meal-completion-photo:runtime": "node scripts/runDisposableMealCompletionPhotoRuntimeHarness.mjs",
+    "test:client-account-deletion:runtime": "node scripts/runDisposableClientAccountDeletionRuntimeHarness.mjs",
     "test:e2e": "node scripts/runCriticalE2E.mjs",
     "test:e2e:install": "playwright install chromium",
     "quality": "npm run typecheck && npm run lint && npm run test && npm run build",

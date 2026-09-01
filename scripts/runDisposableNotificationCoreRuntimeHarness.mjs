@@ -379,8 +379,8 @@ const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(sourceMigrations.length === 56, 'CANONICAL_MIGRATION_INVENTORY_56');
-  assert(sourceMigrations.at(-1) === '20260901083212_client_grocery_list.sql', 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
+  assert(sourceMigrations.length === 57, 'CANONICAL_MIGRATION_INVENTORY_57');
+  assert(sourceMigrations.at(-1) === '20260901165402_client_account_deletion_backend.sql', 'CANONICAL_MIGRATION_TAIL', sourceMigrations.at(-1));
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-core-'));
   const tempRoot = join(tempParent, 'project');
@@ -421,8 +421,8 @@ const runFlows = async () => {
 
   runCli(disposable.tempRoot, ['db', 'reset', '--local', '--no-seed']);
   const migrationCount = countBySql('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === 57, 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'canonical=56, local-prerequisite=1');
-  pass('DISPOSABLE_CANONICAL_MIGRATION_REPLAY_56');
+  assert(migrationCount === 57, 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'materialized=53, local-prerequisite=1, phase-isolated=3');
+  pass('DISPOSABLE_CANONICAL_MIGRATION_REPLAY_57_SOURCE');
 
   local = parseStatus(runCli(disposable.tempRoot, ['status', '--output', 'env']));
   assertLoopback(local.API_URL);
