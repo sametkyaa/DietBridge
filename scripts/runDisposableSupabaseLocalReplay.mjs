@@ -3,7 +3,10 @@ import { createHash } from 'node:crypto';
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdtempSync,
+  mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
@@ -243,6 +246,139 @@ const assertExternalTempPath = ({ repoRoot, tempRoot }) => {
   }
 };
 
+export const DELETE_CLIENT_ACCOUNT_ENTRYPOINT = './functions/delete-client-account/index.ts';
+export const DELETE_CLIENT_ACCOUNT_FUNCTION_FILES = Object.freeze([
+  'index.ts',
+  'handler.ts',
+  'deno.json',
+]);
+
+const lstatIfPresent = (path) => {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+};
+
+const assertExistingDirectoryWithoutSymlink = (path, label) => {
+  const stats = lstatIfPresent(path);
+  if (!stats) return false;
+  if (stats.isSymbolicLink()) throw new Error(`${label} must not be a symlink: ${path}`);
+  if (!stats.isDirectory()) throw new Error(`${label} must be a directory: ${path}`);
+  return true;
+};
+
+const requireExistingDirectoryWithoutSymlink = (path, label) => {
+  if (!assertExistingDirectoryWithoutSymlink(path, label)) {
+    throw new Error(`${label} is missing: ${path}`);
+  }
+};
+
+const ensureDisposableDirectory = (path, label) => {
+  if (assertExistingDirectoryWithoutSymlink(path, label)) return;
+  mkdirSync(path);
+  assertExistingDirectoryWithoutSymlink(path, label);
+};
+
+const assertRegularFileWithoutSymlink = (path, label) => {
+  const stats = lstatIfPresent(path);
+  if (!stats) throw new Error(`${label} is missing: ${path}`);
+  if (stats.isSymbolicLink()) throw new Error(`${label} must not be a symlink: ${path}`);
+  if (!stats.isFile()) throw new Error(`${label} must be a regular file: ${path}`);
+};
+
+const configuredDeleteClientAccountEntrypoint = (configText) => {
+  const sectionPattern = /^\[functions\.delete-client-account\]\s*$/gm;
+  const sectionMatches = [...configText.matchAll(sectionPattern)];
+  if (sectionMatches.length === 0) return null;
+  if (sectionMatches.length !== 1) {
+    throw new Error('Disposable config must contain one delete-client-account function section.');
+  }
+
+  const sectionStart = sectionMatches[0].index + sectionMatches[0][0].length;
+  const remainingConfig = configText.slice(sectionStart);
+  const nextSectionIndex = remainingConfig.search(/^\[[^\r\n]+\]\s*$/m);
+  const sectionBody = nextSectionIndex === -1
+    ? remainingConfig
+    : remainingConfig.slice(0, nextSectionIndex);
+  const entrypointMatch = sectionBody.match(/^\s*entrypoint\s*=\s*(["'])(.*?)\1\s*(?:#.*)?$/m);
+  if (!entrypointMatch) {
+    throw new Error('Configured delete-client-account function must declare an entrypoint.');
+  }
+  if (entrypointMatch[2] !== DELETE_CLIENT_ACCOUNT_ENTRYPOINT) {
+    throw new Error(
+      `Configured delete-client-account entrypoint must remain ${DELETE_CLIENT_ACCOUNT_ENTRYPOINT}.`,
+    );
+  }
+  return entrypointMatch[2];
+};
+
+export const copyConfiguredDisposableFunctionSources = ({ repoRoot, tempRoot, configPath }) => {
+  const resolvedRepoRoot = resolve(repoRoot);
+  const resolvedTempRoot = resolve(tempRoot);
+  assertExternalTempPath({ repoRoot: resolvedRepoRoot, tempRoot: resolvedTempRoot });
+  requireExistingDirectoryWithoutSymlink(resolvedTempRoot, 'Disposable output root');
+
+  const destinationSupabaseDirectory = join(resolvedTempRoot, 'supabase');
+  const expectedConfigPath = join(destinationSupabaseDirectory, 'config.toml');
+  const resolvedConfigPath = resolve(configPath ?? expectedConfigPath);
+  if (resolvedConfigPath !== resolve(expectedConfigPath)) {
+    throw new Error(`Disposable config must remain inside the disposable output: ${resolvedConfigPath}`);
+  }
+  requireExistingDirectoryWithoutSymlink(destinationSupabaseDirectory, 'Disposable Supabase directory');
+  assertRegularFileWithoutSymlink(resolvedConfigPath, 'Disposable config');
+  const entrypoint = configuredDeleteClientAccountEntrypoint(readFileSync(resolvedConfigPath, 'utf8'));
+  if (!entrypoint) return { entrypoint: null, copiedFiles: [] };
+
+  const sourceSupabaseDirectory = join(resolvedRepoRoot, 'supabase');
+  const sourceFunctionsDirectory = join(sourceSupabaseDirectory, 'functions');
+  const sourceFunctionDirectory = resolve(
+    resolvedRepoRoot,
+    'supabase',
+    'functions',
+    'delete-client-account',
+  );
+  requireExistingDirectoryWithoutSymlink(resolvedRepoRoot, 'Repository root');
+  requireExistingDirectoryWithoutSymlink(sourceSupabaseDirectory, 'Repository Supabase directory');
+  requireExistingDirectoryWithoutSymlink(sourceFunctionsDirectory, 'Repository functions directory');
+  requireExistingDirectoryWithoutSymlink(sourceFunctionDirectory, 'Delete-client-account source directory');
+
+  const destinationFunctionsDirectory = join(destinationSupabaseDirectory, 'functions');
+  const destinationFunctionDirectory = join(destinationFunctionsDirectory, 'delete-client-account');
+  if (!isChildPath(resolvedTempRoot, destinationFunctionDirectory)) {
+    throw new Error(`Disposable function destination must remain inside the disposable output: ${destinationFunctionDirectory}`);
+  }
+  ensureDisposableDirectory(destinationFunctionsDirectory, 'Disposable functions directory');
+  const existingDestination = lstatIfPresent(destinationFunctionDirectory);
+  if (existingDestination) {
+    throw new Error(`Disposable function destination already exists: ${destinationFunctionDirectory}`);
+  }
+
+  const sourcePaths = DELETE_CLIENT_ACCOUNT_FUNCTION_FILES.map((file) => {
+    const sourcePath = join(sourceFunctionDirectory, file);
+    if (!isChildPath(sourceFunctionDirectory, sourcePath)) {
+      throw new Error(`Disposable function source path escaped its directory: ${file}`);
+    }
+    assertRegularFileWithoutSymlink(sourcePath, `Delete-client-account source file ${file}`);
+    return { file, sourcePath };
+  });
+
+  mkdirSync(destinationFunctionDirectory);
+  const copiedFiles = [];
+  for (const { file, sourcePath } of sourcePaths) {
+    const destinationPath = join(destinationFunctionDirectory, file);
+    if (!isChildPath(destinationFunctionDirectory, destinationPath)) {
+      throw new Error(`Disposable function destination path escaped its directory: ${file}`);
+    }
+    copyFileSync(sourcePath, destinationPath, 1);
+    copiedFiles.push(destinationPath);
+  }
+
+  return { entrypoint, copiedFiles };
+};
+
 const assertManifestMatchesSourceInventory = ({ repoRoot, runtimeManifest }) => {
   if (runtimeManifest.expectedHistory?.canonical !== 46
       || runtimeManifest.expectedHistory?.image !== 7
@@ -317,13 +453,17 @@ const assertDisposableMigrationInventory = ({ repositoryPaths, tempRoot, localPr
   };
 };
 
-const copyRequiredProjectFiles = ({ repoRoot, tempRoot }) => {
-  const sourceConfig = join(repoRoot, 'supabase', 'config.toml');
-  const destinationConfig = join(tempRoot, 'supabase', 'config.toml');
-  if (!existsSync(sourceConfig)) {
-    throw new Error(`Required local Supabase config is missing: ${sourceConfig}`);
-  }
+export const copyRequiredProjectFiles = ({ repoRoot, tempRoot }) => {
+  const resolvedRepoRoot = resolve(repoRoot);
+  const resolvedTempRoot = resolve(tempRoot);
+  const sourceConfig = join(resolvedRepoRoot, 'supabase', 'config.toml');
+  const destinationConfig = join(resolvedTempRoot, 'supabase', 'config.toml');
+  requireExistingDirectoryWithoutSymlink(resolvedRepoRoot, 'Repository root');
+  requireExistingDirectoryWithoutSymlink(join(resolvedRepoRoot, 'supabase'), 'Repository Supabase directory');
+  requireExistingDirectoryWithoutSymlink(join(resolvedTempRoot, 'supabase'), 'Disposable Supabase directory');
+  assertRegularFileWithoutSymlink(sourceConfig, 'Required local Supabase config');
   copyFileSync(sourceConfig, destinationConfig, 1);
+  copyConfiguredDisposableFunctionSources({ repoRoot: resolvedRepoRoot, tempRoot: resolvedTempRoot, configPath: destinationConfig });
   return destinationConfig;
 };
 

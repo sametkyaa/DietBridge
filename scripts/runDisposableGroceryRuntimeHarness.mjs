@@ -18,6 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  copyRequiredProjectFiles,
   LOCAL_PREREQUISITE_FILE,
   LOCAL_PREREQUISITE_SQL,
 } from './runDisposableSupabaseLocalReplay.mjs';
@@ -121,8 +122,7 @@ try {
   tempParent = mkdtempSync(join(resolve(tmpdir()), 'dietbridge-grocery-runtime-'));
   tempRoot = join(tempParent, 'project');
   const manifest = materializeDisposableReplay({ repoRoot, outputRoot: tempRoot });
-  const configPath = join(tempRoot, 'supabase', 'config.toml');
-  copyFileSync(join(repoRoot, 'supabase', 'config.toml'), configPath);
+  const configPath = copyRequiredProjectFiles({ repoRoot, tempRoot });
   const testDirectory = join(tempRoot, 'supabase', 'tests');
   mkdirSync(testDirectory, { recursive: true });
   copyFileSync(

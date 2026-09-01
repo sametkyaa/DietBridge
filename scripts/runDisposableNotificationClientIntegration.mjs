@@ -9,7 +9,11 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { materializeDisposableReplay } from './materializeDisposableSupabaseReplay.mjs';
-import { LOCAL_PREREQUISITE_FILE, LOCAL_PREREQUISITE_SQL } from './runDisposableSupabaseLocalReplay.mjs';
+import {
+  copyRequiredProjectFiles,
+  LOCAL_PREREQUISITE_FILE,
+  LOCAL_PREREQUISITE_SQL,
+} from './runDisposableSupabaseLocalReplay.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
@@ -121,8 +125,7 @@ const run = async () => {
   const clientBuild = join(tempParent, 'client-build');
   try {
     const manifest = materializeDisposableReplay({ repoRoot, outputRoot: tempRoot });
-    const configPath = join(tempRoot, 'supabase', 'config.toml');
-    copyFileSync(join(repoRoot, 'supabase', 'config.toml'), configPath);
+    const configPath = copyRequiredProjectFiles({ repoRoot, tempRoot });
     const runtimeMigrationDirectory = join(tempRoot, 'supabase', 'migrations');
     copyFileSync(join(migrationDirectory, notificationCoreMigrationName), join(runtimeMigrationDirectory, notificationCoreMigrationName));
     copyFileSync(join(migrationDirectory, appointmentReminderMigrationName), join(runtimeMigrationDirectory, appointmentReminderMigrationName));

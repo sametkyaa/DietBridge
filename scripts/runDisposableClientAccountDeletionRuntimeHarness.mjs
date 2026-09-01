@@ -6,7 +6,6 @@ import { createServer } from 'node:net';
 import {
   copyFileSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -776,13 +775,6 @@ const run = async () => {
   assert(!migrationFiles.includes('20260817120000_push_registry_outbox_backend.sql'), 'CLIENT_DELETE_DEFERRED_PUSH_NOT_MATERIALIZED');
 
   await configureProject(disposable.configPath);
-  const functionSource = join(repoRoot, 'supabase', 'functions', 'delete-client-account');
-  const functionTarget = join(disposable.tempRoot, 'supabase', 'functions', 'delete-client-account');
-  mkdirSync(functionTarget, { recursive: true });
-  for (const file of readdirSync(functionSource)) {
-    if (!/^(?:index|handler)(?:\.test)?\.ts$/.test(file) && file !== 'deno.json') continue;
-    copyFileSync(join(functionSource, file), join(functionTarget, file));
-  }
   stackStartAttempted = true;
   runCli(disposable.tempRoot, ['start']);
   pass('CLIENT_DELETE_DISPOSABLE_LOCAL_STACK_STARTED', projectId);

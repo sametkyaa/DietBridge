@@ -10,7 +10,11 @@ import { tmpdir } from 'node:os';
 
 import { createClient } from '@supabase/supabase-js';
 import { materializeDisposableReplay } from './materializeDisposableSupabaseReplay.mjs';
-import { LOCAL_PREREQUISITE_FILE, LOCAL_PREREQUISITE_SQL } from './runDisposableSupabaseLocalReplay.mjs';
+import {
+  copyRequiredProjectFiles,
+  LOCAL_PREREQUISITE_FILE,
+  LOCAL_PREREQUISITE_SQL,
+} from './runDisposableSupabaseLocalReplay.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
@@ -320,8 +324,7 @@ const runFlows = async () => {
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-push-registry-'));
   const tempRoot = join(tempParent, 'project');
   const runtimeManifest = materializeDisposableReplay({ repoRoot, outputRoot: tempRoot });
-  const configPath = join(tempRoot, 'supabase', 'config.toml');
-  copyFileSync(join(repoRoot, 'supabase', 'config.toml'), configPath, 1);
+  const configPath = copyRequiredProjectFiles({ repoRoot, tempRoot });
   disposable = { tempParent, tempRoot, configPath, runtimeManifest };
 
   const runtimeMigrationDirectory = join(tempRoot, 'supabase', 'migrations');
