@@ -101,6 +101,6 @@ test('local disposable prerequisite bootstraps only the reviewed diploma contrac
 
 test('all disposable replay helpers include the canonical diploma migration', () => {
   const source = fs.readFileSync(path.join(root, 'scripts', 'addCurrentIsolatedMigrations.mjs'), 'utf8');
-  assert.match(source, /count !== 57/);
-  assert.match(source, /return \{ canonical: 56, localPrerequisite: 1, total: count \}/);
+  assert.match(source, /count !== 60/);
+  assert.match(source, /return \{ canonical: 59, localPrerequisite: 1, total: count \}/);
 });

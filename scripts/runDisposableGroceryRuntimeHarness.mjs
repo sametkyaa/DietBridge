@@ -18,6 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  copyRequiredProjectFiles,
   LOCAL_PREREQUISITE_FILE,
   LOCAL_PREREQUISITE_SQL,
 } from './runDisposableSupabaseLocalReplay.mjs';
@@ -30,6 +31,9 @@ const isolatedMigrations = [
   '20260814214101_notification_core_backend.sql',
   '20260817084531_appointment_reminders_backend.sql',
   '20260817120000_push_registry_outbox_backend.sql',
+  '20260901165402_client_account_deletion_backend.sql',
+  '20260901193000_client_account_deletion_hardening.sql',
+  '20260901200413_client_account_deletion_scope_tightening.sql',
 ];
 const npxCli = process.env.npm_execpath
   ? join(dirname(process.env.npm_execpath), 'npx-cli.js')
@@ -118,8 +122,7 @@ try {
   tempParent = mkdtempSync(join(resolve(tmpdir()), 'dietbridge-grocery-runtime-'));
   tempRoot = join(tempParent, 'project');
   const manifest = materializeDisposableReplay({ repoRoot, outputRoot: tempRoot });
-  const configPath = join(tempRoot, 'supabase', 'config.toml');
-  copyFileSync(join(repoRoot, 'supabase', 'config.toml'), configPath);
+  const configPath = copyRequiredProjectFiles({ repoRoot, tempRoot });
   const testDirectory = join(tempRoot, 'supabase', 'tests');
   mkdirSync(testDirectory, { recursive: true });
   copyFileSync(
@@ -139,7 +142,7 @@ try {
   const migrationFiles = readdirSync(join(tempRoot, 'supabase', 'migrations'))
     .filter((name) => /^\d+_.+\.sql$/.test(name));
   assert(manifest.expectedHistory.total === 53, 'GROCERY_REPLAY_CANONICAL_53');
-  assert(migrationFiles.length === 57, 'GROCERY_REPLAY_WITH_ISOLATED_MIGRATIONS_57');
+  assert(migrationFiles.length === 60, 'GROCERY_REPLAY_WITH_ISOLATED_MIGRATIONS_60');
   await configureProject(configPath);
 
   runCli(tempRoot, ['start']);

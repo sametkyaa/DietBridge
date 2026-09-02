@@ -10,7 +10,11 @@ import { tmpdir } from 'node:os';
 
 import { createClient } from '@supabase/supabase-js';
 import { materializeDisposableReplay } from './materializeDisposableSupabaseReplay.mjs';
-import { LOCAL_PREREQUISITE_FILE, LOCAL_PREREQUISITE_SQL } from './runDisposableSupabaseLocalReplay.mjs';
+import {
+  copyRequiredProjectFiles,
+  LOCAL_PREREQUISITE_FILE,
+  LOCAL_PREREQUISITE_SQL,
+} from './runDisposableSupabaseLocalReplay.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
@@ -314,14 +318,13 @@ const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(sourceMigrations.length === 56, 'CANONICAL_MIGRATION_INVENTORY_56');
-  assert(sourceMigrations.at(-1) === '20260901083212_client_grocery_list.sql', 'CANONICAL_CLIENT_GROCERY_LIST_MIGRATION_TAIL');
+  assert(sourceMigrations.length === 59, 'CANONICAL_MIGRATION_INVENTORY_59');
+  assert(sourceMigrations.at(-1) === '20260901200413_client_account_deletion_scope_tightening.sql', 'CANONICAL_CLIENT_ACCOUNT_DELETION_MIGRATION_TAIL');
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-push-registry-'));
   const tempRoot = join(tempParent, 'project');
   const runtimeManifest = materializeDisposableReplay({ repoRoot, outputRoot: tempRoot });
-  const configPath = join(tempRoot, 'supabase', 'config.toml');
-  copyFileSync(join(repoRoot, 'supabase', 'config.toml'), configPath, 1);
+  const configPath = copyRequiredProjectFiles({ repoRoot, tempRoot });
   disposable = { tempParent, tempRoot, configPath, runtimeManifest };
 
   const runtimeMigrationDirectory = join(tempRoot, 'supabase', 'migrations');
@@ -342,7 +345,7 @@ const runFlows = async () => {
   runCli(tempRoot, ['start']);
   pass('DISPOSABLE_LOCAL_STACK_STARTED', projectId);
   runCli(tempRoot, ['db', 'reset', '--local', '--no-seed']);
-  assert(countBySql('select count(*) from supabase_migrations.schema_migrations;') === 57, 'DISPOSABLE_MIGRATION_REPLAY_56_PLUS_PREREQUISITE');
+  assert(countBySql('select count(*) from supabase_migrations.schema_migrations;') === 57, 'DISPOSABLE_MIGRATION_REPLAY_57_WITH_PHASE_ISOLATED_PREREQUISITE');
   runCli(tempRoot, ['db', 'advisors', '--local', '--type', 'security', '--level', 'error', '--fail-on', 'error']);
   pass('LOCAL_SECURITY_ADVISORS_NO_ERROR');
   runCli(tempRoot, ['db', 'lint', '--local', '--schema', 'private,public', '--fail-on', 'error']);

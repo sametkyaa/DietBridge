@@ -1154,7 +1154,8 @@ try {
   const sourceMigrations = readdirSync(join(repoRoot, 'supabase', 'migrations'))
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(sourceMigrations.at(-1) === NEW_MIGRATION, 'CROSS_DAY_MIGRATION_IS_CANONICAL_TAIL');
+  assert(sourceMigrations.includes(NEW_MIGRATION), 'CROSS_DAY_MIGRATION_IS_CANONICAL');
+  assert(sourceMigrations.at(-1) === '20260901200413_client_account_deletion_scope_tightening.sql', 'CLIENT_ACCOUNT_DELETION_SCOPE_TIGHTENING_IS_CANONICAL_TAIL');
   disposable = await runDisposableSupabaseLocalReplay({ materializeOnly: true, keepTemp: true });
   addCurrentIsolatedMigrations({ repoRoot, tempRoot: disposable.tempRoot });
   await configureProject(disposable.configPath);
@@ -1174,7 +1175,7 @@ try {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   const migrationCount = readSchema('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === '57', 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'repository=56, local-prerequisite=1');
+  assert(migrationCount === '60', 'DISPOSABLE_SCHEMA_MIGRATION_COUNT', 'repository=59, local-prerequisite=1');
   await runFlows();
 } catch (error) {
   mainError = error;

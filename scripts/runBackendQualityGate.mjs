@@ -17,6 +17,7 @@ const harnesses = [
   'scripts/runDisposableProductAdminRuntimeHarness.mjs',
   'scripts/runDisposableMvp10SharedContractHarness.mjs',
   'scripts/runDisposableMealCompletionPhotoRuntimeHarness.mjs',
+  'scripts/runDisposableClientAccountDeletionRuntimeHarness.mjs',
 ];
 
 assertCiSafeEnvironment();

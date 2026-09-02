@@ -9,7 +9,11 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { materializeDisposableReplay } from './materializeDisposableSupabaseReplay.mjs';
-import { LOCAL_PREREQUISITE_FILE, LOCAL_PREREQUISITE_SQL } from './runDisposableSupabaseLocalReplay.mjs';
+import {
+  copyRequiredProjectFiles,
+  LOCAL_PREREQUISITE_FILE,
+  LOCAL_PREREQUISITE_SQL,
+} from './runDisposableSupabaseLocalReplay.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
@@ -114,15 +118,14 @@ const compileClient = (outputRoot) => {
 const run = async () => {
   const sourceMigrations = readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
   assert(sourceMigrations.includes(appointmentReminderMigrationName), 'CLIENT_RUNTIME_REMINDER_MIGRATION_PRESENT');
-  assert(sourceMigrations.at(-1) === '20260901083212_client_grocery_list.sql', 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
+  assert(sourceMigrations.at(-1) === '20260901200413_client_account_deletion_scope_tightening.sql', 'CLIENT_RUNTIME_NOTIFICATION_MIGRATION_TAIL');
 
   tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-notification-client-runtime-'));
   tempRoot = join(tempParent, 'project');
   const clientBuild = join(tempParent, 'client-build');
   try {
     const manifest = materializeDisposableReplay({ repoRoot, outputRoot: tempRoot });
-    const configPath = join(tempRoot, 'supabase', 'config.toml');
-    copyFileSync(join(repoRoot, 'supabase', 'config.toml'), configPath);
+    const configPath = copyRequiredProjectFiles({ repoRoot, tempRoot });
     const runtimeMigrationDirectory = join(tempRoot, 'supabase', 'migrations');
     copyFileSync(join(migrationDirectory, notificationCoreMigrationName), join(runtimeMigrationDirectory, notificationCoreMigrationName));
     copyFileSync(join(migrationDirectory, appointmentReminderMigrationName), join(runtimeMigrationDirectory, appointmentReminderMigrationName));

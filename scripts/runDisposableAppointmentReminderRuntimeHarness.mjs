@@ -18,7 +18,11 @@ import { fileURLToPath } from 'node:url';
 
 import { createClient } from '@supabase/supabase-js';
 import { materializeDisposableReplay } from './materializeDisposableSupabaseReplay.mjs';
-import { LOCAL_PREREQUISITE_FILE, LOCAL_PREREQUISITE_SQL } from './runDisposableSupabaseLocalReplay.mjs';
+import {
+  copyRequiredProjectFiles,
+  LOCAL_PREREQUISITE_FILE,
+  LOCAL_PREREQUISITE_SQL,
+} from './runDisposableSupabaseLocalReplay.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const migrationDirectory = join(repoRoot, 'supabase', 'migrations');
@@ -345,14 +349,13 @@ const cleanupFixtures = async () => {
 const runFlows = async () => {
   const sourceMigrations = readdirSync(migrationDirectory)
     .filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  assert(sourceMigrations.length === 56, 'REMINDER_CANONICAL_MIGRATION_INVENTORY_56');
-  assert(sourceMigrations.at(-1) === '20260901083212_client_grocery_list.sql', 'REMINDER_CANONICAL_MIGRATION_TAIL');
+  assert(sourceMigrations.length === 59, 'REMINDER_CANONICAL_MIGRATION_INVENTORY_59');
+  assert(sourceMigrations.at(-1) === '20260901200413_client_account_deletion_scope_tightening.sql', 'REMINDER_CANONICAL_MIGRATION_TAIL');
 
   const tempParent = mkdtempSync(join(tmpdir(), 'dietbridge-appointment-reminders-'));
   const tempRoot = join(tempParent, 'project');
   const manifest = materializeDisposableReplay({ repoRoot, outputRoot: tempRoot });
-  const configPath = join(tempRoot, 'supabase', 'config.toml');
-  copyFileSync(join(repoRoot, 'supabase', 'config.toml'), configPath);
+  const configPath = copyRequiredProjectFiles({ repoRoot, tempRoot });
   const runtimeMigrationDirectory = join(tempRoot, 'supabase', 'migrations');
   copyFileSync(join(migrationDirectory, notificationCoreMigrationName), join(runtimeMigrationDirectory, notificationCoreMigrationName));
   copyFileSync(join(migrationDirectory, appointmentReminderMigrationName), join(runtimeMigrationDirectory, appointmentReminderMigrationName));
@@ -377,7 +380,7 @@ const runFlows = async () => {
   });
 
   const migrationCount = countSql('select count(*) from supabase_migrations.schema_migrations;');
-  assert(migrationCount === 57, 'REMINDER_SCHEMA_MIGRATION_COUNT', 'canonical=56, local-prerequisite=1');
+  assert(migrationCount === 57, 'REMINDER_SCHEMA_MIGRATION_COUNT', 'materialized=53, local-prerequisite=1, phase-isolated=3');
   assert(countSql("select count(*) from public.notifications where event_type in ('reminder_24h','reminder_1h');") === 0,
     'REMINDER_NOTIFICATION_COUNT_0_AFTER_REPLAY');
 

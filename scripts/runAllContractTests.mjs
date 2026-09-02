@@ -18,6 +18,8 @@ const commands = [
   ['--test', 'tests/dietitianDiplomaStorageContracts.test.cjs'],
   ['scripts/runRegistrationReliabilityRuntimeTests.mjs'],
   ['--test', 'tests/productAdminContracts.test.cjs'],
+  ['--test', 'tests/clientAccountDeletionContracts.test.cjs'],
+  ['--test', 'tests/disposableFunctionMaterialization.test.cjs'],
   ['scripts/runNotificationCoreContractTests.mjs'],
   ['scripts/runNotificationClientContractTests.mjs'],
   ['scripts/runNotificationUiContractTests.mjs'],
