@@ -84,6 +84,37 @@ test('a failed finish cannot produce fake success; cleanup failure is durably re
   const {deps}=dependencies();deps.finish=async()=>{throw new Error('DB failed');};assert.equal((await handleRecipeImport(request(),deps)).status,503);
   const second=dependencies();second.deps.cleanup=async()=>{throw new Error('retry durable');};assert.equal((await handleRecipeImport(request(),second.deps)).status,200);
 });
+function xlsxDependencies(bytes) {
+  const result=dependencies(bytes);
+  result.deps.claim=async()=>({id,dietitian_id:actor,status:'processing',source_file_name:'a.xlsx',source_mime_type:IMPORT_MIMES.xlsx,file_size:bytes.length,source_storage_path:`${actor}/${id}/source.xlsx`});
+  return result;
+}
+test('XLSX worker: Turkish headers, blank rows and multiple sheets produce ready drafts without provider',async()=>{
+  const book=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Tarif Adı','Öğün','Kalori','Protein','Karb','Yağ','Malzemeler','Yapılış'],['Sentetik çorba','Öğle',200,10,30,5,'mercimek','pişir'],[],['Sentetik eksik','Ara Öğün','','','','','yoğurt','karıştır']]),'Öğle');
+  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Tarif','Öğün','Kalori','Protein','Karbonhidrat','Yağ'],['Akşam salatası','Akşam',150,5,10,8]]),'Akşam');
+  const {calls,deps}=xlsxDependencies(new Uint8Array(XLSX.write(book,{type:'buffer',bookType:'xlsx'})));
+  const result=await handleRecipeImport(request(),deps);assert.equal(result.status,200);assert.equal(calls.includes('provider'),false);
+  const items=calls[0].items;assert.equal(calls[0].error,null);assert.equal(items.length,3);
+  assert.deepEqual(items.map(item=>[item.source.sheet,item.source.row]),[['Öğle',2],['Öğle',4],['Akşam',2]]);
+  assert.equal(items[1].draft.calories,null);assert.equal(items[1].validationState,'needs_review');
+});
+test('XLSX loader failure stays generic for the client and logs only a safe internal stage',async()=>{
+  const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Tarif'],['Çorba']]),'S');
+  const {calls,deps}=xlsxDependencies(new Uint8Array(XLSX.write(book,{type:'buffer',bookType:'xlsx'})));
+  deps.workbook=async()=>{throw new TypeError('Module not found https://cdn.example/secret-path');};
+  const logged=[];const original=console.error;console.error=value=>logged.push(String(value));
+  try{const result=await handleRecipeImport(request(),deps);assert.equal(result.status,422);assert.deepEqual(await result.json(),{error:'extraction_failed'});}finally{console.error=original;}
+  assert.equal(calls[0].error,'extraction_failed');assert.equal(calls[0].items,null);
+  assert.deepEqual(logged.map(value=>JSON.parse(value)),[{event:'recipe_import_internal_failure',stage:'xlsx_loader',errorClass:'TypeError',code:null}]);
+  assert.ok(!logged.join('').includes(actor)&&!logged.join('').includes(id)&&!logged.join('').includes('secret-path'));
+});
+test('Edge entrypoint statically imports SheetJS so deploy bundles embed it',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../supabase/functions/process-recipe-import/index.ts',import.meta.url),'utf8');
+  assert.match(source,/^import \* as XLSX from 'https:\/\/cdn\.sheetjs\.com\/xlsx-0\.20\.3\/package\/xlsx\.mjs';$/m);
+  assert.doesNotMatch(source,/import\(\s*['"]https?:/);
+});
 test('cleanup authorizes, removes payload first, acknowledges only success and retries',async()=>{
   const calls=[];const deps={authorized:()=>false,candidates:async()=>[{id,source_storage_path:'own.csv'},{id:null,source_storage_path:'orphan.csv'}],remove:async path=>{calls.push(path);if(path==='own.csv')throw new Error('temporary failure');},acknowledge:async id=>calls.push(id)};
   const req=()=>new Request('http://localhost/cleanup',{method:'POST'});

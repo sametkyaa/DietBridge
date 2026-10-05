@@ -35,21 +35,34 @@ export async function handleRecipeImport(request:Request,deps:ImportDependencies
   if(!job?.id)return response(409,{error:'import_unavailable'});
   // Service claims only the verified actor's unexpired uploaded job. Never trust caller paths.
   let items:ImportItem[]|null=null,error:string|null=null,metrics:ExtractionMetrics={};
+  // Internal-only stage marker; the client still receives the generic safe code.
+  let stage='validate';
   try {
     if(job.dietitian_id!==actor)throw new ImportError('extraction_failed');
     const ext=validateFileMetadata(job.source_file_name,job.source_mime_type,job.file_size,limits);
+    stage='download';
     const bytes=await deps.download(job.source_storage_path);
+    stage='validate';
     if(bytes.length!==job.file_size)throw new ImportError('invalid_file');
     validateFileBytes(bytes,ext,limits);
     await validateArchivePayload(bytes,ext,limits);
     if(['csv','xls','xlsx'].includes(ext)) {
-      const tables=ext==='csv'?parseCsv(bytes,limits):readWorkbook(bytes,await deps.workbook(),limits);
+      let reader:WorkbookReader|null=null;
+      if(ext!=='csv'){stage='xlsx_loader';reader=await deps.workbook();}
+      stage=ext==='csv'?'csv_parse':'xlsx_parse';
+      const tables=reader?readWorkbook(bytes,reader,limits):parseCsv(bytes,limits);
+      stage='mapping';
       items=mapTables(tables,body.mappings??{},limits);
-    }else if(deps.extract){({items,metrics}=await deps.extract(bytes,job,limits));}
+    }else if(deps.extract){stage='provider';({items,metrics}=await deps.extract(bytes,job,limits));}
     else throw new ImportError('unsupported_file');
   }catch(failure){
     error=failure instanceof ImportError&&safeErrors.has(failure.message)?failure.message:'extraction_failed';
     if(failure instanceof ImportError&&'metrics' in failure&&typeof failure.metrics==='object')metrics=failure.metrics as ExtractionMetrics;
+    if(error==='extraction_failed'){
+      // Stage, error class and safe ImportError code only; never file bytes, paths, IDs or raw messages.
+      const code=failure instanceof ImportError?failure.message.replace(/[^a-z_]/g,'').slice(0,40):null;
+      console.error(JSON.stringify({event:'recipe_import_internal_failure',stage,errorClass:failure instanceof Error?failure.name.slice(0,40):'unknown',code}));
+    }
   }
   let finished=false;
   try{finished=await deps.finish(job.id,actor,items,error,metrics);}catch{return response(503,{error:'import_unavailable'});}

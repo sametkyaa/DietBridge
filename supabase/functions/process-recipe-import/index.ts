@@ -1,4 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.87.0';
+// Static import: deploy bundlers (including server-side --use-api) only embed
+// statically analyzable modules. A runtime import() of this URL was absent from
+// the production eszip and made every XLS/XLSX job fail as extraction_failed.
+import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
 import { handleRecipeImport } from './handler.ts';
 import type { ImportLimits } from '../_shared/recipeFiles.ts';
 import type { WorkbookReader } from '../_shared/recipeSpreadsheet.ts';
@@ -13,7 +17,7 @@ Deno.serve(request=>handleRecipeImport(request,{
   limits:async()=>{const {data,error}=await admin.rpc('recipe_import_limits');if(error||!data)throw new Error('limits_failed');return data as ImportLimits;},
   claim:async(jobId,actor)=>{const {data,error}=await admin.rpc('claim_recipe_import',{p_job_id:jobId,p_actor:actor});if(error)throw new Error('claim_failed');return data;},
   download:async path=>{const {data,error}=await admin.storage.from('recipe-imports').download(path);if(error||!data)throw new Error('download_failed');return new Uint8Array(await data.arrayBuffer());},
-  workbook:async()=>await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs') as unknown as WorkbookReader,
+  workbook:async()=>XLSX as unknown as WorkbookReader,
   extract:async(bytes,job,limits)=>new OpenAIRecipeExtractionProvider({apiKey:Deno.env.get('OPENAI_API_KEY'),model:Deno.env.get('OPENAI_RECIPE_MODEL')}).extract({bytes,mime:job.source_mime_type,extension:job.source_file_name.split('.').at(-1)!.toLowerCase(),jobId:job.id,limits}),
   finish:async(jobId,actor,items,error,metrics)=>{
     const {data,error:failure}=await admin.rpc('finish_recipe_import',{p_job_id:jobId,p_actor:actor,p_items:items,p_error:error,p_metrics:metrics});if(failure)throw new Error('finish_failed');return data===true;
