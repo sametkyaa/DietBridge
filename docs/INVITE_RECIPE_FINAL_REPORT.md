@@ -792,3 +792,35 @@ Onay: APPROVE_RECIPE_IMPORT_FLAG. Vercel projesi diet-bridge’e iki production 
 **Neden canlı değil.** Vercel production main’den build ediliyor ve main’de Recipe import UI/servisi yok (Recipes.tsx flag satırı, RecipeImportDialog, recipeImportService bulunmuyor). Kod codex/invite-recipe-regression branch’inde; branch main’in 3 commit’ini içermiyor (#44 8138171, #45 3fb7d5b, #46 441f72f; 107 dosya). Branch’i doğrudan production’a deploy etmek bu değişiklikleri geri alacağı için yapılmadı. Canlı bundle doğrulaması: /assets/index-81UmKBr1.js, import butonu yok, begin_recipe_import yok, invite-code RPC yok.
 
 **Sonraki adım.** Özelliğin görünmesi için branch’in main’e entegre edilmesi (main ile güncelleme + PR + merge) ve Vercel’in main’i build etmesi gerekiyor. AGENTS.md bölüm 5 gereği PR/merge yalnız açık kullanıcı isteğiyle yapılır. Merge sonrası build bu env’lerle import butonunu açar, invite modu legacy_email kalır. Geri alma: VITE_RECIPE_IMPORT_ENABLED=false ve production redeploy; veri geri alma gerekmez.
+
+
+## Z. Main sync + PR — #44/#45/#46 korunarak birleştirildi
+
+Kapsam: yalnız Web kaynak sürümü. Production DB, migration, Storage, Edge, secret, Vault, cron ve mobil değişikliği yok. Başlangıç: main 441f72f791387918fd170bcda827ae6a834985d3, feature 5e52618b8cdfe2e7c94b25bed3a05c9e5de19b09. Ortak taban 65b50e8.
+
+Merge öncesi branch'teki görev dosyaları ayrı commit'e alındı (3735306): production'a uygulanan core migration sürümü (cron zamanlamıyor; cron ayrı onaylı supabase/rollout/enable_recipe_import_cleanup.sql ile açıldı), rollout SQL'i, salt okunur preflight/postflight'lar ve invite production smoke aracı. docs/legal/ dahil edilmedi.
+
+**Claude #44/#45/#46 (main üzerinde squash commit'ler, PR #44/#45/#46):**
+
+| # | SHA | Dosya | Kritik davranış | Korundu |
+|---|---|---|---|---|
+| 44 | 81381714e6befdbda419b2dc148f9a2ef3ed1399 | 60 (56 silme) | Kullanılmayan kök kod/betikler silindi (test_insert.js, types.ts, constants.ts, src/, components/, context/, services/, pages/Notes.tsx); eslint/tsconfig; water testleri formatLiters'a uyarlandı | YES |
+| 45 | 3fb7d5bb2bd93cd9a13f88ba2d0d0ae150474f99 | 23 | Randevu penceresi, saatsiz öğün (shared/utils/mealTime.ts), bilinmeyen bildirim dayanıklılığı; ilgili servis/sayfa/testler | YES |
+| 46 | 441f72f791387918fd170bcda827ae6a834985d3 | 24 | Realtime publication ve save_active_client_weight kanonik migration'ları, realtime/weight harness ve kontratları, migration envanteri 61 | YES |
+
+Koruma kontrolü otomatik ve satır bazlıdır: her commit'in eklediği her anlamlı satır merge sonucunda mevcut (#44: 4, #45: 726, #46: 1.158 satır), sildiği satırların hiçbiri geri gelmedi (#44: 16, #45: 48, #46: 44), sildiği 56 dosyanın hiçbiri geri gelmedi. Kontrol hem çalışma ağacında hem merge commit'inde 0 sorunla geçti.
+
+**Merge.** origin/main → codex/invite-recipe-regression, normal merge (rebase/force yok). 3 conflict:
+- scripts/runNotificationCoreContractTests.mjs: #46'nın 61 sayısı ve tail kontrolleri korundu; branch'in “sonraki feature migration'ları kendi harness'lerinde doğrulanır” filtresi #46'nın son migration'ına (20261005120100) taşındı.
+- tests/waterSharedContract.test.cjs ve tests/mvp10SharedContractContracts.test.cjs: #44/#46'nın iki assert'i birebir korundu; branch'in formatter çıktısı testleri (1,50 / 0,00) eklendi.
+
+Conflict olmayan ama birlikte yanlış çalışan üç yer test sırasında bulundu ve aynı ilkeyle düzeltildi: clientAccountDeletionContracts ve runPushRegistryContractTests'teki branch filtresi #46'nın son migration'ına taşındı (#46'nın -4/-3 ve 61 beklentileri birebir); realtimeWeightMigrationContracts'ta #46'nın satırı aynen bırakılıp sonraki invite/recipe migration'ları listeden kırpan tek satır eklendi.
+
+**Windows CRLF bulgusu.** #46'nın weight yetkilendirme kontrat testi temiz origin/main'de de bu makinede başarısız: #46'nın iki migration'ı .gitattributes'ta LF'e sabitlenmemiş, autocrlf=true checkout CRLF yazıyor. Git'teki içerik LF (CR bayt 0). İki dosya diğer migration'lar gibi eol=lf olarak eklendi; commit edilmiş içerik değişmedi.
+
+**Kalite.** npm ci PASS; typecheck PASS; lint 0 hata / 10 uyarı (#44 eski dosyaları sildiği için 17'den düştü); npm run test 536/536 PASS + statik gate'ler (WEB_CONTRACT_TEST_GATE_PASS, DIETBRIDGE_MOBILE_REPO=C:/dev/DietBridge-Mobile-UI); build PASS (mevcut büyük chunk uyarısı); test:invites PASS; test:recipe-import 36/36 PASS; Playwright invite+recipe 8/8 (legacy_email modunda 7, invite_code modunda kalan 1). Gerçek OpenAI çağrısı yok.
+
+**Güvenlik.** SheetJS statik import, uzak dinamik import 0; sayfa boyutu/genişletilmiş boyut/satır/sütun/hücre sınırları ve formül kapalı ayarlar yerinde; gpt-6-luna, store:false, tools boş; worker kanonik tarife doğrudan yazmıyor. dist/ ve istemci kaynağında OPENAI_API_KEY, RECIPE_IMPORT_CLEANUP_TOKEN, SUPABASE_SERVICE_ROLE_KEY, service_role, sk-/sbp_ anahtarı veya api.openai.com yok; repo genelinde JWT benzeri değer yok.
+
+**PR diff (main'e göre).** 75 dosya, 0 dosya silme. 72 silinen satırın tamamı branch'in main'in dokunmadığı dosyalardaki kendi değişiklikleri (recipeService, ClientsPage, Recipes, package-lock, vercel header testi) veya yukarıdaki üç filtre satırı. docs/legal, .env, dist, test-results yok.
+
