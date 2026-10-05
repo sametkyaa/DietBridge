@@ -4,6 +4,7 @@ import type { MealActivity } from '../types/mealActivity';
 import type { MealActivityPhotoState } from '../hooks/useMealActivityPhotoUrls';
 import { getMealActivityPhotoPath } from '../utils/mealActivity';
 import { formatMealTrackingCompletionTime, MEAL_TYPE_LABELS } from '../../meal-tracking/utils/mealTrackingContract';
+import { formatOptionalMealTime } from '../../../shared/utils/mealTime';
 
 interface ChatMealActivityProps {
   activity: MealActivity;
@@ -33,7 +34,7 @@ const ChatMealActivity: React.FC<ChatMealActivityProps> = ({ activity, photoStat
             <div className="mt-2 flex items-center gap-2 text-xs text-emerald-700">
               <time dateTime={activity.completedAt}>{completionTime ?? 'Tamamlandı'}</time>
               <span aria-hidden="true">·</span>
-              <span>{activity.mealTime}</span>
+              <span>{formatOptionalMealTime(activity.mealTime)}</span>
             </div>
           </div>
         </div>

@@ -1,3 +1,5 @@
+import { compareOptionalMealTimes } from '../../../shared/utils/mealTime';
+
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export const MEAL_PLAN_WEEKDAY_LABELS = [
@@ -25,7 +27,8 @@ export class MealPlanReadModelError extends Error {
 export interface ReadModelMeal {
   id: string;
   sort_order: number;
-  time: string;
+  /** `meals.time` is nullable for legacy rows. */
+  time: string | null;
 }
 
 export interface ReadModelPlan<TMeal extends ReadModelMeal = ReadModelMeal> {
@@ -94,7 +97,7 @@ export const sortReadModelMeals = <TMeal extends ReadModelMeal>(meals: TMeal[]):
 
   return [...meals].sort((left, right) => (
     left.sort_order - right.sort_order
-    || left.time.localeCompare(right.time)
+    || compareOptionalMealTimes(left.time, right.time)
     || left.id.localeCompare(right.id)
   ));
 };

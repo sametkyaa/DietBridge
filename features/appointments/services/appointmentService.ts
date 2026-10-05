@@ -1,8 +1,10 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { Appointment } from '../../../shared/types';
 import {
+  AppointmentDateRange,
   AppointmentDraft,
   getMondayFirstWeekRange,
+  isAppointmentDateRange,
   normalizeAppointmentType,
   SLOT_BLOCKING_APPOINTMENT_STATUSES,
   validateAppointmentDraft,
@@ -187,22 +189,90 @@ const APPOINTMENT_SELECT = `
   client:client_id (full_name, avatar_url)
 `;
 
-export const fetchAppointments = async (): Promise<Appointment[]> => {
+/**
+ * PostgREST caps every response at `max_rows` (supabase/config.toml: 1000).
+ * Range reads therefore page with an exact count instead of trusting a
+ * single response to be complete.
+ */
+export const APPOINTMENT_PAGE_SIZE = 1000;
+const APPOINTMENT_MAX_PAGES = 20;
+
+const mapAppointmentRows = (data: unknown[]): Appointment[] => {
+  try {
+    return (data as unknown as AppointmentRow[]).map(mapAppointment);
+  } catch (error) {
+    if (error instanceof AppointmentServiceError) throw error;
+    throw new AppointmentServiceError(APPOINTMENT_LOAD_ERROR, error);
+  }
+};
+
+/**
+ * Loads every appointment of the current dietitian whose Istanbul civil date
+ * is inside [startDate, endDate]. Fails closed instead of returning a list
+ * that may be silently truncated by the server row cap.
+ */
+export const fetchAppointmentsInRange = async (
+  range: AppointmentDateRange,
+): Promise<Appointment[]> => {
+  if (!isAppointmentDateRange(range)) throw new AppointmentServiceError(APPOINTMENT_LOAD_ERROR);
+  const dietitianId = await requireCurrentDietitianId(APPOINTMENT_LOAD_ERROR);
+  const rows: unknown[] = [];
+
+  for (let page = 0; page < APPOINTMENT_MAX_PAGES; page += 1) {
+    const from = rows.length;
+    const { data, error, count } = await supabase
+      .from('appointments')
+      .select(APPOINTMENT_SELECT, { count: 'exact' })
+      .eq('dietitian_id', dietitianId)
+      .gte('date', range.startDate)
+      .lte('date', range.endDate)
+      .order('date', { ascending: true })
+      .order('time', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + APPOINTMENT_PAGE_SIZE - 1);
+
+    if (error) throw new AppointmentServiceError(APPOINTMENT_LOAD_ERROR, error);
+    if (!Array.isArray(data) || typeof count !== 'number') {
+      throw new AppointmentServiceError(APPOINTMENT_LOAD_ERROR);
+    }
+    rows.push(...data);
+    if (rows.length >= count) return mapAppointmentRows(rows);
+    if (data.length === 0) break;
+  }
+
+  throw new AppointmentServiceError(APPOINTMENT_LOAD_ERROR);
+};
+
+/**
+ * Loads the first `limit` appointments strictly after `afterDate`, so screens
+ * that preview "next" appointments stay complete beyond the loaded range.
+ */
+export const fetchAppointmentsAfterDate = async (
+  afterDate: string,
+  limit: number,
+): Promise<Appointment[]> => {
+  if (
+    !isAppointmentDateRange({ startDate: afterDate, endDate: afterDate })
+    || !Number.isInteger(limit)
+    || limit < 1
+    || limit > APPOINTMENT_PAGE_SIZE
+  ) {
+    throw new AppointmentServiceError(APPOINTMENT_LOAD_ERROR);
+  }
   const dietitianId = await requireCurrentDietitianId(APPOINTMENT_LOAD_ERROR);
   const { data, error } = await supabase
     .from('appointments')
     .select(APPOINTMENT_SELECT)
     .eq('dietitian_id', dietitianId)
+    .gt('date', afterDate)
     .order('date', { ascending: true })
-    .order('time', { ascending: true });
+    .order('time', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(limit);
 
   if (error) throw new AppointmentServiceError(APPOINTMENT_LOAD_ERROR, error);
-  try {
-    return ((data ?? []) as unknown as AppointmentRow[]).map(mapAppointment);
-  } catch (error) {
-    if (error instanceof AppointmentServiceError) throw error;
-    throw new AppointmentServiceError(APPOINTMENT_LOAD_ERROR, error);
-  }
+  if (!Array.isArray(data)) throw new AppointmentServiceError(APPOINTMENT_LOAD_ERROR);
+  return mapAppointmentRows(data);
 };
 
 export const checkAppointmentBooking = async (

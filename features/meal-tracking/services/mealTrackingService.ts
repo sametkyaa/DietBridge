@@ -65,7 +65,11 @@ const normalizeIsoTimestamp = (value: unknown): string | null => {
   return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
 };
 
-const normalizeMealTime = (value: unknown): string => {
+// `meals.time` is nullable: a legacy meal without a planned time is a valid
+// state and must not hide the rest of the page. Non-null values still have to
+// match the `time` column contract.
+const normalizeMealTime = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
   if (typeof value !== 'string') throw createContractError('time');
   const match = TIME_PATTERN.exec(value);
   if (!match) throw createContractError('time');
