@@ -59,11 +59,18 @@ export const buildWeeklyMealPlanPayload = ({
           throw new MealPlanValidationError('INVALID_MEAL_MACROS', `days[${index}].meals[${mealId}].macros`);
         }
 
+        const timeField = `days[${index}].meals[${mealId}].time`;
+        // A legacy meal loaded without a time keeps an empty row time. Never
+        // invent one on save; ask the dietitian to enter it explicitly.
+        if (typeof mealRow.time !== 'string' || mealRow.time.trim() === '') {
+          throw new MealPlanValidationError('MISSING_MEAL_TIME', timeField);
+        }
+
         const mealData: WeeklyMealInput = {
           type: mapMealTypeToDb(mealRow.name),
           title: content.name,
           sort_order: meals.findIndex((meal) => meal.id === mealRow.id),
-          time: normalizeMealTime(mealRow.time, `days[${index}].meals[${mealId}].time`),
+          time: normalizeMealTime(mealRow.time, timeField),
           macros: normalizeCanonicalMealMacros(content.macros, `days[${index}].meals[${mealId}].macros`),
           description: content.description ?? null,
           source: content.source ?? 'manual',

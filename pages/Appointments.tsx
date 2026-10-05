@@ -27,14 +27,17 @@ import {
   CALENDAR_WEEKDAY_LABELS,
   addCalendarDays,
   addCalendarMonths,
+  appointmentRangeCovers,
   createAppointmentDraft,
   formatDateKey,
   formatMonthKey,
   getMonthCalendarDays,
+  getMonthCalendarRange,
   getMonthKey,
   getMonthKeyFromDateKey,
   getTodayDateKey,
   sortAppointmentsChronologically,
+  UPCOMING_APPOINTMENT_PREVIEW_LIMIT,
 } from '../features/appointments/utils/appointmentContract';
 import { APPOINTMENT_SLOT_CONFLICT_ERROR } from '../features/appointments/services/appointmentService';
 import { Appointment, Client } from '../shared/types';
@@ -53,7 +56,10 @@ interface SameWeekWarningState {
 const Appointments = () => {
   const {
     appointments,
-    loading,
+    appointmentsAfterRange,
+    loadedRange,
+    requestAppointmentRange,
+    loading: appointmentsRequestLoading,
     error,
     mutationError,
     pendingAction,
@@ -69,6 +75,10 @@ const Appointments = () => {
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateKey());
   const [visibleMonth, setVisibleMonth] = useState<string>(() => getMonthKey());
+  const visibleRange = useMemo(() => getMonthCalendarRange(visibleMonth), [visibleMonth]);
+  const loading = appointmentsRequestLoading || (
+    !error && visibleRange !== null && !appointmentRangeCovers(loadedRange, visibleRange)
+  );
   const [clientState, setClientState] = useState<ClientState>({ status: 'loading', clients: [] });
   const [dayDetailDate, setDayDetailDate] = useState<string | null>(null);
   const [sameWeekWarning, setSameWeekWarning] = useState<SameWeekWarningState | null>(null);
@@ -94,6 +104,10 @@ const Appointments = () => {
   useEffect(() => {
     void loadClients();
   }, [loadClients]);
+
+  useEffect(() => {
+    if (visibleRange) requestAppointmentRange(visibleRange);
+  }, [requestAppointmentRange, visibleRange]);
 
   const activeClients = clientState.clients;
 
@@ -270,9 +284,9 @@ const Appointments = () => {
     setSelectedDate(`${nextMonth}-01`);
   };
 
-  const upcomingAppointments = useMemo(() => appointments
+  const upcomingAppointments = useMemo(() => [...appointments, ...appointmentsAfterRange]
     .filter((appointment) => appointment.date > selectedDate)
-    .sort((left, right) => `${left.date}T${left.time}`.localeCompare(`${right.date}T${right.time}`)), [appointments, selectedDate]);
+    .sort((left, right) => `${left.date}T${left.time}`.localeCompare(`${right.date}T${right.time}`)), [appointments, appointmentsAfterRange, selectedDate]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto min-h-screen">
@@ -604,7 +618,7 @@ const Appointments = () => {
               <h3 className="font-bold text-slate-800 mb-6">Yaklaşan Diğer Randevular</h3>
               <div className="space-y-4">
                  {upcomingAppointments
-                   .slice(0, 5)
+                   .slice(0, UPCOMING_APPOINTMENT_PREVIEW_LIMIT)
                    .map(apt => (
                       <div key={apt.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100">
                          <div className="flex items-center gap-4">

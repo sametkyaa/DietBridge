@@ -17,6 +17,7 @@ import {
 import type { MealTrackingDay, MealTrackingFilter } from '../features/meal-tracking/types/mealTracking';
 import { getIstanbulDateKey } from '../features/analytics/utils/analyticsContract';
 import { isValidUuid } from '../shared/utils/uuid';
+import { formatOptionalMealTime } from '../shared/utils/mealTime';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -198,7 +199,7 @@ const MealTracking = () => {
                           {mealStatus === 'completed' ? <CheckCircle2 className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-500">{meal.time} · {MEAL_TYPE_LABELS[meal.type]}</p>
+                          <p className="text-sm font-semibold text-slate-500">{formatOptionalMealTime(meal.time)} · {MEAL_TYPE_LABELS[meal.type]}</p>
                           <h3 className="mt-1 break-words font-semibold text-slate-800">{meal.title}</h3>
                           <p className={`mt-1 text-sm font-medium ${mealStatus === 'completed' ? 'text-emerald-700' : mealStatus === 'unmarked' ? 'text-slate-500' : 'text-amber-700'}`}>
                             {statusLabel}
