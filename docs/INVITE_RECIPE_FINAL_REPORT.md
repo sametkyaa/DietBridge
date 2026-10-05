@@ -2,7 +2,7 @@
 
 2026-10-05, Europe/Istanbul. Son salt okunur preflight ve history mutabakatı: 2026-10-05.
 
-**GÜNCEL ROLLOUT: GPT-6 Luna production smoke PASS (X). Gerçek gpt-6-luna çağrısı sentetik PDF ve PNG’de açık besin değerlerini birebir aldı, eksik değerleri tahmin etmedi, belgedeki talimatı uygulamadı; seçilen taslak kanonik kaydedildi, fixture residue 0. Synthetic smoke PASS (W). Feature flag OFF; sonraki ayrı kapı APPROVE_RECIPE_IMPORT_FLAG. Invite/preview LIVE/PASS, legacy ACTIVE, mobile signing-blocked/cutover DEFERRED. A–W tarihsel receipt’ler.**
+**GÜNCEL ROLLOUT: Recipe import flag production env’de açıldı (Y): VITE_RECIPE_IMPORT_ENABLED=true, VITE_CLIENT_INVITE_MODE=legacy_email. Özellik henüz canlı değil; import kodu yalnız codex/invite-recipe-regression branch’inde, production main 441f72f’ten build ediliyor. Main entegrasyonu (PR/merge) ayrı kullanıcı kararı. Backend, Edge, cleanup, synthetic ve Luna smoke PASS. Invite/preview LIVE/PASS, legacy ACTIVE, mobile signing-blocked/cutover DEFERRED. A–X tarihsel receipt’ler.**
 
 ## A. Git ve görev kapsamı
 
@@ -784,3 +784,11 @@ NEXT SAFE ACTION:           APPROVE_RECIPE_IMPORT_FLAG
 **Sınırlar.** Kapsam iki küçük sentetik dosya. DOC/DOCX/JPG, çok sayfalı/büyük belgeler, 429/5xx retry ve semantik onarım yolları production’da çalıştırılmadı; mock testlerle doğrulandı. Model çıktısı deterministik değil; tek koşu genel doğruluk garantisi vermez. Önizleme her zaman diyetisyen onayı gerektirdiği için risk kontrollü kalır.
 
 Production yazmaları: yalnız sahipli sentetik fixture yaşam döngüsü ve 2 ücretli gpt-6-luna çağrısı. Edge deploy, migration, şema/RLS/history, secret/Vault, cron ve Web flag değişikliği yok. Sonraki ayrı kapı APPROVE_RECIPE_IMPORT_FLAG.
+
+## Y. Recipe import flag — ENV CONFIGURED / NOT LIVE
+
+Onay: APPROVE_RECIPE_IMPORT_FLAG. Vercel projesi diet-bridge’e iki production env eklendi (plain): VITE_RECIPE_IMPORT_ENABLED=true ve VITE_CLIENT_INVITE_MODE=legacy_email. Invite modu artık açıkça legacy_email; mevcut 6 env değişmedi. Env değişikliği deploy tetiklemedi; production hâlâ dpl_AcA9gPw7ZeWTakEtVXXPHzf3ob1a (READY, main 441f72f).
+
+**Neden canlı değil.** Vercel production main’den build ediliyor ve main’de Recipe import UI/servisi yok (Recipes.tsx flag satırı, RecipeImportDialog, recipeImportService bulunmuyor). Kod codex/invite-recipe-regression branch’inde; branch main’in 3 commit’ini içermiyor (#44 8138171, #45 3fb7d5b, #46 441f72f; 107 dosya). Branch’i doğrudan production’a deploy etmek bu değişiklikleri geri alacağı için yapılmadı. Canlı bundle doğrulaması: /assets/index-81UmKBr1.js, import butonu yok, begin_recipe_import yok, invite-code RPC yok.
+
+**Sonraki adım.** Özelliğin görünmesi için branch’in main’e entegre edilmesi (main ile güncelleme + PR + merge) ve Vercel’in main’i build etmesi gerekiyor. AGENTS.md bölüm 5 gereği PR/merge yalnız açık kullanıcı isteğiyle yapılır. Merge sonrası build bu env’lerle import butonunu açar, invite modu legacy_email kalır. Geri alma: VITE_RECIPE_IMPORT_ENABLED=false ve production redeploy; veri geri alma gerekmez.

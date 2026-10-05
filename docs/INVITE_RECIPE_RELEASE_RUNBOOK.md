@@ -1,6 +1,6 @@
 # Davet kodu + GPT-6 Luna import — production rollout runbook
 
-2026-10-06. **GPT-6 LUNA SMOKE: PASS.** Real gpt-6-luna extraction on synthetic PDF+PNG: exact explicit nutrition, missing values null, document instruction ignored, canonical save and cleanup PASS, residue 0. Synthetic smoke PASS. Feature flag OFF; next separate gate APPROVE_RECIPE_IMPORT_FLAG. Invite/legacy ACTIVE, mobile signing-blocked/cutover DEFERRED. Latest report X/evidence.
+2026-10-06. **RECIPE IMPORT FLAG: PRODUCTION ENV SET / NOT LIVE.** Vercel production env VITE_RECIPE_IMPORT_ENABLED=true and VITE_CLIENT_INVITE_MODE=legacy_email; no deploy triggered. Import code is only on codex/invite-recipe-regression; production builds main 441f72f. Integrating the branch into main (PR/merge) needs an explicit user request. All Recipe backend gates and smokes PASS. Invite/legacy ACTIVE, mobile signing-blocked/cutover DEFERRED. Latest report Y/evidence.
 
 ## Hedef ve kanıt
 
@@ -241,3 +241,7 @@ Root cause of XLSX extraction_failed: the runtime import() of the SheetJS CDN UR
 ## GPT-6 Luna production smoke — PASS; STOP
 
 scripts/runProductionLunaSmoke.mjs with APPROVE_GPT6_LUNA_SMOKE: one owned synthetic dietitian, synthetic PDF (2 recipes) and PNG (1 recipe) containing a prompt-injection line. Both jobs ready on gpt-6-luna with 1 call each; explicit nutrition exact, missing nutrition and meal type null, injection ignored, source cleanup ack, selected draft saved canonically. Residue 0, unrelated fingerprints unchanged. Manifest C:/dev/DietBridge-Backups/luna-smoke-20261006-01. Flag remains OFF until APPROVE_RECIPE_IMPORT_FLAG.
+
+## Recipe import flag — env set; awaiting main integration
+
+APPROVE_RECIPE_IMPORT_FLAG applied to Vercel production env only. The next production build from a main that contains the import code will show the import button with invite mode still legacy_email. Do not deploy the feature branch directly: it lacks main commits #44-#46. Rollback: VITE_RECIPE_IMPORT_ENABLED=false and redeploy.

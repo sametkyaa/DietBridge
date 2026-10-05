@@ -1,6 +1,6 @@
 {
-  "phase": "RECIPE_GPT6_LUNA_SMOKE_PASS",
-  "checkedAt": "2026-10-05T21:29:19.640Z",
+  "phase": "RECIPE_IMPORT_FLAG_ENV_CONFIGURED_CODE_NOT_IN_MAIN",
+  "checkedAt": "2026-10-05T21:32:54.457Z",
   "target": {
     "ref": "kagvxhyvxxypspdxcuxz",
     "name": "dietbridge_Production",
@@ -154,7 +154,7 @@
     "Mobile invite BLOCKED_BY_RELEASE_SIGNING_INPUTS; Recipe independent",
     "PITR OFF/pre-invite recovery bound/offsite unverified; DB advisor notices recorded in P"
   ],
-  "nextSafeAction": "STOPPED: GPT-6 Luna production smoke PASS. Next separate gate APPROVE_RECIPE_IMPORT_FLAG; Web flag remains OFF until then.",
+  "nextSafeAction": "Production env set (VITE_RECIPE_IMPORT_ENABLED=true, VITE_CLIENT_INVITE_MODE=legacy_email). Feature becomes visible only after codex/invite-recipe-regression is integrated into main (3 main commits #44-#46 missing on branch) and Vercel builds main. PR/merge requires explicit user request (AGENTS.md section 5).",
   "p1Result": {
     "status": "DEPLOYED_PASS",
     "preflight": [
@@ -1301,7 +1301,7 @@
     {
       "stage": "recipe import flag",
       "token": "APPROVE_RECIPE_IMPORT_FLAG",
-      "status": "AWAITING_EXACT_APPROVAL"
+      "status": "RECEIVED / PRODUCTION ENV CONFIGURED / NOT LIVE (code not in main)"
     }
   ],
   "recipeDbDeployment": {
@@ -4014,5 +4014,40 @@
       "activeCrons": 5
     },
     "scopeLimits": "Two small synthetic files; DOC/DOCX/JPG, provider retry/repair paths and multi-page/large documents verified by mocked tests only. Model output text not stored."
+  },
+  "recipeImportFlag": {
+    "approval": "APPROVE_RECIPE_IMPORT_FLAG",
+    "vercelProject": "diet-bridge (prj_sZayHPl8Ww6dqX7ftKU4aXvdWAy5)",
+    "envCreated": [
+      {
+        "key": "VITE_RECIPE_IMPORT_ENABLED",
+        "value": "true",
+        "type": "plain",
+        "target": [
+          "production"
+        ],
+        "id": "36Yq0nTtkFYSFcSr"
+      },
+      {
+        "key": "VITE_CLIENT_INVITE_MODE",
+        "value": "legacy_email",
+        "type": "plain",
+        "target": [
+          "production"
+        ],
+        "id": "IWMSBurEfTvKpW4Y"
+      }
+    ],
+    "existingEnvsUnchanged": true,
+    "deploymentTriggered": false,
+    "productionDeployment": "dpl_AcA9gPw7ZeWTakEtVXXPHzf3ob1a READY main 441f72f",
+    "liveBundle": {
+      "asset": "/assets/index-81UmKBr1.js",
+      "importButton": false,
+      "recipeImportRpc": false,
+      "inviteCodeRpc": false
+    },
+    "blocker": "Recipe import Web code exists only on codex/invite-recipe-regression; main 441f72f has no import UI/service. Branch lacks main commits 8138171 (#44), 3fb7d5b (#45), 441f72f (#46); deploying the branch directly to production would roll those back.",
+    "rollback": "Set VITE_RECIPE_IMPORT_ENABLED=false (keep legacy_email) and redeploy production; no data rollback needed."
   }
 }
