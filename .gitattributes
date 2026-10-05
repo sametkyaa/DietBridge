@@ -14,6 +14,8 @@ supabase/migrations/20260814214101_notification_core_backend.sql text eol=lf
 supabase/migrations/20260816101405_mark_all_notifications_read.sql text eol=lf
 supabase/migrations/20260817084531_appointment_reminders_backend.sql text eol=lf
 supabase/migrations/20260817120000_push_registry_outbox_backend.sql text eol=lf
+supabase/migrations/20261005120000_realtime_publication_core_tables.sql text eol=lf
+supabase/migrations/20261005120100_save_active_client_weight_canonical.sql text eol=lf
 supabase/tests/disposable/*.sql text eol=lf
 tests/fixtures/*.json text eol=lf
 

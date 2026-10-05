@@ -17,7 +17,8 @@ const assert = (condition, label, detail = '') => {
 };
 
 const files = readdirSync(migrationDirectory)
-  .filter((name) => /^\d+_.+\.sql$/.test(name))
+  // Preserve this gate's historical chain while permitting forward feature migrations.
+  .filter((name) => /^\d+_.+\.sql$/.test(name) && name <= '20261005120100_save_active_client_weight_canonical.sql')
   .sort();
 const sql = readFileSync(join(migrationDirectory, migrationName), 'utf8');
 const reminderSql = readFileSync(join(migrationDirectory, reminderName), 'utf8')

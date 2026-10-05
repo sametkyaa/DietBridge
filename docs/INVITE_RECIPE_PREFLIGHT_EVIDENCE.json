@@ -1,0 +1,1401 @@
+{
+  "observedAt": "2026-10-05T17:52:04+03:00",
+  "project": {
+    "id": "kagvxhyvxxypspdxcuxz",
+    "ref": "kagvxhyvxxypspdxcuxz",
+    "organization_id": "syrnmaasxgdlfmrftwuu",
+    "organization_slug": "syrnmaasxgdlfmrftwuu",
+    "name": "dietbridge_Production",
+    "region": "eu-central-1",
+    "status": "ACTIVE_HEALTHY",
+    "database": {
+      "host": "db.kagvxhyvxxypspdxcuxz.supabase.co",
+      "version": "17.6.1.052",
+      "postgres_engine": "17",
+      "release_channel": "ga"
+    },
+    "created_at": "2025-11-20T13:54:40.221216Z"
+  },
+  "migrationDiff": {
+    "repoCount": 62,
+    "remoteCount": 58,
+    "onlyRepo": [
+      "20260817120000_push_registry_outbox_backend.sql",
+      "20261005120859_dietitian_invite_codes.sql",
+      "20261005124951_recipe_import_core.sql",
+      "20261005132107_recipe_import_extraction_metrics.sql"
+    ],
+    "onlyRemote": []
+  },
+  "prerequisites": {
+    "public.is_current_user_dietitian()": true,
+    "extensions.gen_random_bytes(integer)": true,
+    "private.notify_dietitian_client_change()": true,
+    "public.dietitian_active_client_usage(uuid)": true,
+    "public.dietitian_effective_client_limit(uuid)": true,
+    "public.request_client_connection_by_email(text)": true
+  },
+  "featureTables": {
+    "public.recipe_import_jobs": false,
+    "public.recipe_import_items": false,
+    "private.invite_code_attempts": false,
+    "public.dietitian_invite_codes": false
+  },
+  "onePendingOrActiveIndex": true,
+  "tables": [
+    {
+      "rls": true,
+      "table": "dietitian_clients",
+      "schema": "public",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "table": "dietitian_profiles",
+      "schema": "public",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "table": "dietitian_subscriptions",
+      "schema": "public",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "table": "profiles",
+      "schema": "public",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "table": "recipes",
+      "schema": "public",
+      "force_rls": false
+    },
+    {
+      "rls": true,
+      "table": "subscription_plans",
+      "schema": "public",
+      "force_rls": false
+    }
+  ],
+  "columns": [
+    {
+      "data_type": "uuid",
+      "table_name": "dietitian_clients",
+      "column_name": "id",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "dietitian_clients",
+      "column_name": "dietitian_id",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "dietitian_clients",
+      "column_name": "client_id",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "USER-DEFINED",
+      "table_name": "dietitian_clients",
+      "column_name": "status",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_clients",
+      "column_name": "created_at",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_clients",
+      "column_name": "requested_at",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_clients",
+      "column_name": "accepted_at",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_clients",
+      "column_name": "rejected_at",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_clients",
+      "column_name": "removed_at",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_clients",
+      "column_name": "updated_at",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "dietitian_profiles",
+      "column_name": "user_id",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "text",
+      "table_name": "dietitian_profiles",
+      "column_name": "phone",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "text",
+      "table_name": "dietitian_profiles",
+      "column_name": "university",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "integer",
+      "table_name": "dietitian_profiles",
+      "column_name": "graduation_year",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "integer",
+      "table_name": "dietitian_profiles",
+      "column_name": "experience_years",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "text",
+      "table_name": "dietitian_profiles",
+      "column_name": "specialization",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "text",
+      "table_name": "dietitian_profiles",
+      "column_name": "bio",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "text",
+      "table_name": "dietitian_profiles",
+      "column_name": "diploma_url",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "dietitian_profiles",
+      "column_name": "is_verified",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_profiles",
+      "column_name": "created_at",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "text",
+      "table_name": "dietitian_profiles",
+      "column_name": "verification_status",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_profiles",
+      "column_name": "verified_at",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "text",
+      "table_name": "dietitian_profiles",
+      "column_name": "rejection_reason",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "dietitian_subscriptions",
+      "column_name": "dietitian_id",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "text",
+      "table_name": "dietitian_subscriptions",
+      "column_name": "plan_id",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "text",
+      "table_name": "dietitian_subscriptions",
+      "column_name": "status",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "integer",
+      "table_name": "dietitian_subscriptions",
+      "column_name": "client_limit_override",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_subscriptions",
+      "column_name": "current_period_end",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_subscriptions",
+      "column_name": "created_at",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "dietitian_subscriptions",
+      "column_name": "updated_at",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "recipes",
+      "column_name": "id",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "recipes",
+      "column_name": "dietitian_id",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "text",
+      "table_name": "recipes",
+      "column_name": "name",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "text",
+      "table_name": "recipes",
+      "column_name": "description",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "text",
+      "table_name": "recipes",
+      "column_name": "meal_type",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "integer",
+      "table_name": "recipes",
+      "column_name": "calories",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "recipes",
+      "column_name": "protein",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "recipes",
+      "column_name": "carbs",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "recipes",
+      "column_name": "fat",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "text",
+      "table_name": "recipes",
+      "column_name": "image_path",
+      "is_nullable": "YES"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "recipes",
+      "column_name": "created_at",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "recipes",
+      "column_name": "updated_at",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "text",
+      "table_name": "subscription_plans",
+      "column_name": "id",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "text",
+      "table_name": "subscription_plans",
+      "column_name": "name",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "integer",
+      "table_name": "subscription_plans",
+      "column_name": "client_limit",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "subscription_plans",
+      "column_name": "is_active",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "integer",
+      "table_name": "subscription_plans",
+      "column_name": "sort_order",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "subscription_plans",
+      "column_name": "created_at",
+      "is_nullable": "NO"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "subscription_plans",
+      "column_name": "updated_at",
+      "is_nullable": "NO"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "dietitian_clients_client_id_fkey",
+      "table": "dietitian_clients",
+      "definition": "FOREIGN KEY (client_id) REFERENCES profiles(id)"
+    },
+    {
+      "name": "dietitian_clients_dietitian_id_fkey",
+      "table": "dietitian_clients",
+      "definition": "FOREIGN KEY (dietitian_id) REFERENCES profiles(id)"
+    },
+    {
+      "name": "dietitian_clients_pkey",
+      "table": "dietitian_clients",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "dietitian_clients_status_check",
+      "table": "dietitian_clients",
+      "definition": "CHECK (((status)::text = ANY (ARRAY['pending'::text, 'active'::text, 'rejected'::text, 'removed'::text])))"
+    },
+    {
+      "name": "recipes_calories_range_check",
+      "table": "recipes",
+      "definition": "CHECK (((calories >= 0) AND (calories <= 10000)))"
+    },
+    {
+      "name": "recipes_carbs_range_check",
+      "table": "recipes",
+      "definition": "CHECK (((carbs >= (0)::numeric) AND (carbs <= (1000)::numeric)))"
+    },
+    {
+      "name": "recipes_description_length_check",
+      "table": "recipes",
+      "definition": "CHECK (((description IS NULL) OR (char_length(description) <= 2000)))"
+    },
+    {
+      "name": "recipes_dietitian_id_fkey",
+      "table": "recipes",
+      "definition": "FOREIGN KEY (dietitian_id) REFERENCES profiles(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "recipes_fat_range_check",
+      "table": "recipes",
+      "definition": "CHECK (((fat >= (0)::numeric) AND (fat <= (1000)::numeric)))"
+    },
+    {
+      "name": "recipes_image_path_canonical_check",
+      "table": "recipes",
+      "definition": "CHECK (((image_path IS NULL) OR (image_path ~ '^recipes/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(jpe?g|png|webp)$'::text)))"
+    },
+    {
+      "name": "recipes_image_path_matches_owner_check",
+      "table": "recipes",
+      "definition": "CHECK (((image_path IS NULL) OR (split_part(image_path, '/'::text, 2) = (dietitian_id)::text)))"
+    },
+    {
+      "name": "recipes_image_path_matches_recipe_check",
+      "table": "recipes",
+      "definition": "CHECK (((image_path IS NULL) OR (split_part(image_path, '/'::text, 3) = (id)::text)))"
+    },
+    {
+      "name": "recipes_meal_type_check",
+      "table": "recipes",
+      "definition": "CHECK ((meal_type = ANY (ARRAY['breakfast'::text, 'lunch'::text, 'dinner'::text, 'snack'::text])))"
+    },
+    {
+      "name": "recipes_name_length_check",
+      "table": "recipes",
+      "definition": "CHECK ((char_length(name) <= 160))"
+    },
+    {
+      "name": "recipes_name_not_blank_check",
+      "table": "recipes",
+      "definition": "CHECK ((btrim(name) <> ''::text))"
+    },
+    {
+      "name": "recipes_pkey",
+      "table": "recipes",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "recipes_protein_range_check",
+      "table": "recipes",
+      "definition": "CHECK (((protein >= (0)::numeric) AND (protein <= (1000)::numeric)))"
+    }
+  ],
+  "triggers": [
+    {
+      "name": "trg_enforce_dietitian_client_capacity",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER trg_enforce_dietitian_client_capacity BEFORE INSERT OR UPDATE ON public.dietitian_clients FOR EACH ROW EXECUTE FUNCTION enforce_dietitian_client_capacity()"
+    },
+    {
+      "name": "trg_enforce_dietitian_client_transition",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER trg_enforce_dietitian_client_transition BEFORE INSERT OR UPDATE ON public.dietitian_clients FOR EACH ROW EXECUTE FUNCTION enforce_dietitian_client_transition()"
+    },
+    {
+      "name": "trg_notify_dietitian_client_change",
+      "enabled": "O",
+      "definition": "CREATE TRIGGER trg_notify_dietitian_client_change AFTER INSERT OR UPDATE ON public.dietitian_clients FOR EACH ROW EXECUTE FUNCTION private.notify_dietitian_client_change()"
+    }
+  ],
+  "grants": [
+    {
+      "grantee": "authenticated",
+      "table_name": "dietitian_clients",
+      "privilege_type": "INSERT"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "dietitian_clients",
+      "privilege_type": "SELECT"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "dietitian_clients",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "dietitian_clients",
+      "privilege_type": "DELETE"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "dietitian_clients",
+      "privilege_type": "TRUNCATE"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "dietitian_clients",
+      "privilege_type": "REFERENCES"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "dietitian_clients",
+      "privilege_type": "TRIGGER"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "dietitian_clients",
+      "privilege_type": "INSERT"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "dietitian_clients",
+      "privilege_type": "SELECT"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "dietitian_clients",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "dietitian_clients",
+      "privilege_type": "DELETE"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "dietitian_clients",
+      "privilege_type": "TRUNCATE"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "dietitian_clients",
+      "privilege_type": "REFERENCES"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "dietitian_clients",
+      "privilege_type": "TRIGGER"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "recipes",
+      "privilege_type": "INSERT"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "recipes",
+      "privilege_type": "SELECT"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "recipes",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "recipes",
+      "privilege_type": "DELETE"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "recipes",
+      "privilege_type": "TRUNCATE"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "recipes",
+      "privilege_type": "REFERENCES"
+    },
+    {
+      "grantee": "authenticated",
+      "table_name": "recipes",
+      "privilege_type": "TRIGGER"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "recipes",
+      "privilege_type": "INSERT"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "recipes",
+      "privilege_type": "SELECT"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "recipes",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "recipes",
+      "privilege_type": "DELETE"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "recipes",
+      "privilege_type": "TRUNCATE"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "recipes",
+      "privilege_type": "REFERENCES"
+    },
+    {
+      "grantee": "service_role",
+      "table_name": "recipes",
+      "privilege_type": "TRIGGER"
+    }
+  ],
+  "buckets": [
+    {
+      "id": "avatars",
+      "public": false,
+      "file_size_limit": 5242880,
+      "allowed_mime_types": [
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+      ]
+    },
+    {
+      "id": "recipe-images",
+      "public": false,
+      "file_size_limit": 5242880,
+      "allowed_mime_types": [
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+      ]
+    }
+  ],
+  "indexes": [
+    {
+      "indexdef": "CREATE UNIQUE INDEX dietitian_clients_dietitian_client_unique ON public.dietitian_clients USING btree (dietitian_id, client_id)",
+      "indexname": "dietitian_clients_dietitian_client_unique",
+      "tablename": "dietitian_clients",
+      "schemaname": "public"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX one_pending_or_active_dietitian_per_client ON public.dietitian_clients USING btree (client_id) WHERE (status = ANY (ARRAY['pending'::client_status, 'active'::client_status]))",
+      "indexname": "one_pending_or_active_dietitian_per_client",
+      "tablename": "dietitian_clients",
+      "schemaname": "public"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX dietitian_clients_pkey ON public.dietitian_clients USING btree (id)",
+      "indexname": "dietitian_clients_pkey",
+      "tablename": "dietitian_clients",
+      "schemaname": "public"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_dietitian_clients ON public.dietitian_clients USING btree (dietitian_id, client_id)",
+      "indexname": "idx_dietitian_clients",
+      "tablename": "dietitian_clients",
+      "schemaname": "public"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX one_pending_or_active_relation_per_dietitian_client ON public.dietitian_clients USING btree (dietitian_id, client_id) WHERE (status = ANY (ARRAY['pending'::client_status, 'active'::client_status]))",
+      "indexname": "one_pending_or_active_relation_per_dietitian_client",
+      "tablename": "dietitian_clients",
+      "schemaname": "public"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX recipes_pkey ON public.recipes USING btree (id)",
+      "indexname": "recipes_pkey",
+      "tablename": "recipes",
+      "schemaname": "public"
+    },
+    {
+      "indexdef": "CREATE INDEX recipes_dietitian_id_idx ON public.recipes USING btree (dietitian_id)",
+      "indexname": "recipes_dietitian_id_idx",
+      "tablename": "recipes",
+      "schemaname": "public"
+    },
+    {
+      "indexdef": "CREATE INDEX recipes_dietitian_created_at_idx ON public.recipes USING btree (dietitian_id, created_at DESC)",
+      "indexname": "recipes_dietitian_created_at_idx",
+      "tablename": "recipes",
+      "schemaname": "public"
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'avatars'::text) AND (EXISTS ( SELECT 1\n   FROM dietitian_clients dc\n  WHERE ((dc.dietitian_id = auth.uid()) AND ((dc.client_id)::text = (storage.foldername(objects.name))[1]) AND (dc.status = 'active'::client_status)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "Dietitians can view active client avatars",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'dietitian-diplomas'::text) AND (name ~ '^diplomas/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/diploma\\.pdf$'::text) AND ( SELECT is_current_user_platform_admin() AS is_current_user_platform_admin))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "Platform admins can view dietitian diplomas",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((bucket_id = 'avatars'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "Users can delete own avatars",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((bucket_id = 'avatars'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "Users can update own avatars",
+      "schemaname": "storage",
+      "with_check": "((bucket_id = 'avatars'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text))"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "Users can upload own avatars",
+      "schemaname": "storage",
+      "with_check": "((bucket_id = 'avatars'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'avatars'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "Users can view own avatars",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'avatars'::text) AND (name ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/avatar\\.(jpe?g|png|webp)$'::text) AND (EXISTS ( SELECT 1\n   FROM (dietitian_clients relationship\n     JOIN profiles dietitian_profile ON ((dietitian_profile.id = relationship.dietitian_id)))\n  WHERE ((relationship.client_id = ( SELECT auth.uid() AS uid)) AND (relationship.status = 'active'::client_status) AND ((relationship.dietitian_id)::text = (storage.foldername(objects.name))[1]) AND (dietitian_profile.avatar_url = objects.name)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "avatar_objects_select_linked_dietitian_for_active_client",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "chat_images_insert_pending_intent",
+      "schemaname": "storage",
+      "with_check": "((bucket_id = 'chat-images'::text) AND (owner_id = (( SELECT auth.uid() AS uid))::text) AND (EXISTS ( SELECT 1\n   FROM chat_upload_intents i\n  WHERE ((i.created_by = ( SELECT auth.uid() AS uid)) AND (i.bucket_id = objects.bucket_id) AND (i.object_path = objects.name) AND (i.expected_mime = 'image/jpeg'::text) AND (i.status = 'pending'::text) AND (i.expires_at > now()) AND (i.validated_at IS NULL)))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'chat-images'::text) AND (EXISTS ( SELECT 1\n   FROM ((chat_attachments a\n     JOIN chat_messages m ON ((m.id = a.message_id)))\n     JOIN chat_conversations c ON ((c.id = m.conversation_id)))\n  WHERE ((a.bucket_id = objects.bucket_id) AND (a.object_path = objects.name) AND (a.deleted_at IS NULL) AND (m.message_kind = 'image'::text) AND (m.deleted_at IS NULL) AND ((( SELECT auth.uid() AS uid) = c.dietitian_id) OR (( SELECT auth.uid() AS uid) = c.client_id))))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "chat_images_select_live_attachment",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((bucket_id = 'dietitian-diplomas'::text) AND (owner = ( SELECT auth.uid() AS uid)) AND (name = format('diplomas/%s/diploma.pdf'::text, ( SELECT auth.uid() AS uid))) AND (( SELECT current_user_role() AS current_user_role) = 'dietitian'::user_role) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.verification_status = 'pending'::text) AND (dp.is_verified IS FALSE)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "dietitian_diploma_delete_own_pending",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "dietitian_diploma_insert_own_pending",
+      "schemaname": "storage",
+      "with_check": "((bucket_id = 'dietitian-diplomas'::text) AND (owner = ( SELECT auth.uid() AS uid)) AND (name = format('diplomas/%s/diploma.pdf'::text, ( SELECT auth.uid() AS uid))) AND (( SELECT current_user_role() AS current_user_role) = 'dietitian'::user_role) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.verification_status = 'pending'::text) AND (dp.is_verified IS FALSE)))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'dietitian-diplomas'::text) AND (owner = ( SELECT auth.uid() AS uid)) AND (name = format('diplomas/%s/diploma.pdf'::text, ( SELECT auth.uid() AS uid))) AND (( SELECT current_user_role() AS current_user_role) = 'dietitian'::user_role))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "dietitian_diploma_select_own_canonical",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((bucket_id = 'dietitian-diplomas'::text) AND (owner = ( SELECT auth.uid() AS uid)) AND (name = format('diplomas/%s/diploma.pdf'::text, ( SELECT auth.uid() AS uid))) AND (( SELECT current_user_role() AS current_user_role) = 'dietitian'::user_role) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.verification_status = 'pending'::text) AND (dp.is_verified IS FALSE)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "dietitian_diploma_update_own_pending",
+      "schemaname": "storage",
+      "with_check": "((bucket_id = 'dietitian-diplomas'::text) AND (owner = ( SELECT auth.uid() AS uid)) AND (name = format('diplomas/%s/diploma.pdf'::text, ( SELECT auth.uid() AS uid))) AND (( SELECT current_user_role() AS current_user_role) = 'dietitian'::user_role) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.verification_status = 'pending'::text) AND (dp.is_verified IS FALSE)))))"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "meal_completion_photo_objects_insert_own_canonical",
+      "schemaname": "storage",
+      "with_check": "((bucket_id = 'meal-completion-photos'::text) AND (split_part(name, '/'::text, 1) = (( SELECT auth.uid() AS uid))::text) AND (( SELECT current_user_role() AS current_user_role) = 'client'::user_role) AND (name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.jpg$'::text) AND (EXISTS ( SELECT 1\n   FROM ((meals m\n     JOIN meal_plans mp ON ((mp.id = m.plan_id)))\n     JOIN dietitian_clients dc ON (((dc.dietitian_id = mp.dietitian_id) AND (dc.client_id = mp.client_id) AND (dc.status = 'active'::client_status))))\n  WHERE ((m.id = (split_part(objects.name, '/'::text, 2))::uuid) AND (mp.client_id = ( SELECT auth.uid() AS uid))))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'meal-completion-photos'::text) AND (name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.jpg$'::text) AND (EXISTS ( SELECT 1\n   FROM (meals m\n     JOIN meal_plans mp ON ((mp.id = m.plan_id)))\n  WHERE ((m.completion_photo_url = objects.name) AND (split_part(objects.name, '/'::text, 1) = (mp.client_id)::text) AND (split_part(objects.name, '/'::text, 2) = (m.id)::text) AND ((mp.client_id = ( SELECT auth.uid() AS uid)) OR ((mp.dietitian_id = ( SELECT auth.uid() AS uid)) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n           FROM dietitian_clients dc\n          WHERE ((dc.dietitian_id = mp.dietitian_id) AND (dc.client_id = mp.client_id) AND (dc.status = 'active'::client_status))))))))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "meal_completion_photo_objects_select_referenced_actor",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "meal_photo_objects_insert_active_approved_dietitian",
+      "schemaname": "storage",
+      "with_check": "((bucket_id = 'meal-photos'::text) AND (name ~ '^meal-plans/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(jpe?g|png|webp)$'::text) AND (split_part(name, '/'::text, 3) = (( SELECT auth.uid() AS uid))::text) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n   FROM dietitian_clients dc\n  WHERE ((dc.dietitian_id = ( SELECT auth.uid() AS uid)) AND ((dc.client_id)::text = split_part(objects.name, '/'::text, 2)) AND (dc.status = 'active'::client_status)))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'meal-photos'::text) AND (name ~ '^meal-plans/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(jpe?g|png|webp)$'::text) AND (EXISTS ( SELECT 1\n   FROM ((meals m\n     JOIN meal_plans p ON ((p.id = m.plan_id)))\n     JOIN dietitian_clients dc ON (((dc.dietitian_id = p.dietitian_id) AND (dc.client_id = p.client_id) AND (dc.status = 'active'::client_status))))\n  WHERE ((m.photo_url = objects.name) AND ((p.client_id)::text = split_part(objects.name, '/'::text, 2)) AND ((p.dietitian_id)::text = split_part(objects.name, '/'::text, 3)) AND ((p.client_id = ( SELECT auth.uid() AS uid)) OR ((p.dietitian_id = ( SELECT auth.uid() AS uid)) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian)))))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "meal_photo_objects_select_referenced_linked_actor",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((bucket_id = 'recipe-images'::text) AND (name ~ '^recipes/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(jpe?g|png|webp)$'::text) AND (split_part(name, '/'::text, 2) = (( SELECT auth.uid() AS uid))::text) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.is_verified IS TRUE) AND (dp.verification_status = 'approved'::text)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "recipe_images_delete_own",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "recipe_images_insert_own",
+      "schemaname": "storage",
+      "with_check": "((bucket_id = 'recipe-images'::text) AND (name ~ '^recipes/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(jpe?g|png|webp)$'::text) AND (split_part(name, '/'::text, 2) = (( SELECT auth.uid() AS uid))::text) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.is_verified IS TRUE) AND (dp.verification_status = 'approved'::text)))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'recipe-images'::text) AND (name ~ '^recipes/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(jpe?g|png|webp)$'::text) AND (split_part(name, '/'::text, 2) = (( SELECT auth.uid() AS uid))::text) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.is_verified IS TRUE) AND (dp.verification_status = 'approved'::text)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "recipe_images_select_own",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'recipe-images'::text) AND (name ~ '^recipes/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(jpe?g|png|webp)$'::text) AND (EXISTS ( SELECT 1\n   FROM (meals meal\n     JOIN meal_plans plan ON ((plan.id = meal.plan_id)))\n  WHERE ((meal.photo_url = objects.name) AND (meal.source = 'recipe'::text) AND (plan.client_id = ( SELECT auth.uid() AS uid)) AND (split_part(objects.name, '/'::text, 2) = (plan.dietitian_id)::text)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "objects",
+      "policyname": "recipe_images_select_planned_client",
+      "schemaname": "storage",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((dietitian_id = ( SELECT auth.uid() AS uid)) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.is_verified IS TRUE) AND (dp.verification_status = 'approved'::text)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "recipes",
+      "policyname": "recipes_delete_own",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "recipes",
+      "policyname": "recipes_insert_own",
+      "schemaname": "public",
+      "with_check": "((dietitian_id = ( SELECT auth.uid() AS uid)) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.is_verified IS TRUE) AND (dp.verification_status = 'approved'::text)))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((dietitian_id = ( SELECT auth.uid() AS uid)) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.is_verified IS TRUE) AND (dp.verification_status = 'approved'::text)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "recipes",
+      "policyname": "recipes_select_own",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((dietitian_id = ( SELECT auth.uid() AS uid)) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.is_verified IS TRUE) AND (dp.verification_status = 'approved'::text)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "recipes",
+      "policyname": "recipes_update_own",
+      "schemaname": "public",
+      "with_check": "((dietitian_id = ( SELECT auth.uid() AS uid)) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian) AND (EXISTS ( SELECT 1\n   FROM dietitian_profiles dp\n  WHERE ((dp.user_id = ( SELECT auth.uid() AS uid)) AND (dp.is_verified IS TRUE) AND (dp.verification_status = 'approved'::text)))))"
+    },
+    {
+      "cmd": "ALL",
+      "qual": "((current_user_role() = 'client'::user_role) OR is_current_user_dietitian())",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "dietitian_clients",
+      "policyname": "Approved dietitian authorization gate",
+      "schemaname": "public",
+      "with_check": "((current_user_role() = 'client'::user_role) OR is_current_user_dietitian())"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((client_id = auth.uid()) AND (status = 'pending'::client_status))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "dietitian_clients",
+      "policyname": "clients_update_own_pending_request",
+      "schemaname": "public",
+      "with_check": "((client_id = auth.uid()) AND (status = ANY (ARRAY['active'::client_status, 'rejected'::client_status])) AND (EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND ((p.role)::text = 'client'::text)))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((dietitian_id = auth.uid()) OR (client_id = auth.uid()))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "dietitian_clients",
+      "policyname": "dietitian_clients_select_own",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((dietitian_id = auth.uid()) AND (status = ANY (ARRAY['pending'::client_status, 'active'::client_status])))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "dietitian_clients",
+      "policyname": "dietitians_remove_own_connection",
+      "schemaname": "public",
+      "with_check": "((dietitian_id = auth.uid()) AND (status = 'removed'::client_status))"
+    }
+  ],
+  "functions": [
+    {
+      "args": "p_dietitian uuid",
+      "name": "dietitian_active_client_usage",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "schema": "public",
+      "source_md5": "ce9fad1c3a69c8b43ca2d7748be26cd3",
+      "anon_execute": false,
+      "capacity_lock": false,
+      "service_execute": true,
+      "security_definer": true,
+      "authenticated_execute": false,
+      "transition_checks_auth": false,
+      "usage_counts_active_and_pending": true
+    },
+    {
+      "args": "p_dietitian uuid",
+      "name": "dietitian_effective_client_limit",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "schema": "public",
+      "source_md5": "8c646ba806062f7eecaee49d476c0a7d",
+      "anon_execute": false,
+      "capacity_lock": false,
+      "service_execute": true,
+      "security_definer": true,
+      "authenticated_execute": false,
+      "transition_checks_auth": false,
+      "usage_counts_active_and_pending": false
+    },
+    {
+      "args": "",
+      "name": "enforce_dietitian_client_capacity",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "schema": "public",
+      "source_md5": "89c83554f829bc0f3195f59674770301",
+      "anon_execute": false,
+      "capacity_lock": true,
+      "service_execute": true,
+      "security_definer": true,
+      "authenticated_execute": false,
+      "transition_checks_auth": false,
+      "usage_counts_active_and_pending": true
+    },
+    {
+      "args": "",
+      "name": "enforce_dietitian_client_transition",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "schema": "public",
+      "source_md5": "836245459047787a92b9f1da876e2202",
+      "anon_execute": false,
+      "capacity_lock": false,
+      "service_execute": true,
+      "security_definer": false,
+      "authenticated_execute": false,
+      "transition_checks_auth": false,
+      "usage_counts_active_and_pending": true
+    },
+    {
+      "args": "",
+      "name": "is_current_user_dietitian",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "schema": "public",
+      "source_md5": "cecdd7e312c92d2f0ab361b7337bf87e",
+      "anon_execute": false,
+      "capacity_lock": false,
+      "service_execute": true,
+      "security_definer": true,
+      "authenticated_execute": true,
+      "transition_checks_auth": true,
+      "usage_counts_active_and_pending": false
+    },
+    {
+      "args": "",
+      "name": "notify_dietitian_client_change",
+      "config": [
+        "search_path=pg_catalog, public, private"
+      ],
+      "schema": "private",
+      "source_md5": "ec07b2158ecf2e0c340e69b0daa9aaca",
+      "anon_execute": false,
+      "capacity_lock": false,
+      "service_execute": false,
+      "security_definer": true,
+      "authenticated_execute": false,
+      "transition_checks_auth": false,
+      "usage_counts_active_and_pending": true
+    },
+    {
+      "args": "p_email text",
+      "name": "request_client_connection_by_email",
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "schema": "public",
+      "source_md5": "12d03a15441f42aa2f43dae6953b06ba",
+      "anon_execute": false,
+      "capacity_lock": true,
+      "service_execute": true,
+      "security_definer": true,
+      "authenticated_execute": true,
+      "transition_checks_auth": true,
+      "usage_counts_active_and_pending": true
+    }
+  ],
+  "extensions": [
+    {
+      "name": "pgcrypto",
+      "version": "1.3"
+    },
+    {
+      "name": "supabase_vault",
+      "version": "0.3.1"
+    },
+    {
+      "name": "pg_cron",
+      "version": "1.6.4"
+    },
+    {
+      "name": "pg_net",
+      "version": "0.19.5"
+    }
+  ],
+  "feature_cron": [],
+  "vault_input_presence": {
+    "recipe_import_cleanup_url": false,
+    "recipe_import_cleanup_token": false
+  },
+  "featureEdgePresence": {
+    "preview-dietitian-invite": false,
+    "process-recipe-import": false,
+    "cleanup-recipe-imports": false
+  },
+  "edgeSecretPresence": {
+    "OPENAI_API_KEY": false,
+    "OPENAI_RECIPE_MODEL": false,
+    "RECIPE_IMPORT_CLEANUP_TOKEN": false
+  },
+  "transactionReadOnly": "on",
+  "productionMutated": false,
+  "remoteMigrations": [
+    {
+      "version": "20260713000000",
+      "name": "staging_default_table_privileges"
+    },
+    {
+      "version": "20260713000001",
+      "name": "production_public_baseline"
+    },
+    {
+      "version": "20260713010000",
+      "name": "function_security_hardening"
+    },
+    {
+      "version": "20260713010100",
+      "name": "verification_consistency"
+    },
+    {
+      "version": "20260713010200",
+      "name": "auth_onboarding_hardening"
+    },
+    {
+      "version": "20260713010300",
+      "name": "critical_table_rls"
+    },
+    {
+      "version": "20260713010400",
+      "name": "meal_completion_rpc"
+    },
+    {
+      "version": "20260713010500",
+      "name": "ensure_auth_user_onboarding_trigger"
+    },
+    {
+      "version": "20260714010000",
+      "name": "remove_legacy_client_meals_update_policy"
+    },
+    {
+      "version": "20260722131259",
+      "name": "expand_measurement_side_columns"
+    },
+    {
+      "version": "20260723093230",
+      "name": "sync_dietitian_display_name"
+    },
+    {
+      "version": "20260723093510",
+      "name": "revoke_anon_dietitian_display_name_execute"
+    },
+    {
+      "version": "20260723164416",
+      "name": "create_dietitian_recipes"
+    },
+    {
+      "version": "20260723180039",
+      "name": "production_compatible_weekly_meal_plan_rpc"
+    },
+    {
+      "version": "20260724063211",
+      "name": "persist_recipe_meal_snapshots"
+    },
+    {
+      "version": "20260724071352",
+      "name": "allow_clients_read_planned_recipe_images"
+    },
+    {
+      "version": "20260725125627",
+      "name": "allow_dietitians_view_active_client_avatars"
+    },
+    {
+      "version": "20260725133956",
+      "name": "20260725160000_client_relationship_security_contract_forward_fix"
+    },
+    {
+      "version": "20260726090000",
+      "name": "chat_conversation_schema"
+    },
+    {
+      "version": "20260726090100",
+      "name": "chat_constraints_indexes"
+    },
+    {
+      "version": "20260726090200",
+      "name": "chat_rls"
+    },
+    {
+      "version": "20260726090300",
+      "name": "chat_rpc"
+    },
+    {
+      "version": "20260727091215",
+      "name": "chat_table_privilege_hardening"
+    },
+    {
+      "version": "20260727094415",
+      "name": "chat_realtime_publication"
+    },
+    {
+      "version": "20260727131340",
+      "name": "chat_legacy_message_text_compatibility"
+    },
+    {
+      "version": "20260728103000",
+      "name": "chat_delete_delivery_receipts"
+    },
+    {
+      "version": "20260728160000",
+      "name": "allow_active_clients_read_linked_dietitian_avatar"
+    },
+    {
+      "version": "20260729090000",
+      "name": "chat_image_schema"
+    },
+    {
+      "version": "20260729090100",
+      "name": "chat_image_rls_privileges"
+    },
+    {
+      "version": "20260729090200",
+      "name": "chat_image_rpc"
+    },
+    {
+      "version": "20260729090300",
+      "name": "chat_image_storage"
+    },
+    {
+      "version": "20260729090400",
+      "name": "chat_image_cleanup"
+    },
+    {
+      "version": "20260730180636",
+      "name": "chat_image_cleanup_scheduler"
+    },
+    {
+      "version": "20260730180641",
+      "name": "chat_image_rpc_activation"
+    },
+    {
+      "version": "20260801090000",
+      "name": "align_measurements_with_mobile"
+    },
+    {
+      "version": "20260802090000",
+      "name": "chat_active_relationship_hardening"
+    },
+    {
+      "version": "20260807115919",
+      "name": "mvp_security_hardening_reconciliation"
+    },
+    {
+      "version": "20260810055845",
+      "name": "mvp3_meal_photo_lifecycle_closure"
+    },
+    {
+      "version": "20260810074910",
+      "name": "mvp3_real_storage_upload_policy_correction"
+    },
+    {
+      "version": "20260811103909",
+      "name": "create_persistent_dashboard_daily_tasks"
+    },
+    {
+      "version": "20260812090000",
+      "name": "mvp7_subscription_plans_and_client_limits"
+    },
+    {
+      "version": "20260813120000",
+      "name": "create_persistent_dietitian_notes"
+    },
+    {
+      "version": "20260814120000",
+      "name": "appointment_slot_collision_and_booking_indexes"
+    },
+    {
+      "version": "20260814130000",
+      "name": "meal_completion_visibility"
+    },
+    {
+      "version": "20260814214101",
+      "name": "notification_core_backend"
+    },
+    {
+      "version": "20260816101405",
+      "name": "mark_all_notifications_read"
+    },
+    {
+      "version": "20260817084531",
+      "name": "20260816194431_appointment_reminders_backend"
+    },
+    {
+      "version": "20260826133224",
+      "name": "product_admin_dietitian_verification"
+    },
+    {
+      "version": "20260827084741",
+      "name": "standalone_platform_admin_access"
+    },
+    {
+      "version": "20260830060342",
+      "name": "dietitian_diploma_storage_hardening"
+    },
+    {
+      "version": "20260830141202",
+      "name": "meal_plan_cross_day_identity_preservation"
+    },
+    {
+      "version": "20260830185101",
+      "name": "meal_plan_snapshot_edit_contract"
+    },
+    {
+      "version": "20260831071948",
+      "name": "meal_plan_new_recipe_custom_snapshot_contract"
+    },
+    {
+      "version": "20260831190352",
+      "name": "meal_completion_photo_contract"
+    },
+    {
+      "version": "20260901083212",
+      "name": "client_grocery_list"
+    },
+    {
+      "version": "20260901165402",
+      "name": "client_account_deletion_backend"
+    },
+    {
+      "version": "20260901193000",
+      "name": "client_account_deletion_hardening"
+    },
+    {
+      "version": "20260901200413",
+      "name": "client_account_deletion_scope_tightening"
+    }
+  ]
+}

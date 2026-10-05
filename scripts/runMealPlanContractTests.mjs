@@ -71,6 +71,7 @@ const SOURCES = [
   'features/meal-plans/utils/mealPlanSnapshotEdit.ts',
   'features/auth/services/authLifecycle.ts',
   'features/recipes/services/recipeService.ts',
+  'supabase/functions/_shared/recipeContract.ts',
   'features/recipes/utils/filterRecipes.ts',
   'features/clients/utils/measurementContract.ts',
   'features/appointments/utils/appointmentContract.ts',

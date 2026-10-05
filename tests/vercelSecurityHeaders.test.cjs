@@ -16,12 +16,16 @@ const cspDirective = (name) => csp
 
 test('vercel.json is valid JSON and keeps the canonical SPA rewrite', () => {
   assert.deepEqual(config.rewrites, [
+    { source: '/.well-known/assetlinks.json', destination: '/.well-known/assetlinks.json' },
+    { source: '/.well-known/apple-app-site-association', destination: '/.well-known/apple-app-site-association' },
     { source: '/(.*)', destination: '/index.html' },
   ]);
 });
 
 test('security headers use one global matcher', () => {
-  assert.equal(config.headers?.length, 1);
+  assert.equal(config.headers?.filter(rule=>rule.source==='/(.*)').length, 1);
+  const association=config.headers?.find(rule=>rule.source==='/.well-known/apple-app-site-association');
+  assert.deepEqual(association?.headers,[{key:'Content-Type',value:'application/json'}]);
   assert.equal(headerRule?.source, '/(.*)');
 });
 

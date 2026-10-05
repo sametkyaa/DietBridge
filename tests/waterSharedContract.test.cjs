@@ -19,6 +19,8 @@ const readMobile = (relativePath) => fs.readFileSync(
 
 const waterContract = require(path.join(buildDir, 'features', 'analytics', 'utils', 'waterContract.js'));
 const analyticsContract = require(path.join(buildDir, 'features', 'analytics', 'utils', 'analyticsContract.js'));
+const { formatLiters } = require('./helpers/mobileWaterFormatter.cjs')(mobileRepoRoot);
+const mobileWaterContract = require(path.join(mobileRepoRoot, 'apps/mobile/src/shared/utils/waterTrackingContract.cjs'));
 
 test('canonical daily-log water values stay in liters for 1, 1.5, 0, null and missing', () => {
   for (const [raw, expected] of [
@@ -30,9 +32,18 @@ test('canonical daily-log water values stay in liters for 1, 1.5, 0, null and mi
     ['', null],
   ]) {
     assert.equal(waterContract.parseDailyWaterLiters(raw), expected);
+    if (raw !== '') assert.equal(mobileWaterContract.normalizePersistedWaterLiters(raw), expected);
   }
   assert.equal(waterContract.isValidDailyWaterLiters(10), true);
   assert.equal(waterContract.isValidDailyWaterLiters(10.001), false);
+});
+
+test('Mobile canonical formatter displays persisted liters with Turkish decimals', () => {
+  for (const [raw, expected] of [[1, '1,00'], [1.5, '1,50'], [0, '0,00'], [null, '0,00'], [undefined, '0,00'], [NaN, '0,00']]) {
+    assert.equal(formatLiters(raw), expected);
+  }
+  assert.equal(mobileWaterContract.addWaterLiters(1.5, 200), 1.7);
+  assert.equal(mobileWaterContract.removeWaterLiters(1.5, 200), 1.3);
 });
 
 test('analytics aggregation reports persisted liters without an implicit /1000 conversion', () => {

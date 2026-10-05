@@ -14,6 +14,7 @@ import ResetPasswordPage from './features/auth/pages/ResetPasswordPage';
 // Feature Pages
 import DashboardPage from './features/dashboard/pages/DashboardPage';
 import ClientsPage from './features/clients/pages/ClientsPage';
+import InviteLandingPage from './features/clients/pages/InviteLandingPage';
 import MealTrackingOverviewPage from './features/meal-tracking/pages/MealTrackingOverviewPage';
 import SettingsPage from './features/settings/pages/SettingsPage';
 import ClientDetails from './pages/ClientDetails'; 
@@ -40,6 +41,7 @@ const App = () => {
           <Routes>
             {/* Public Route */}
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/davet/:code" element={<InviteLandingPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />

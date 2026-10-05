@@ -14,6 +14,10 @@
     "lint": "eslint .",
     "test": "node scripts/runAllContractTests.mjs",
     "test:core": "node scripts/runMealPlanContractTests.mjs",
+    "test:invites": "node --test tests/invitePreviewHandler.test.mjs",
+    "test:invites:runtime": "node scripts/runDisposableInviteRuntimeHarness.mjs",
+    "test:recipe-import": "node --test tests/recipeImportCore.test.mjs tests/openAIRecipeExtraction.test.mjs",
+    "test:recipe-import:runtime": "node scripts/runDisposableRecipeImportRuntimeHarness.mjs",
     "test:backend": "node scripts/runBackendQualityGate.mjs",
     "test:meal-plan-snapshot-edit": "node scripts/runMealPlanContractTests.mjs --meal-plan-snapshot-edit-only",
     "test:meal-plan-new-recipe-custom-snapshot": "node scripts/runMealPlanContractTests.mjs --meal-plan-new-recipe-custom-snapshot-only",
@@ -25,6 +29,7 @@
     "test:client-account-deletion:runtime": "node scripts/runDisposableClientAccountDeletionRuntimeHarness.mjs",
     "test:realtime-weight:runtime": "node scripts/runDisposableRealtimeWeightRuntimeHarness.mjs",
     "test:e2e": "node scripts/runCriticalE2E.mjs",
+    "test:e2e:features": "playwright test -c playwright.features.config.ts",
     "test:e2e:install": "playwright install chromium",
     "quality": "npm run typecheck && npm run lint && npm run test && npm run build",
     "test:notification-core": "node scripts/runNotificationCoreContractTests.mjs",
@@ -57,15 +62,18 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.87.0",
     "lucide-react": "^0.556.0",
+    "qrcode": "1.5.4",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "react-router-dom": "^7.18.2",
-    "write-excel-file": "^4.1.1"
+    "write-excel-file": "^4.1.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^22.14.0",
+    "@types/qrcode": "1.5.5",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "10.4.20",
     "eslint": "^10.7.0",

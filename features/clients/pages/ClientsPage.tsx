@@ -6,6 +6,8 @@ import { Client } from '../../../shared/types';
 import { fetchDietitianClientList, addClientByEmail, resolveClientIdByRelationId } from '../services/clientService';
 import { exportClientsToXlsx } from '../services/clientExportService';
 import NotificationBell from '../../notifications/components/NotificationBell';
+import InviteCodePanel from '../components/InviteCodePanel';
+import { resolveClientInviteMode } from '../utils/inviteCode';
 import { formatPercentageDisplay } from '../../../shared/utils/percentageDisplay';
 
 type ClientListViewState =
@@ -23,6 +25,8 @@ const MODAL_FOCUSABLE_SELECTOR = [
   'a[href]',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
+
+const inviteMode = resolveClientInviteMode(import.meta.env.VITE_CLIENT_INVITE_MODE);
 
 const normalizeClientSearchValue = (value: string | null | undefined) =>
   (value ?? '').trim().toLocaleLowerCase('tr-TR');
@@ -523,7 +527,7 @@ const ClientsPage = () => {
       const focusFrame = window.requestAnimationFrame(() => {
         const focusTarget = inviteEmailInputRef.current?.disabled
           ? inviteDialogRef.current
-          : inviteEmailInputRef.current;
+          : inviteEmailInputRef.current || inviteDialogRef.current;
 
         if (focusTarget && document.activeElement !== focusTarget) {
           focusTarget.focus();
@@ -943,7 +947,7 @@ const ClientsPage = () => {
             tabIndex={-1}
           >
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-               <h2 id="client-invitation-title" className="text-xl font-bold text-slate-800">Danışana Bağlantı İsteği Gönder</h2>
+               <h2 id="client-invitation-title" className="text-xl font-bold text-slate-800">{inviteMode === 'invite_code' ? 'Danışan Davet Et' : 'Danışana Bağlantı İsteği Gönder'}</h2>
                <button 
                  type="button"
                  onClick={closeAddModal}
@@ -955,7 +959,7 @@ const ClientsPage = () => {
                </button>
             </div>
             
-            <form onSubmit={handleAddClient} className="p-6 space-y-5">
+            {inviteMode === 'invite_code' ? <InviteCodePanel onBusyChange={setIsAdding} /> : <form onSubmit={handleAddClient} className="p-6 space-y-5">
                <div className="space-y-1.5">
                   <label htmlFor="client-invitation-email" className="text-sm font-bold text-slate-700">Danışanın kayıtlı e-posta adresi</label>
                   <p id="client-invitation-description" className="text-xs text-slate-500 mb-2">Yalnız DietBridge mobil uygulamasında kayıtlı danışanlara bağlantı isteği gönderebilirsiniz. Danışan isteği mobil uygulamadan kabul ettiğinde bağlantı aktif olur.</p>
@@ -1020,7 +1024,7 @@ const ClientsPage = () => {
                      )}
                   </button>
                </div>
-            </form>
+            </form>}
           </div>
         </div>
       )}
