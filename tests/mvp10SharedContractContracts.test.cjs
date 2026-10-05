@@ -19,7 +19,7 @@ const weeklyPlanRpc = read('supabase/migrations/20260724063211_persist_recipe_me
 const measurementAlignment = read('supabase/migrations/20260801090000_align_measurements_with_mobile.sql');
 const sharedHarness = read('scripts/runDisposableMvp10SharedContractHarness.mjs');
 const waterSharedContract = read('tests/waterSharedContract.test.cjs');
-const mobileWaterTracker = readMobile('apps/mobile/src/features/clients/components/dashboard/WaterTrackerCard.js');
+const { source: mobileWaterTracker, formatLiters } = require('./helpers/mobileWaterFormatter.cjs')(mobileRepoRoot);
 
 test('MVP-10 inventory records the canonical Web/Mobile repositories and closure flows', () => {
   for (const marker of [
@@ -78,7 +78,9 @@ test('date, nullability, and cache-isolation safeguards are source-locked', () =
 test('MVP-10 daily water contract stays in persisted liters across Web and Mobile', () => {
   assert.match(inventory, /persisted `water_intake` is canonical liters/);
   assert.match(waterSharedContract, /1\.5/);
-  assert.match(mobileWaterTracker, /water\.toFixed\(2\)/);
+  assert.match(mobileWaterTracker, /formatLiters\(\s*water\s*\)/);
+  assert.equal(formatLiters(1.5), '1,50');
+  assert.equal(formatLiters(0), '0,00');
   assert.doesNotMatch(waterSharedContract, /point\.value\s*\/\s*1000/);
 });
 
