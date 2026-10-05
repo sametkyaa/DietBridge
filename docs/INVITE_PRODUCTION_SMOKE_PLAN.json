@@ -1,0 +1,94 @@
+{
+  "status": "EXECUTED_PASS_CLEANUP_PASS",
+  "approvalToken": "APPROVE_INVITE_SYNTHETIC_SMOKE",
+  "target": "kagvxhyvxxypspdxcuxz",
+  "precondition": "Verified for executed run: target identity + invite catalog 21/21 PASS + active Core limit10",
+  "maximumAuthFixtures": 17,
+  "fixtureRoles": {
+    "dietitians": 3,
+    "clients": 14
+  },
+  "creationMethod": "Supabase Admin Auth API with email_confirm; example.invalid emails, per-run UUID nonce and user metadata run marker; no outbound email",
+  "profileMutations": "Approve only two newly created owned dietitians; up to two owned Core subscriptions; third dietitian remains unapproved",
+  "expectedBusinessWrites": [
+    "at most two owned invite codes",
+    "owned synthetic relationships and notifications",
+    "owned private invite attempts"
+  ],
+  "cases": [
+    "approved client preview valid code",
+    "invalid code",
+    "closed code preview/redeem",
+    "connect",
+    "same-code idempotency",
+    "other-dietitian denial",
+    "capacity: nine occupied synthetic Core slots then two-client last-slot race",
+    "five combined invalid preview/redeem attempts then sixth blocked",
+    "client leave",
+    "notification actor/recipient",
+    "unapproved dietitian denied"
+  ],
+  "manifest": {
+    "location": "private local directory outside Git with current-user ACL",
+    "fields": [
+      "run_id",
+      "target_ref",
+      "creation_intents",
+      "owned_auth_user_ids",
+      "owned_profile_ids",
+      "owned_subscription_ids",
+      "owned_relationship_ids",
+      "owned_notification_ids",
+      "owned_invite_code_owner_ids",
+      "completed_checks",
+      "cleanup_receipt"
+    ],
+    "excluded": [
+      "passwords",
+      "tokens",
+      "invite code values",
+      "customer data"
+    ]
+  },
+  "cleanup": "Revoke/sign out owned sessions, delete only manifest-owned synthetic business rows and Auth users; verify owned Auth/profile/subscription/relationship/notification/code/attempt counts all zero. If creation or cleanup fails stop rollout, retain manifest and report exact residue counts. Never filter-delete real users or use delete_client_account_data for real accounts. Executed: 13 scoped resource groups all zero, independently confirmed with MCP; owned Auth audit-log entries also zero.",
+  "runtimeAuth": "Requests use JWTs of newly created synthetic actors; administrator setup only targets manifest-owned IDs",
+  "excluded": [
+    "Edge deploy",
+    "Storage writes",
+    "OpenAI calls",
+    "real customer accounts",
+    "web flags",
+    "mobile release",
+    "recipe migrations",
+    "push migration"
+  ],
+  "rollback": "fixture-only cleanup; keep deployed invite schema and existing customer relationships",
+  "result": {
+    "runId": "2562015e-5054-4a32-ae69-a1bcb7f43451",
+    "startedAt": "2026-10-05T18:07:55.845Z",
+    "finishedAt": "2026-10-05T18:12:49.880Z",
+    "authFixtures": 17,
+    "completedChecks": 9,
+    "identityChecks": 106,
+    "remainingFixtureRows": 0,
+    "resourceCounts": {
+      "attempts": 0,
+      "profiles": 0,
+      "auth_users": 0,
+      "invite_codes": 0,
+      "auth_sessions": 0,
+      "notifications": 0,
+      "relationships": 0,
+      "subscriptions": 0,
+      "auth_identities": 0,
+      "client_profiles": 0,
+      "dietitian_profiles": 0,
+      "verification_audit": 0,
+      "auth_refresh_tokens": 0
+    },
+    "ownedAuthAuditLogEntries": 0,
+    "postflight": "21/21 PASS",
+    "source": "scripts/runProductionInviteSmoke.mjs",
+    "manifestPath": "C:/dev/DietBridge-Backups/invite-smoke-6213164e-eb3e-4e65-93d1-db8bfce1272e/ownership.json"
+  }
+}

@@ -48,9 +48,11 @@ const rpc = async (a,name,args) => ok(await a.client.rpc(name,args));
 try {
   disposable=await runDisposableSupabaseLocalReplay({materializeOnly:true,keepTemp:true});
   addCurrentIsolatedMigrations({repoRoot,tempRoot:disposable.tempRoot});
-  copyFileSync(join(repoRoot,'supabase/migrations',migration),join(disposable.tempRoot,'supabase/migrations',migration));
   const metricsMigration='20261005132107_recipe_import_extraction_metrics.sql';
-  copyFileSync(join(repoRoot,'supabase/migrations',metricsMigration),join(disposable.tempRoot,'supabase/migrations',metricsMigration));
+  // The production controller excludes push. Remove only this disposable copy.
+  const disposablePush=resolve(disposable.tempRoot,'supabase/migrations/20260817120000_push_registry_outbox_backend.sql');
+  assert.ok(disposablePush.startsWith(resolve(disposable.tempRoot)+sep));
+  rmSync(disposablePush);
   copyFileSync(join(repoRoot,'supabase/migrations','20261005120859_dietitian_invite_codes.sql'),join(disposable.tempRoot,'supabase/migrations','20261005120859_dietitian_invite_codes.sql'));
   const ports=await Promise.all(Array.from({length:8},freePort));
   let config=readFileSync(disposable.configPath,'utf8').replace(/^project_id\s*=.*$/m,`project_id = "${projectId}"`);
@@ -62,10 +64,59 @@ try {
   assert.match(local.API_URL,/^http:\/\/(127\.0\.0\.1|localhost):\d+$/);
   admin=createClient(local.API_URL,local.SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
   pass('clean canonical migration apply');
+  const localSql = input => execFileSync('docker',['exec','-i',`supabase_db_${projectId}`,'psql','-XqAt','-F','\t','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1'],{input,encoding:'utf8',windowsHide:true,stdio:['pipe','pipe','pipe']});
+  const checkSql=(filename,count,statusColumn,expectedPending=false)=>{
+    const output=localSql(readFileSync(join(repoRoot,'supabase/preflight',filename),'utf8'));
+    const rows=output.trim().split(/\r?\n/).map(line=>line.split('\t')).filter(row=>/^\d\d_/.test(row[0]));
+    assert.equal(rows.length,count,output);
+    for(const row of rows)assert.equal(row[statusColumn],expectedPending&&/^20_.*_history_receipt$/.test(row[0])?'PASS_WITH_HISTORY_PENDING':'PASS',row.join(' | '));
+  };
+  // Local avatar prerequisite is retained; only its local-only receipt is removed
+  // so this disposable history exactly represents the reviewed production baseline.
+  localSql("delete from supabase_migrations.schema_migrations where version='20260728155959';");
+  checkSql('recipe_core_preflight.sql',13,2);pass('production-shaped P2 preflight 13/13 with excluded push absent');
+  localSql(readFileSync(join(repoRoot,'supabase/migrations',migration),'utf8'));
+  checkSql('recipe_core_postflight.sql',20,1,true);pass('core schema postflight 19/19 before history receipt');
+  localSql("insert into supabase_migrations.schema_migrations(version,name) values('20261005124951','recipe_import_core');");
+  checkSql('recipe_core_postflight.sql',20,1);pass('core exact history receipt postflight 20/20');
+  const postflightBody=readFileSync(join(repoRoot,'supabase/preflight/recipe_core_postflight.sql'),'utf8').replace(/^begin transaction read only;\s*$/m,'').replace(/^rollback;\s*$/m,'');
+  const deniedPostflight=localSql(`begin;grant select on public.recipe_import_jobs to anon;${postflightBody}rollback;`);
+  assert.ok(deniedPostflight.split(/\r?\n/).some(line=>line.startsWith('08_table_grants\tFAIL\t')),deniedPostflight);
+  checkSql('recipe_core_postflight.sql',20,1);pass('core postflight detects anonymous grant regression; rollback restores PASS');
   execFileSync('docker',['exec','-i',`supabase_db_${projectId}`,'psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1'],{input:readFileSync(join(repoRoot,'supabase/migrations',migration)),encoding:'utf8',windowsHide:true});
   pass('repeat apply is idempotent');
   execFileSync('docker',['exec','-i',`supabase_db_${projectId}`,'psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1'],{input:readFileSync(join(repoRoot,'supabase/migrations',metricsMigration)),encoding:'utf8',windowsHide:true});
+  execFileSync('docker',['exec','-i',`supabase_db_${projectId}`,'psql','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1'],{input:readFileSync(join(repoRoot,'supabase/migrations',metricsMigration)),encoding:'utf8',windowsHide:true});
   pass('extraction metrics repeat apply and combined feature chain');
+  checkSql('recipe_metrics_postflight.sql',21,1,true);pass('metrics schema postflight 20/20 before history receipt');
+  localSql("insert into supabase_migrations.schema_migrations(version,name) values('20261005132107','recipe_import_extraction_metrics');");
+  checkSql('recipe_metrics_postflight.sql',21,1);pass('metrics exact history receipt postflight 21/21');
+  const metricsPostflightBody=readFileSync(join(repoRoot,'supabase/preflight/recipe_metrics_postflight.sql'),'utf8').replace(/^begin transaction read only;\s*$/m,'').replace(/^rollback;\s*$/m,'');
+  const badMetrics=localSql(`begin;alter table public.recipe_import_jobs drop constraint recipe_import_jobs_ai_attempt_count_check;${metricsPostflightBody}rollback;`);
+  assert.ok(badMetrics.split(/\r?\n/).some(line=>line.startsWith('21_metrics_bounds\tFAIL\t')),badMetrics);
+  checkSql('recipe_metrics_postflight.sql',21,1);pass('metrics postflight detects dropped attempt bound; rollback restores PASS');
+
+  const noCron = "do $$ begin if exists(select 1 from cron.job where jobname='recipe-import-cleanup') then raise exception 'Premature cleanup cron'; end if; end $$;";
+  localSql(noCron);pass('core and metrics apply never enable cleanup cron');
+  const activation = readFileSync(join(repoRoot,'supabase/rollout/enable_recipe_import_cleanup.sql'),'utf8');
+  assert.throws(()=>localSql(activation),/Unique cleanup Vault entries required/);pass('separate cron activation fails closed without Vault readiness');
+  // Everything below is rolled back. pg_cron cannot see an uncommitted job,
+  // so the real production-shaped URL is never dispatched from this test.
+  const activationBody = activation.replace(/^begin;\s*$/m,'').replace(/^commit;\s*$/m,'');
+  localSql(`begin;
+    select vault.create_secret('https://kagvxhyvxxypspdxcuxz.supabase.co/functions/v1/cleanup-recipe-imports','recipe_import_cleanup_url');
+    select vault.create_secret('disposable-public-placeholder-token','recipe_import_cleanup_token');
+    ${activationBody}
+    create temporary table expected_cleanup_job as select jobid from cron.job where jobname='recipe-import-cleanup';
+    ${activationBody}
+    ${readFileSync(join(repoRoot,'supabase/migrations',migration),'utf8').replace(/^begin;\s*$/m,'').replace(/^commit;\s*$/m,'')}
+    do $$ begin
+      if (select count(*) from cron.job where jobname='recipe-import-cleanup' and active and schedule='*/15 * * * *' and command='select private.dispatch_recipe_import_cleanup();' and jobid=(select jobid from expected_cleanup_job))<>1 then
+        raise exception 'Cleanup activation is not idempotent or core reapply changed cron';
+      end if;
+    end $$;
+    rollback;`);
+  localSql(noCron);pass('explicit cron activation is idempotent; core reapply preserves job; rolled back with zero dispatch');
 
   const d=await actor('dietitian'), d2=await actor('dietitian'), unapproved=await actor('dietitian',false), client=await actor('client');
   const limits=await rpc(d,'recipe_import_limits'); assert.equal(limits.maxRecipes,20);

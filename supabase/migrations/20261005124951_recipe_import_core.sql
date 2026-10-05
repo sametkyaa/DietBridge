@@ -221,10 +221,8 @@ begin
   return true;
 end $$;
 revoke all on function private.dispatch_recipe_import_cleanup() from public,anon,authenticated;
-do $$ declare v_job bigint;begin
-  select jobid into v_job from cron.job where jobname='recipe-import-cleanup';
-  if v_job is not null then perform cron.unschedule(v_job); end if;
-  perform cron.schedule('recipe-import-cleanup','*/15 * * * *','select private.dispatch_recipe_import_cleanup();');
-end $$;
+-- Scheduling is an operational rollout step, separately authorized only after
+-- cleanup Edge, server secrets and Vault readiness. Core/reapply never changes
+-- an existing cron job. See supabase/rollout/enable_recipe_import_cleanup.sql.
 notify pgrst,'reload schema';
 commit;
