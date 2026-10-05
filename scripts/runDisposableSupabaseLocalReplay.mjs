@@ -469,8 +469,33 @@ export const copyRequiredProjectFiles = ({ repoRoot, tempRoot }) => {
   requireExistingDirectoryWithoutSymlink(join(resolvedTempRoot, 'supabase'), 'Disposable Supabase directory');
   assertRegularFileWithoutSymlink(sourceConfig, 'Required local Supabase config');
   copyFileSync(sourceConfig, destinationConfig, 1);
+  writeFileSync(destinationConfig, withoutHandlerTestedFunctions(readFileSync(destinationConfig, 'utf8')), 'utf8');
   copyConfiguredDisposableFunctionSources({ repoRoot: resolvedRepoRoot, tempRoot: resolvedTempRoot, configPath: destinationConfig });
   return destinationConfig;
+};
+
+// Invite and recipe-import Edge functions are exercised through their handlers by
+// dedicated harnesses and are not served by the disposable stack. Their config
+// sections are removed from the disposable copy only, because `supabase start`
+// requires every configured entrypoint to exist. Any other uncopied function
+// section fails closed.
+export const HANDLER_TESTED_FUNCTIONS = Object.freeze([
+  'preview-dietitian-invite',
+  'process-recipe-import',
+  'cleanup-recipe-imports',
+]);
+export const withoutHandlerTestedFunctions = (configText) => {
+  const sections = configText.split(/^(?=\[[^\r\n]+\]\s*$)/m);
+  const kept = sections.filter((section) => {
+    const name = section.match(/^\[functions\.([^\]]+)\]\s*$/m)?.[1];
+    if (!name || !section.startsWith('[functions.')) return true;
+    if (HANDLER_TESTED_FUNCTIONS.includes(name)) return false;
+    if (name !== 'delete-client-account') {
+      throw new Error(`Disposable config has an unsupported function section: ${name}`);
+    }
+    return true;
+  });
+  return kept.join('');
 };
 
 const localOnlyEnvironment = (environment) => {
