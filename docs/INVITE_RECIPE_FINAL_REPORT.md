@@ -2,7 +2,7 @@
 
 2026-10-05, Europe/Istanbul. Son salt okunur preflight ve history mutabakatı: 2026-10-05.
 
-**GÜNCEL ROLLOUT: Recipe import flag production env’de açıldı (Y): VITE_RECIPE_IMPORT_ENABLED=true, VITE_CLIENT_INVITE_MODE=legacy_email. Özellik henüz canlı değil; import kodu yalnız codex/invite-recipe-regression branch’inde, production main 441f72f’ten build ediliyor. Main entegrasyonu (PR/merge) ayrı kullanıcı kararı. Backend, Edge, cleanup, synthetic ve Luna smoke PASS. Invite/preview LIVE/PASS, legacy ACTIVE, mobile signing-blocked/cutover DEFERRED. A–X tarihsel receipt’ler.**
+**GÜNCEL ROLLOUT: Recipe Import production Web’de canlı (AA). PR #47 main’e squash-merge edildi (230daee); Vercel deployment dpl_BZQd3XRhPNKmHw7uoS5NfzUaSJwz READY; import butonu flag ile görünür, invite modu legacy_email. #44/#45/#46 korundu. Backend/Edge/cleanup/synthetic/Luna smoke PASS. Açık bulgu: #46 migration’ları production’da uygulanmamış (ayrı onaylı gate). Mobile signing-blocked/cutover DEFERRED. A–Z tarihsel receipt’ler.**
 
 ## A. Git ve görev kapsamı
 
@@ -823,4 +823,40 @@ Conflict olmayan ama birlikte yanlış çalışan üç yer test sırasında bulu
 **Güvenlik.** SheetJS statik import, uzak dinamik import 0; sayfa boyutu/genişletilmiş boyut/satır/sütun/hücre sınırları ve formül kapalı ayarlar yerinde; gpt-6-luna, store:false, tools boş; worker kanonik tarife doğrudan yazmıyor. dist/ ve istemci kaynağında OPENAI_API_KEY, RECIPE_IMPORT_CLEANUP_TOKEN, SUPABASE_SERVICE_ROLE_KEY, service_role, sk-/sbp_ anahtarı veya api.openai.com yok; repo genelinde JWT benzeri değer yok.
 
 **PR diff (main'e göre).** 75 dosya, 0 dosya silme. 72 silinen satırın tamamı branch'in main'in dokunmadığı dosyalardaki kendi değişiklikleri (recipeService, ClientsPage, Recipes, package-lock, vercel header testi) veya yukarıdaki üç filtre satırı. docs/legal, .env, dist, test-results yok.
+## AA. Production Web release — PR #47 merged, Recipe Import live
+
+Release: PR [#47](https://github.com/sametkyaa/DietBridge/pull/47) squash-merged into main → **230daee712597d16066554256aaa3e607d6f13cf** (2026-10-05T22:39:56Z). The main tree is identical to CI-tested commit e279477. History: 230daee → 441f72f (#46) → 3fb7d5b (#45) → 8138171 (#44).
+
+```text
+MAIN SYNC:                         PASS
+MAIN SOURCE HEAD BEFORE:           441f72f791387918fd170bcda827ae6a834985d3
+FEATURE HEAD BEFORE:               5e52618b8cdfe2e7c94b25bed3a05c9e5de19b09
+MERGE CONFLICTS:                   3 (+3 semantic interactions found in tests, +3 found in CI)
+CLAUDE_COMMIT_44_PRESERVED:        YES (81381714e6befdbda419b2dc148f9a2ef3ed1399)
+CLAUDE_COMMIT_45_PRESERVED:        YES (3fb7d5bb2bd93cd9a13f88ba2d0d0ae150474f99)
+CLAUDE_COMMIT_46_PRESERVED:        YES (441f72f791387918fd170bcda827ae6a834985d3)
+FULL WEB QUALITY GATE:             PASS
+FULL TEST COUNT:                   536/536 + static contract gates
+FEATURE TESTS / SECURITY:          PASS / PASS
+PR / PR DIFF / CI:                 #47 / PASS / PASS
+MAIN HEAD AFTER MERGE:             230daee712597d16066554256aaa3e607d6f13cf
+VERCEL DEPLOYMENT:                 READY (dpl_BZQd3XRhPNKmHw7uoS5NfzUaSJwz)
+RECIPE IMPORT FLAG / UI:           ON / VISIBLE
+RECIPE PRODUCTION WEB SMOKE:       PASS (read-only)
+RECIPE INFRA HEALTH:               PASS
+INVITE MODE / LEGACY EMAIL:        legacy_email / ACTIVE
+MOBILE INVITE CUTOVER:             DEFERRED
+```
+
+**CI integration fixes (after the merge commit, before PR merge).** (1) Three backend runtime harnesses that count the source migration directory trim the list after #46's tail; #46's lines are unchanged. (2) The disposable Supabase config drops the invite-preview and recipe-import function sections, because `supabase start` requires every configured entrypoint and only delete-client-account is copied; any other uncopied section fails closed. (3) The critical Playwright config ignores the mocked feature specs; `npm run test:e2e:features` runs them (8/8). Required checks on e279477: Web Quality (45s), Critical E2E (3m42s), Backend Integration (18m55s, 11 harnesses) all PASS. Locally, the notification core harness and Critical E2E (4/4) also passed against a real disposable stack.
+
+**Production Web smoke (read-only, no login, no data).** The live bundle (4 chunks, all 200) renders the "Dosyadan içe aktar" button unconditionally on the Recipes page: the flag condition was folded to true at build time (VITE_RECIPE_IMPORT_ENABLED "true", VITE_CLIENT_INVITE_MODE "legacy_email"). The bundle also contains the dialog, the privacy warning, the accepted file types, the no-estimation copy, and the begin_recipe_import / process-recipe-import / recipe-imports paths. There are no invite-code RPCs, and no OpenAI key, cleanup token, service-role key or api.openai.com. In a browser, "/", "/recipes" and "/clients" redirect to login without a session, and "/register" opens; there are no console errors. A logged-in dietitian check was not run, because this task forbids creating production data.
+
+**Infra health (read-only).** All 7 Edge functions are ACTIVE at their previous versions (process v3, cleanup v2, preview v2). recipe-import-cleanup is active */15; its last 3 runs succeeded, with 0 failures in 24h. cleanup_pending 0, overdue 0, bucket private, history 61, invite cron active.
+
+**Finding: #46 migrations are not applied in production.** 20261005120000 and 20261005120100 are absent from production history, and public.save_active_client_weight does not exist. Web has called this RPC since 2026-07-18 (adfbf40), so production weight saving may be failing; this predates this release. No DB mutation was made. Next safe step: a separately approved production migration gate for #46's two migrations.
+
+**Writes in this task.** Git: feature commits, the main merge, PR #47 squash merge, this docs PR. Production DB, Storage, Edge, secrets, Vault, cron, Vercel env and mobile: no change. docs/legal/ was not touched. Rollback: VITE_RECIPE_IMPORT_ENABLED=false and redeploy main.
+
+Remaining risks / manual checks: one logged-in Recipes dialog check by a dietitian; the #46 migration gate; feature E2E is not in CI; two harnesses outside the backend gate (cross-day save, notification client) expect a tail from before #46, which already fails on main; mobile signing and DYBRK remain deferred.
 
