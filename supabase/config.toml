@@ -417,3 +417,15 @@ enabled = true
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/delete-client-account/index.ts"
+
+[functions.preview-dietitian-invite]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/preview-dietitian-invite/index.ts"
+[functions.process-recipe-import]
+verify_jwt = true
+entrypoint = "./functions/process-recipe-import/index.ts"
+
+[functions.cleanup-recipe-imports]
+verify_jwt = false
+entrypoint = "./functions/cleanup-recipe-imports/index.ts"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Edit2, Flame, Loader2, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import {
   createRecipe,
@@ -43,6 +43,7 @@ const EMPTY_FORM: RecipeFormState = {
   fat: '',
   imageFile: null,
 };
+const RecipeImportDialog = lazy(() => import('../features/recipes/components/RecipeImportDialog'));
 
 const toFormState = (recipe: Recipe): RecipeFormState => ({
   name: recipe.name,
@@ -80,6 +81,7 @@ const Recipes = () => {
   const [recipeToDelete, setRecipeToDelete] = useState<Recipe | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   const loadRecipes = useCallback(async () => {
     setIsLoading(true);
@@ -150,14 +152,18 @@ const Recipes = () => {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-7xl flex-col p-4 md:h-screen md:p-8">
+      {isImportOpen && <Suspense fallback={<p role="status">İçe aktarma açılıyor</p>}><RecipeImportDialog existingNames={recipes.map(recipe=>recipe.name)} onClose={()=>setIsImportOpen(false)} onSaved={count=>{setIsImportOpen(false);setSuccessMessage(`${count} tarif kaydedildi.`);void loadRecipes();}} /></Suspense>}
       <header className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 md:text-3xl">Tarifler</h1>
           <p className="mt-1 text-sm text-slate-500">Kayıtlı tariflerinizi yönetin ve haftalık planlarda kullanın.</p>
         </div>
+        <div className="flex gap-2">
+        {import.meta.env.VITE_RECIPE_IMPORT_ENABLED === 'true' && <button type="button" onClick={() => setIsImportOpen(true)} className="rounded-xl border border-primary px-4 py-2 text-sm font-semibold text-primary">Dosyadan içe aktar</button>}
         <button type="button" onClick={openCreateForm} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 hover:bg-primary-dark">
           <Plus className="h-5 w-5" /> Yeni Tarif
         </button>
+        </div>
       </header>
 
       {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert"><p>{error}</p><button type="button" onClick={() => void loadRecipes()} className="mt-3 min-h-11 rounded-lg border border-rose-300 bg-white px-4 font-semibold">Tekrar dene</button></div>}

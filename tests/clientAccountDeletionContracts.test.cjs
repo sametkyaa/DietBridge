@@ -51,7 +51,7 @@ test('account deletion migration is a forward-only isolated canonical tail', () 
     const source = migration();
     const scopeSource = scopeTighteningMigration();
     const files = fs.readdirSync(path.join(root, 'supabase/migrations'))
-        .filter((name) => /^\d+_.+\.sql$/.test(name))
+        .filter((name) => /^\d+_.+\.sql$/.test(name) && name <= scopeTighteningMigrationName)
         .sort();
     assert.equal(files.at(-2), hardeningMigrationName);
     assert.equal(files.at(-1), scopeTighteningMigrationName);

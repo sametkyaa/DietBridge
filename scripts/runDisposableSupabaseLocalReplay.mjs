@@ -22,6 +22,10 @@ const defaultRepoRoot = resolve(dirname(scriptPath), '..');
 const SUPABASE_CLI_VERSION = '2.110.0';
 const TEMP_PREFIX = 'dietbridge-supabase-replay-';
 const ISOLATED_PHASE2_MIGRATIONS = new Set([
+  // Feature migrations are applied explicitly by their dedicated disposable harness.
+  '20261005120859_dietitian_invite_codes.sql',
+  '20261005124951_recipe_import_core.sql',
+  '20261005132107_recipe_import_extraction_metrics.sql',
   '20260814214101_notification_core_backend.sql',
   '20260817084531_appointment_reminders_backend.sql',
   '20260817120000_push_registry_outbox_backend.sql',

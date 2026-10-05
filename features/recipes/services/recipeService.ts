@@ -1,3 +1,6 @@
+import { normalizeRecipeInput, RecipeValidationError, type RecipeInput, type RecipeMealType, type RecipeValidationCode } from '../../../supabase/functions/_shared/recipeContract';
+export { normalizeRecipeInput, RecipeValidationError, type RecipeInput, type RecipeMealType, type RecipeValidationCode } from '../../../supabase/functions/_shared/recipeContract';
+
 import { supabase } from '../../../lib/supabaseClient';
 import { isValidUuid } from '../../../shared/utils/uuid';
 import {
@@ -18,8 +21,6 @@ const MIME_TO_EXTENSION: Record<string, 'jpg' | 'png' | 'webp'> = {
 };
 const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'] as const);
 
-export type RecipeMealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
-
 export interface Recipe {
   id: string;
   dietitianId: string;
@@ -32,34 +33,6 @@ export interface Recipe {
   imagePreview: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface RecipeInput {
-  name: string;
-  description?: string | null;
-  mealType: RecipeMealType;
-  calories: number;
-  macros: CanonicalMealMacros;
-}
-
-export type RecipeValidationCode =
-  | 'AUTH_REQUIRED'
-  | 'INVALID_RECIPE_ID'
-  | 'INVALID_RECIPE_NAME'
-  | 'INVALID_RECIPE_DESCRIPTION'
-  | 'INVALID_RECIPE_MEAL_TYPE'
-  | 'INVALID_RECIPE_CALORIES'
-  | 'INVALID_RECIPE_MACROS'
-  | 'INVALID_RECIPE_IMAGE'
-  | 'RECIPE_IMAGE_UPLOAD_FAILED'
-  | 'RECIPE_NOT_FOUND'
-  | 'INVALID_RECIPE_RESPONSE';
-
-export class RecipeValidationError extends Error {
-  constructor(public readonly code: RecipeValidationCode, public readonly field: string) {
-    super(code);
-    this.name = 'RecipeValidationError';
-  }
 }
 
 type RecipeRow = {
@@ -92,34 +65,6 @@ const assertFiniteNonNegative = (value: unknown, field: string, code: RecipeVali
     throw new RecipeValidationError(code, field);
   }
   return value;
-};
-
-export const normalizeRecipeInput = (input: RecipeInput): RecipeInput => {
-  const name = input.name?.trim();
-  if (!name || name.length > 160) {
-    throw new RecipeValidationError('INVALID_RECIPE_NAME', 'name');
-  }
-  const description = input.description?.trim() || null;
-  if (description && description.length > 2000) {
-    throw new RecipeValidationError('INVALID_RECIPE_DESCRIPTION', 'description');
-  }
-  if (!MEAL_TYPES.has(input.mealType)) {
-    throw new RecipeValidationError('INVALID_RECIPE_MEAL_TYPE', 'meal_type');
-  }
-  const calories = assertFiniteNonNegative(input.calories, 'calories', 'INVALID_RECIPE_CALORIES');
-  if (!Number.isInteger(calories) || calories > 10000) {
-    throw new RecipeValidationError('INVALID_RECIPE_CALORIES', 'calories');
-  }
-  let macros: CanonicalMealMacros;
-  try {
-    macros = normalizeCanonicalMealMacros(input.macros, 'macros');
-  } catch {
-    throw new RecipeValidationError('INVALID_RECIPE_MACROS', 'macros');
-  }
-  if (macros.protein > 1000 || macros.carbs > 1000 || macros.fat > 1000) {
-    throw new RecipeValidationError('INVALID_RECIPE_MACROS', 'macros');
-  }
-  return { name, description, mealType: input.mealType, calories, macros };
 };
 
 export const isCanonicalRecipeImagePath = (value: unknown): value is string => (
