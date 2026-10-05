@@ -4,6 +4,7 @@ import {
   getIstanbulDateKey,
   isAnalyticsDate,
 } from '../../analytics/utils/analyticsContract';
+import { compareOptionalMealTimes, formatOptionalMealTime } from '../../../shared/utils/mealTime';
 import type {
   MealTrackingDay,
   MealTrackingFilter,
@@ -35,7 +36,7 @@ const CANONICAL_MEAL_TYPE_ORDER: readonly MealTrackingMeal['type'][] = [
 
 const compareMealOrder = (left: MealTrackingMeal, right: MealTrackingMeal): number => (
   left.sortOrder - right.sortOrder
-  || left.time.localeCompare(right.time)
+  || compareOptionalMealTimes(left.time, right.time)
   || left.id.localeCompare(right.id)
 );
 
@@ -146,7 +147,7 @@ const createTodayMealEntries = (
       id: meal.id,
       type: meal.type,
       label: (typeCounts.get(meal.type) ?? 0) > 1
-        ? `${MEAL_TYPE_LABELS[meal.type]} · ${meal.time}`
+        ? `${MEAL_TYPE_LABELS[meal.type]} · ${formatOptionalMealTime(meal.time)}`
         : MEAL_TYPE_LABELS[meal.type],
       time: meal.time,
       title: meal.title,

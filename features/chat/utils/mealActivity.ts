@@ -18,7 +18,7 @@ export const isMealActivity = (value: unknown): value is MealActivity => {
     && typeof activity.mealDate === 'string'
     && typeof activity.mealType === 'string'
     && typeof activity.mealTitle === 'string'
-    && typeof activity.mealTime === 'string'
+    && (activity.mealTime === null || typeof activity.mealTime === 'string')
     && typeof activity.completedAt === 'string'
     && activity.createdAt === activity.completedAt
     && (activity.completionPhotoPath === null || typeof activity.completionPhotoPath === 'string')

@@ -12,7 +12,8 @@ export interface MealActivity {
   mealDate: string;
   mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   mealTitle: string;
-  mealTime: string;
+  /** Null for legacy meals saved without a planned time. */
+  mealTime: string | null;
   completedAt: string;
   createdAt: string;
   completionPhotoPath: string | null;

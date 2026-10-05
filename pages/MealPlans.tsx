@@ -40,6 +40,7 @@ import {
   MealPlanValidationError,
   normalizeCanonicalMealMacros,
   normalizeMealTime,
+  normalizeOptionalMealTime,
   saveWeeklyMealPlan,
   type CanonicalDailyMealPlan,
   type CanonicalMeal,
@@ -57,6 +58,7 @@ import {
 } from '../features/meal-plans/services/mealPhotoService';
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
+import { compareOptionalMealTimes, formatOptionalMealTime } from '../shared/utils/mealTime';
 import {
   getMealPlanWeekDates,
   mapWeeklyPlansByDate,
@@ -107,6 +109,10 @@ interface MealRow {
   name: string;
   time: string;
 }
+
+const formatMealRowTime = (row: MealRow | undefined): string => (
+  row ? formatOptionalMealTime(row.time) : '--:--'
+);
 
 const getCurrentMondayIso = (): string => {
   const today = new Date();
@@ -187,7 +193,8 @@ const getMealImageSource = (content: PlannedMealContent): string | null => {
   return null;
 };
 
-type MealPlanReadMeal = Omit<CanonicalMeal, 'plan_id'>;
+// `meals.time` is nullable for legacy rows; canonical RPC responses always carry HH:MM.
+type MealPlanReadMeal = Omit<CanonicalMeal, 'plan_id' | 'time'> & { time: string | null };
 type MealPlanReadDay = Omit<CanonicalDailyMealPlan, 'meals'> & { meals: MealPlanReadMeal[] };
 type MealRowNameByPlacement = Map<string, string>;
 
@@ -197,7 +204,9 @@ const getMealRowDetails = (meal: MealPlanReadMeal, rowNamesByPlacement?: MealRow
     : meal.type === 'lunch' ? 'Öğle'
       : meal.type === 'dinner' ? 'Akşam'
         : 'Ara Öğün');
-  const time = normalizeMealTime(meal.time, 'meal.time');
+  // Legacy meals without a planned time load into a row with an empty time.
+  // The row stays visible and is never given a time unless the dietitian enters one.
+  const time = normalizeOptionalMealTime(meal.time, 'meal.time') ?? '';
   return { rowName, time, sortOrder: meal.sort_order, key: `${rowName}-${time}-${meal.sort_order}` };
 };
 
@@ -219,7 +228,7 @@ const mapCanonicalPlansToEditor = (
   }));
 
   const orderedRows = [...rowDetails.values()]
-    .sort((left, right) => left.sortOrder - right.sortOrder || left.time.localeCompare(right.time) || left.key.localeCompare(right.key));
+    .sort((left, right) => left.sortOrder - right.sortOrder || compareOptionalMealTimes(left.time, right.time) || left.key.localeCompare(right.key));
   const meals = orderedRows.length === 0
     ? DEFAULT_MEAL_ROWS.map((meal) => ({ ...meal }))
     : orderedRows.map((details, index) => ({ id: `meal-loaded-${index}`, name: details.rowName, time: details.time }));
@@ -272,7 +281,7 @@ const createPreviousWeekCopy = (
   }));
 
   const orderedRows = [...rowDetails.values()]
-    .sort((left, right) => left.sortOrder - right.sortOrder || left.time.localeCompare(right.time) || left.key.localeCompare(right.key));
+    .sort((left, right) => left.sortOrder - right.sortOrder || compareOptionalMealTimes(left.time, right.time) || left.key.localeCompare(right.key));
   const meals = orderedRows.map((details, index) => ({ id: `copy-row-${index}`, name: details.rowName, time: details.time }));
   const rowIdByKey = new Map(orderedRows.map((details, index) => [details.key, meals[index].id]));
   const weeklyPlan: PlanState = {};
@@ -1142,11 +1151,7 @@ const MealPlans = () => {
     };
     
     const updatedMeals = [...meals, newMeal];
-    updatedMeals.sort((a, b) => {
-        if (a.time < b.time) return -1;
-        if (a.time > b.time) return 1;
-        return 0;
-    });
+    updatedMeals.sort((a, b) => compareOptionalMealTimes(a.time, b.time));
     
     setMeals(updatedMeals);
     setIsAddMealModalOpen(false);
@@ -1620,7 +1625,8 @@ const MealPlans = () => {
                                 <input 
                                   type="text" 
                                   value={meal.time}
-                                  placeholder="00:00"
+                                  placeholder="Saat yok"
+                                  aria-label={`${meal.name} saati (SS:DD)`}
                                   maxLength={5}
                                   onChange={(e) => handleUpdateMeal(meal.id, 'time', e.target.value)}
                                   className="bg-transparent text-center text-[11px] text-slate-500 font-medium uppercase tracking-wider w-16 cursor-text hover:text-primary focus:outline-none focus:text-primary border border-transparent hover:border-slate-200 rounded px-1"
@@ -2032,7 +2038,7 @@ const MealPlans = () => {
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary">Öğün Detayı</p>
                 <h2 id="meal-detail-dialog-title" className="mt-1 text-xl font-bold text-slate-800">{detailContent.name}</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {detailMealRow?.name ?? 'Öğün'} · {detailMealRow?.time ?? '--:--'} · {mealDetailCell.day}
+                  {detailMealRow?.name ?? 'Öğün'} · {formatMealRowTime(detailMealRow)} · {mealDetailCell.day}
                 </p>
               </div>
               <button type="button" onClick={() => setMealDetailCell(null)} aria-label="Öğün detayını kapat" className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700">
@@ -2107,7 +2113,7 @@ const MealPlans = () => {
                   <p className="text-xs font-semibold uppercase tracking-wide text-primary">Öğün Snapshot Düzenleme</p>
                   <h2 id="meal-edit-dialog-title" className="mt-1 text-xl font-bold text-slate-800">Öğün İçeriğini Düzenle</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    {mealEditSession.cell.day} · {meals.find((meal) => meal.id === mealEditSession.cell.mealId)?.name ?? 'Öğün'} · {meals.find((meal) => meal.id === mealEditSession.cell.mealId)?.time ?? '--:--'}
+                    {mealEditSession.cell.day} · {meals.find((meal) => meal.id === mealEditSession.cell.mealId)?.name ?? 'Öğün'} · {formatMealRowTime(meals.find((meal) => meal.id === mealEditSession.cell.mealId))}
                   </p>
                 </div>
                 <button type="button" onClick={closeMealEdit} aria-label="Öğün düzenlemeyi kapat" className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700">
@@ -2207,7 +2213,7 @@ const MealPlans = () => {
                     onChange={(event) => setMoveTargetMealId(event.target.value)}
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.name} · {meal.time}</option>)}
+                    {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.name} · {formatOptionalMealTime(meal.time)}</option>)}
                   </select>
                 </div>
               </div>

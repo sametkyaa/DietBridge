@@ -14,6 +14,7 @@ export type MealPlanValidationErrorCode =
   | 'INVALID_MEAL_PHOTO_PATH'
   | 'INVALID_MEAL_MACROS'
   | 'INVALID_WEEK_PAYLOAD'
+  | 'MISSING_MEAL_TIME'
   | 'INVALID_RPC_RESPONSE';
 
 export class MealPlanValidationError extends Error {
@@ -37,6 +38,8 @@ function assertValidUuid(
   }
 }
 
+export const MEAL_PLAN_MISSING_TIME_MESSAGE = 'Saati olmayan bir öğün satırı var. Kaydetmeden önce bu satıra SS:DD biçiminde saat girin.';
+
 export const getMealPlanUserMessage = (error: unknown): string => {
   if (error instanceof MealPlanValidationError) {
     if (error.code === 'INVALID_CLIENT_ID') {
@@ -57,6 +60,10 @@ export const getMealPlanUserMessage = (error: unknown): string => {
 
     if (error.code === 'INVALID_MEAL_PHOTO_PATH') {
       return 'Öğün görseli geçersiz veya bu plan için yetkili değil.';
+    }
+
+    if (error.code === 'MISSING_MEAL_TIME') {
+      return MEAL_PLAN_MISSING_TIME_MESSAGE;
     }
 
     if (error.code === 'INVALID_MEAL_MACROS') {
@@ -155,6 +162,16 @@ export const normalizeMealTime = (value: unknown, field = 'time'): string => {
   }
 
   return `${match[1]}:${match[2]}`;
+};
+
+/**
+ * Read-side variant: `meals.time` is nullable, and a legacy meal without a
+ * planned time stays readable instead of failing the whole week. Writes keep
+ * using `normalizeMealTime`, because save_weekly_meal_plan requires HH:MM.
+ */
+export const normalizeOptionalMealTime = (value: unknown, field = 'time'): string | null => {
+  if (value === null || value === undefined) return null;
+  return normalizeMealTime(value, field);
 };
 
 const addUtcDays = (isoDate: string, days: number): string => {
@@ -502,7 +519,7 @@ export const fetchWeeklyMealPlan = async (
       throw new MealPlanValidationError('INVALID_RPC_RESPONSE', `meal_plans[${planIndex}]`);
     }
     plan.meals.forEach((meal, mealIndex) => {
-      meal.time = normalizeMealTime(meal.time, `meal_plans[${planIndex}].meals[${mealIndex}].time`);
+      meal.time = normalizeOptionalMealTime(meal.time, `meal_plans[${planIndex}].meals[${mealIndex}].time`);
       if (meal.photo_url != null
         && !isReadableMealPhotoReference(meal.photo_url)
         && !isCanonicalRecipeImagePath(meal.photo_url)) {

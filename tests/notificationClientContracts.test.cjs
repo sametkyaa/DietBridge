@@ -366,3 +366,125 @@ test('hook is data/state/realtime only and keeps Supabase access behind the serv
   assert.doesNotMatch(hook, /\.from\(['"]notifications['"]\)/);
   assert.doesNotMatch(hook, /notification.*(Bell|Drawer|Card)/i);
 });
+
+const unsupportedIds = {
+  futureCategory: '99999999-9999-4999-8999-999999999991',
+  futureEvent: '99999999-9999-4999-8999-999999999992',
+};
+
+const futureCategoryRow = (overrides = {}) => chatRow({
+  id: unsupportedIds.futureCategory,
+  category: 'future_category',
+  event_type: 'future_event',
+  summary_key: 'future_category_future_event',
+  occurred_at: '2026-08-15T10:30:00.000Z',
+  ...overrides,
+});
+
+const futureEventRow = (overrides = {}) => appointmentRow({
+  id: unsupportedIds.futureEvent,
+  event_type: 'reminder_90m',
+  summary_key: 'appointment_reminder_90m',
+  occurred_at: '2026-08-15T09:00:00.000Z',
+  ...overrides,
+});
+
+const captureWarnings = async (run) => {
+  const original = console.warn;
+  const warnings = [];
+  console.warn = (...args) => { warnings.push(args); };
+  try {
+    await run();
+  } finally {
+    console.warn = original;
+  }
+  return warnings;
+};
+
+test('one unsupported category or event row is skipped and the rest of the list still renders', async () => {
+  supabaseClient.__setFromHandler(() => makeBuilder({
+    data: [chatRow(), futureCategoryRow(), appointmentRow(), futureEventRow(), relationshipRow({ occurred_at: '2026-08-15T08:00:00.000Z' })],
+    error: null,
+  }, []));
+
+  let page;
+  const warnings = await captureWarnings(async () => {
+    page = await service.listNotifications({ pageSize: 25 });
+    await service.listNotifications({ pageSize: 25 });
+  });
+
+  assert.deepEqual(page.notifications.map((item) => item.id), [ids.notificationA, ids.notificationB, ids.notificationC]);
+  assert.equal(page.hasMore, false);
+  assert.equal(page.nextCursor, null);
+  assert.equal(warnings.length, 1, 'unsupported rows warn once, not per row or per refresh');
+  const warningText = warnings[0].map(String).join(' ');
+  assert.doesNotMatch(warningText, new RegExp([
+    ids.recipient,
+    ids.actor,
+    unsupportedIds.futureCategory,
+    'Diyetisyen A',
+  ].join('|')));
+
+  // The strict single-row contract is unchanged.
+  assert.throws(() => service.normalizeNotificationRow(futureCategoryRow()), (error) => error.code === 'MALFORMED');
+});
+
+test('known notification types with a broken contract still fail the list closed', async () => {
+  supabaseClient.__setFromHandler(() => makeBuilder({
+    data: [chatRow(), appointmentRow({ appointment_date: '16/08/2026' })],
+    error: null,
+  }, []));
+  await assert.rejects(
+    () => service.listNotifications({ pageSize: 25 }),
+    (error) => error.code === 'MALFORMED',
+  );
+
+  supabaseClient.__setFromHandler(() => makeBuilder({
+    data: [chatRow({ category: null })],
+    error: null,
+  }, []));
+  await assert.rejects(
+    () => service.listNotifications({ pageSize: 25 }),
+    (error) => error.code === 'MALFORMED',
+  );
+});
+
+test('skipped rows keep keyset pagination moving from the raw page boundary', async () => {
+  supabaseClient.__setFromHandler(() => makeBuilder({
+    data: [chatRow(), futureCategoryRow(), appointmentRow()],
+    error: null,
+  }, []));
+
+  const page = await service.listNotifications({ pageSize: 2 });
+  assert.deepEqual(page.notifications.map((item) => item.id), [ids.notificationA]);
+  assert.equal(page.hasMore, true);
+  assert.deepEqual(page.nextCursor, {
+    occurredAt: '2026-08-15T10:30:00.000Z',
+    id: unsupportedIds.futureCategory,
+  });
+});
+
+test('a realtime INSERT of an unsupported type only schedules a refresh and the refresh skips it', async () => {
+  let insertCallback;
+  supabaseClient.__setChannelHandler(() => {
+    const channel = {
+      on: (_event, config, callback) => {
+        if (config.event === 'INSERT') insertCallback = callback;
+        return channel;
+      },
+      subscribe: () => channel,
+    };
+    return channel;
+  });
+  const changes = [];
+  const subscription = service.subscribeToNotifications({ onChange: (change) => changes.push(change) });
+  await flush();
+
+  assert.doesNotThrow(() => insertCallback({ new: futureCategoryRow() }));
+  assert.deepEqual(changes, [{ event: 'INSERT', notificationId: unsupportedIds.futureCategory }]);
+
+  supabaseClient.__setFromHandler(() => makeBuilder({ data: [futureCategoryRow(), chatRow()], error: null }, []));
+  const page = await service.listNotifications({ pageSize: 25 });
+  assert.deepEqual(page.notifications.map((item) => item.id), [ids.notificationA]);
+  await subscription.unsubscribe();
+});

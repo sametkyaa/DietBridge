@@ -273,3 +273,162 @@ test('disposable appointment runtime harness is loopback-only and owns cleanup',
   assert.match(source, /service\.deleteAppointmentService/);
   assert.match(source, /pending[\s\S]*rejected[\s\S]*missing-profile[\s\S]*anonymous/);
 });
+
+const appointmentService = require(path.join(
+  buildDir,
+  'features',
+  'appointments',
+  'services',
+  'appointmentService.js',
+));
+const supabaseStub = require(path.join(buildDir, 'lib', 'supabaseClient.js'));
+
+const RANGE_DIETITIAN_ID = '99999999-9999-4999-8999-999999999999';
+const appointmentRow = (index, date) => ({
+  id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`,
+  dietitian_id: RANGE_DIETITIAN_ID,
+  client_id: VALID_DRAFT.clientId,
+  title: 'Haftalık kontrol',
+  date,
+  time: `${String(8 + (index % 10)).padStart(2, '0')}:00:00`,
+  duration: 30,
+  type: 'online',
+  status: 'upcoming',
+  client: { full_name: 'Danışan', avatar_url: null },
+});
+
+/**
+ * Query double that applies the filters it receives and enforces the
+ * PostgREST max_rows cap (supabase/config.toml) on every response.
+ */
+const installAppointmentQueryStub = (rows, { maxRows = 1000 } = {}) => {
+  const queries = [];
+  supabaseStub.__setUserId(RANGE_DIETITIAN_ID);
+  supabaseStub.__setFromHandler((table) => {
+    assert.equal(table, 'appointments');
+    const call = { filters: [], orders: [], range: null, limit: null, countMode: null };
+    queries.push(call);
+    const query = {
+      select: (_columns, options) => { call.countMode = options?.count ?? null; return query; },
+      eq: (column, value) => { call.filters.push(['eq', column, value]); return query; },
+      gte: (column, value) => { call.filters.push(['gte', column, value]); return query; },
+      lte: (column, value) => { call.filters.push(['lte', column, value]); return query; },
+      gt: (column, value) => { call.filters.push(['gt', column, value]); return query; },
+      order: (column, options) => { call.orders.push([column, options.ascending]); return query; },
+      range: (from, to) => { call.range = [from, to]; return query; },
+      limit: (value) => { call.limit = value; return query; },
+      then: (resolve, reject) => {
+        const matching = rows
+          .filter((row) => call.filters.every(([operator, column, value]) => (
+            operator === 'eq' ? row[column] === value
+              : operator === 'gte' ? row[column] >= value
+                : operator === 'lte' ? row[column] <= value
+                  : row[column] > value
+          )))
+          .sort((left, right) => (
+            `${left.date}T${left.time}`.localeCompare(`${right.date}T${right.time}`)
+            || left.id.localeCompare(right.id)
+          ));
+        let page = call.range ? matching.slice(call.range[0], call.range[1] + 1) : matching;
+        if (call.limit !== null) page = page.slice(0, call.limit);
+        page = page.slice(0, maxRows);
+        return Promise.resolve({
+          data: page,
+          error: null,
+          count: call.countMode === 'exact' ? matching.length : null,
+        }).then(resolve, reject);
+      },
+    };
+    return query;
+  });
+  return queries;
+};
+
+test('appointment loading windows are Monday-first month grids in Istanbul civil dates', () => {
+  assert.deepEqual(contract.getMonthCalendarRange('2026-08'), {
+    startDate: '2026-07-27',
+    endDate: '2026-09-06',
+  });
+  assert.deepEqual(contract.getAppointmentRangeForDate('2026-08-13'), {
+    startDate: '2026-07-27',
+    endDate: '2026-09-06',
+  });
+  assert.equal(contract.getAppointmentRangeForDate('2026-02-30'), null);
+  assert.equal(contract.isAppointmentDateRange({ startDate: '2026-08-02', endDate: '2026-08-01' }), false);
+  const august = contract.getMonthCalendarRange('2026-08');
+  assert.equal(contract.appointmentRangeCovers(august, { startDate: '2026-08-13', endDate: '2026-08-13' }), true);
+  assert.equal(contract.appointmentRangeCovers(august, contract.getMonthCalendarRange('2026-09')), false);
+  assert.equal(contract.appointmentRangeCovers(null, august), false);
+});
+
+test('range appointment fetch is date-bounded and pages past the 1000-row cap without dropping the newest rows', async () => {
+  const rows = [];
+  for (let index = 0; index < 2300; index += 1) {
+    rows.push(appointmentRow(index, index < 2250 ? '2026-08-13' : '2026-09-06'));
+  }
+  rows.push(appointmentRow(9001, '2026-07-26'));
+  rows.push(appointmentRow(9002, '2026-09-07'));
+  const queries = installAppointmentQueryStub(rows);
+
+  const appointments = await appointmentService.fetchAppointmentsInRange(
+    contract.getMonthCalendarRange('2026-08'),
+  );
+
+  assert.equal(appointments.length, 2300);
+  assert.equal(appointments.filter((appointment) => appointment.date === '2026-09-06').length, 50);
+  assert.equal(appointments.some((appointment) => appointment.date < '2026-07-27' || appointment.date > '2026-09-06'), false);
+  assert.deepEqual(queries.map((query) => query.range), [[0, 999], [1000, 1999], [2000, 2999]]);
+  queries.forEach((query) => {
+    assert.equal(query.countMode, 'exact');
+    assert.deepEqual(query.filters, [
+      ['eq', 'dietitian_id', RANGE_DIETITIAN_ID],
+      ['gte', 'date', '2026-07-27'],
+      ['lte', 'date', '2026-09-06'],
+    ]);
+    assert.deepEqual(query.orders, [['date', true], ['time', true], ['id', true]]);
+  });
+});
+
+test('range appointment fetch fails closed instead of returning a silently truncated list', async () => {
+  const rows = Array.from({ length: 1500 }, (_, index) => appointmentRow(index, '2026-08-13'));
+  installAppointmentQueryStub(rows, { maxRows: 0 });
+  await assert.rejects(
+    () => appointmentService.fetchAppointmentsInRange(contract.getMonthCalendarRange('2026-08')),
+    (error) => error.userMessage === appointmentService.APPOINTMENT_LOAD_ERROR,
+  );
+  await assert.rejects(
+    () => appointmentService.fetchAppointmentsInRange({ startDate: '2026-09-01', endDate: '2026-08-01' }),
+    (error) => error.userMessage === appointmentService.APPOINTMENT_LOAD_ERROR,
+  );
+});
+
+test('upcoming preview reads only the next appointments after the loaded range', async () => {
+  const rows = [
+    appointmentRow(1, '2026-09-06'),
+    appointmentRow(2, '2026-12-01'),
+    appointmentRow(3, '2027-03-01'),
+  ];
+  const queries = installAppointmentQueryStub(rows);
+  const after = await appointmentService.fetchAppointmentsAfterDate('2026-09-06', contract.UPCOMING_APPOINTMENT_PREVIEW_LIMIT);
+  assert.deepEqual(after.map((appointment) => appointment.date), ['2026-12-01', '2027-03-01']);
+  assert.deepEqual(queries[0].filters, [
+    ['eq', 'dietitian_id', RANGE_DIETITIAN_ID],
+    ['gt', 'date', '2026-09-06'],
+  ]);
+  assert.equal(queries[0].limit, 5);
+});
+
+test('appointment screens request the date range they render instead of an unbounded list', () => {
+  const service = read('features/appointments/services/appointmentService.ts');
+  const context = read('features/appointments/context/AppointmentContext.tsx');
+  const page = read('pages/Appointments.tsx');
+  const dashboard = read('features/dashboard/pages/DashboardPage.tsx');
+  assert.doesNotMatch(service, /export const fetchAppointments = /);
+  assert.match(context, /fetchAppointmentsInRange\(range\)/);
+  assert.match(context, /fetchAppointmentsAfterDate\(range\.endDate, UPCOMING_APPOINTMENT_PREVIEW_LIMIT\)/);
+  assert.match(page, /getMonthCalendarRange\(visibleMonth\)/);
+  assert.match(page, /requestAppointmentRange\(visibleRange\)/);
+  assert.match(page, /\[\.\.\.appointments, \.\.\.appointmentsAfterRange\]/);
+  assert.match(dashboard, /requestAppointmentRange\(todayRange\)/);
+  assert.match(dashboard, /getAppointmentRangeForDate\(today\)/);
+});

@@ -98,6 +98,7 @@ const SOURCES = [
   'features/clients/services/clientService.ts',
   'shared/utils/avatarUrl.ts',
   'shared/utils/uuid.ts',
+  'shared/utils/mealTime.ts',
   'features/chat/types/chat.ts',
   'features/chat/types/chatImage.ts',
   'features/chat/types/chatImageUpload.ts',
@@ -156,6 +157,7 @@ const EXPECTED_OUTPUTS = [
   'features/clients/services/clientService.js',
   'shared/utils/avatarUrl.js',
   'shared/utils/uuid.js',
+  'shared/utils/mealTime.js',
   'features/chat/types/chat.js',
   'features/chat/types/chatImage.js',
   'features/chat/types/chatImageUpload.js',
@@ -303,6 +305,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'mealTrackingContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealTrackingOverviewContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealActivityContracts.test.cjs'),
+  join(repoRoot, 'tests', 'nullMealTimeContracts.test.cjs'),
   join(repoRoot, 'tests', 'dietitianProfilePresentation.test.cjs'),
   join(repoRoot, 'tests', 'noteContracts.test.cjs'),
 ];

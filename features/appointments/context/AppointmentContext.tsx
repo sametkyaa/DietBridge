@@ -16,16 +16,27 @@ import {
   checkAppointmentBooking as checkAppointmentBookingService,
   createAppointment,
   deleteAppointmentService,
-  fetchAppointments,
+  fetchAppointmentsAfterDate,
+  fetchAppointmentsInRange,
   updateAppointment as updateAppointmentService,
 } from '../services/appointmentService';
 import {
+  AppointmentDateRange,
   AppointmentDraft,
+  appointmentRangeCovers,
+  getAppointmentRangeForDate,
+  getTodayDateKey,
   sortAppointmentsChronologically,
+  UPCOMING_APPOINTMENT_PREVIEW_LIMIT,
 } from '../utils/appointmentContract';
 
 interface AppointmentContextType {
+  /** Every appointment inside `loadedRange` (complete, date-bounded). */
   appointments: Appointment[];
+  /** First appointments after `loadedRange`, for "next appointments" previews. */
+  appointmentsAfterRange: Appointment[];
+  loadedRange: AppointmentDateRange | null;
+  requestAppointmentRange: (range: AppointmentDateRange) => void;
   loading: boolean;
   error: string | null;
   mutationError: string | null;
@@ -52,6 +63,9 @@ export type AppointmentBookingCheckResult =
 
 const AppointmentContext = createContext<AppointmentContextType>({
   appointments: [],
+  appointmentsAfterRange: [],
+  loadedRange: null,
+  requestAppointmentRange: () => {},
   loading: false,
   error: null,
   mutationError: null,
@@ -68,6 +82,11 @@ const AppointmentContext = createContext<AppointmentContextType>({
   getAppointmentsByDate: () => [],
 });
 
+const getInitialAppointmentRange = (): AppointmentDateRange => {
+  const today = getTodayDateKey();
+  return getAppointmentRangeForDate(today) ?? { startDate: today, endDate: today };
+};
+
 const getUserMessage = (error: unknown, fallback: string) => (
   error instanceof AppointmentServiceError ? error.userMessage : fallback
 );
@@ -75,6 +94,9 @@ const getUserMessage = (error: unknown, fallback: string) => (
 export const AppointmentProvider = ({ children }: PropsWithChildren) => {
   const { accessState, user } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointmentsAfterRange, setAppointmentsAfterRange] = useState<Appointment[]>([]);
+  const [range, setRange] = useState<AppointmentDateRange>(getInitialAppointmentRange);
+  const [loadedRange, setLoadedRange] = useState<AppointmentDateRange | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
@@ -88,6 +110,8 @@ export const AppointmentProvider = ({ children }: PropsWithChildren) => {
     if (!isAllowed) {
       requestVersion.current += 1;
       setAppointments([]);
+      setAppointmentsAfterRange([]);
+      setLoadedRange(null);
       setError(null);
       setLoading(false);
       return false;
@@ -97,19 +121,34 @@ export const AppointmentProvider = ({ children }: PropsWithChildren) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchAppointments();
+      const [data, afterRange] = await Promise.all([
+        fetchAppointmentsInRange(range),
+        fetchAppointmentsAfterDate(range.endDate, UPCOMING_APPOINTMENT_PREVIEW_LIMIT),
+      ]);
       if (requestId !== requestVersion.current) return false;
       setAppointments(data);
+      setAppointmentsAfterRange(afterRange);
+      setLoadedRange(range);
       return true;
     } catch (loadError) {
       if (requestId !== requestVersion.current) return false;
       setAppointments([]);
+      setAppointmentsAfterRange([]);
+      setLoadedRange(null);
       setError(getUserMessage(loadError, 'Randevular yüklenemedi. Lütfen tekrar deneyin.'));
       return false;
     } finally {
       if (requestId === requestVersion.current) setLoading(false);
     }
-  }, [isAllowed]);
+  }, [isAllowed, range]);
+
+  const requestAppointmentRange = useCallback((nextRange: AppointmentDateRange) => {
+    setRange((current) => (
+      appointmentRangeCovers(current, nextRange)
+        ? current
+        : { startDate: nextRange.startDate, endDate: nextRange.endDate }
+    ));
+  }, []);
 
   useEffect(() => {
     void refreshAppointments();
@@ -186,6 +225,9 @@ export const AppointmentProvider = ({ children }: PropsWithChildren) => {
 
   const value = useMemo<AppointmentContextType>(() => ({
     appointments,
+    appointmentsAfterRange,
+    loadedRange,
+    requestAppointmentRange,
     loading,
     error,
     mutationError,
@@ -200,14 +242,17 @@ export const AppointmentProvider = ({ children }: PropsWithChildren) => {
   }), [
     addAppointment,
     appointments,
+    appointmentsAfterRange,
     checkAppointmentBooking,
     deleteAppointment,
     error,
     getAppointmentsByDate,
+    loadedRange,
     loading,
     mutationError,
     pendingAction,
     refreshAppointments,
+    requestAppointmentRange,
     updateAppointment,
   ]);
 

@@ -7,8 +7,6 @@ import tseslint from 'typescript-eslint';
 const activeFiles = [
   'index.tsx',
   'App.tsx',
-  'constants.ts',
-  'types.ts',
   'features/**/*.{ts,tsx}',
   'pages/**/*.{ts,tsx}',
   'shared/**/*.{ts,tsx}',
@@ -20,11 +18,6 @@ export default tseslint.config(
     ignores: [
       'node_modules/',
       'dist/',
-      'migrated_prompt_history/',
-      'src/',
-      'components/',
-      'context/',
-      'services/',
       '*.js',
       '*.cjs',
       '!eslint.config.js',
