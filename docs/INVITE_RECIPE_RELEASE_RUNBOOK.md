@@ -1,6 +1,6 @@
 # Davet kodu + GPT-6 Luna import — production rollout runbook
 
-2026-10-06. **RECIPE SYNTHETIC SMOKE: PASS.** process-recipe-import v3 (SheetJS static import, def20e5) redeployed; CSV+XLSX production flow, private Storage negatives and Vault-backed cleanup PASS. Residue/pending/overdue 0. Feature flag OFF, OpenAI calls 0. Next separate gate APPROVE_GPT6_LUNA_SMOKE. Invite/legacy ACTIVE, mobile signing-blocked/cutover DEFERRED. Latest report W/evidence.
+2026-10-06. **GPT-6 LUNA SMOKE: PASS.** Real gpt-6-luna extraction on synthetic PDF+PNG: exact explicit nutrition, missing values null, document instruction ignored, canonical save and cleanup PASS, residue 0. Synthetic smoke PASS. Feature flag OFF; next separate gate APPROVE_RECIPE_IMPORT_FLAG. Invite/legacy ACTIVE, mobile signing-blocked/cutover DEFERRED. Latest report X/evidence.
 
 ## Hedef ve kanıt
 
@@ -237,3 +237,7 @@ Feature flag remains OFF / legacy_email ACTIVE. APPROVE_GPT6_LUNA_SMOKE and APPR
 ## Process Edge redeploy + synthetic smoke rerun — PASS; STOP
 
 Root cause of XLSX extraction_failed: the runtime import() of the SheetJS CDN URL was not embedded by the --use-api server bundle. Fixed with a static import; redeployed only process-recipe-import (v3, JWT ON, local Docker bundle). The live eszip is byte-identical to the offline-tested bundle and contains SheetJS. Before future deploys of this function, confirm the deployed body contains SheetJS code (sheet_to_json present, no remote import() left). Rerun smoke PASS with Storage overwrite/delete/signed URL negatives; manifest C:/dev/DietBridge-Backups/recipe-smoke-20261006-04. Flag OFF; Luna smoke awaits APPROVE_GPT6_LUNA_SMOKE.
+
+## GPT-6 Luna production smoke — PASS; STOP
+
+scripts/runProductionLunaSmoke.mjs with APPROVE_GPT6_LUNA_SMOKE: one owned synthetic dietitian, synthetic PDF (2 recipes) and PNG (1 recipe) containing a prompt-injection line. Both jobs ready on gpt-6-luna with 1 call each; explicit nutrition exact, missing nutrition and meal type null, injection ignored, source cleanup ack, selected draft saved canonically. Residue 0, unrelated fingerprints unchanged. Manifest C:/dev/DietBridge-Backups/luna-smoke-20261006-01. Flag remains OFF until APPROVE_RECIPE_IMPORT_FLAG.

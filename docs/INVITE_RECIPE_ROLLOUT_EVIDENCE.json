@@ -1,6 +1,6 @@
 {
-  "phase": "RECIPE_SYNTHETIC_SMOKE_PASS",
-  "checkedAt": "2026-10-05T21:23:42.926Z",
+  "phase": "RECIPE_GPT6_LUNA_SMOKE_PASS",
+  "checkedAt": "2026-10-05T21:29:19.640Z",
   "target": {
     "ref": "kagvxhyvxxypspdxcuxz",
     "name": "dietbridge_Production",
@@ -154,7 +154,7 @@
     "Mobile invite BLOCKED_BY_RELEASE_SIGNING_INPUTS; Recipe independent",
     "PITR OFF/pre-invite recovery bound/offsite unverified; DB advisor notices recorded in P"
   ],
-  "nextSafeAction": "STOPPED: synthetic smoke PASS. Next separate gate APPROVE_GPT6_LUNA_SMOKE; feature flag OFF until APPROVE_RECIPE_IMPORT_FLAG.",
+  "nextSafeAction": "STOPPED: GPT-6 Luna production smoke PASS. Next separate gate APPROVE_RECIPE_IMPORT_FLAG; Web flag remains OFF until then.",
   "p1Result": {
     "status": "DEPLOYED_PASS",
     "preflight": [
@@ -1296,12 +1296,12 @@
     {
       "stage": "GPT-6 Luna real smoke",
       "token": "APPROVE_GPT6_LUNA_SMOKE",
-      "status": "AWAITING_EXACT_APPROVAL"
+      "status": "RECEIVED / EXECUTED / PASS"
     },
     {
       "stage": "recipe import flag",
       "token": "APPROVE_RECIPE_IMPORT_FLAG",
-      "status": "AWAITING_EXACT_APPROVAL (after Luna PASS)"
+      "status": "AWAITING_EXACT_APPROVAL"
     }
   ],
   "recipeDbDeployment": {
@@ -3904,5 +3904,115 @@
     "xlsxRootCause": "Runtime import() of the SheetJS CDN URL was not embedded in the --use-api production eszip (no module code); fixed by static import in def20e5",
     "privateStorageRootCause": "Negative tests not executed in previous run (aborted at XLSX); no policy defect",
     "harnessAdditions": "foreign/owner overwrite, foreign/owner delete (object byte-intact), foreign/anonymous signed URL"
+  },
+  "recipeGpt6LunaSmoke": {
+    "approval": "APPROVE_GPT6_LUNA_SMOKE",
+    "status": "PASS",
+    "runId": "9d0b6e06-5f5d-4184-92c7-8f336911227e",
+    "manifest": "C:/dev/DietBridge-Backups/luna-smoke-20261006-01/ownership.json",
+    "runner": "scripts/runProductionLunaSmoke.mjs",
+    "finishedAt": "2026-10-05T21:27:50.761Z",
+    "identityChecks": 16,
+    "checks": [
+      "target, reviewed Edge sources, cleanup readiness and unrelated baseline",
+      "synthetic PDF and PNG generated locally (no personal data)",
+      "PDF: real gpt-6-luna extraction, exact explicit nutrition, missing nutrition null, injection ignored, source cleanup ack",
+      "PNG: real gpt-6-luna image extraction, missing nutrition null, injection ignored, source cleanup ack",
+      "selected Luna draft saved canonically; incomplete draft not saved",
+      "owned fixtures removed; unrelated rows and cron unchanged"
+    ],
+    "pdf": {
+      "http": 200,
+      "status": "ready",
+      "model": "gpt-6-luna",
+      "attempts": 1,
+      "inputTokens": 583,
+      "outputTokens": 346,
+      "durationMs": 5432,
+      "bytes": 48224,
+      "edgeRequestId": "01a10df6-8bc7-7361-b458-85906b6e1971",
+      "verdict": {
+        "recipeCount": 2,
+        "expectedCount": 2,
+        "injectionRecipeAbsent": true,
+        "no999": true,
+        "perRecipe": {
+          "mercimek": {
+            "found": true,
+            "sourceOk": true,
+            "nutrition": true,
+            "mealType": true,
+            "descriptionRetained": true,
+            "validationState": "valid"
+          },
+          "salata": {
+            "found": true,
+            "sourceOk": true,
+            "nutrition": true,
+            "mealType": true,
+            "descriptionRetained": true,
+            "validationState": "needs_review"
+          }
+        }
+      }
+    },
+    "png": {
+      "http": 200,
+      "status": "ready",
+      "model": "gpt-6-luna",
+      "attempts": 1,
+      "inputTokens": 781,
+      "outputTokens": 208,
+      "durationMs": 3722,
+      "bytes": 31484,
+      "edgeRequestId": "01a10df6-c0b0-7ac5-9a94-5cee17c377d2",
+      "verdict": {
+        "recipeCount": 1,
+        "expectedCount": 1,
+        "injectionRecipeAbsent": true,
+        "no999": true,
+        "perRecipe": {
+          "yulaf": {
+            "found": true,
+            "sourceOk": true,
+            "nutrition": true,
+            "mealType": true,
+            "descriptionRetained": true,
+            "validationState": "needs_review"
+          }
+        }
+      }
+    },
+    "totalProviderCalls": 2,
+    "canonicalSave": "PASS (1 complete PDF draft saved with exact 210/12/30/5 lunch; incomplete drafts not saved)",
+    "cleanupRemaining": {
+      "auth_audit": 0,
+      "auth_users": 0,
+      "dietitian_profiles": 0,
+      "identities": 0,
+      "items": 0,
+      "jobs": 0,
+      "profiles": 0,
+      "recipes": 0,
+      "refresh_tokens": 0,
+      "sessions": 0,
+      "storage": 0,
+      "subscriptions": 0,
+      "verification_audit": 0
+    },
+    "fixtureResidue": 0,
+    "featureFlag": "OFF",
+    "productionUnrelatedDataChanged": false,
+    "internalFailureLogs": 0,
+    "independentFinal": {
+      "jobs": 0,
+      "items": 0,
+      "objects": 0,
+      "cleanupPending": 0,
+      "smokeUsers": 0,
+      "history": 61,
+      "activeCrons": 5
+    },
+    "scopeLimits": "Two small synthetic files; DOC/DOCX/JPG, provider retry/repair paths and multi-page/large documents verified by mocked tests only. Model output text not stored."
   }
 }
