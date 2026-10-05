@@ -1,87 +1,140 @@
 # Davet kodu + GPT-6 Luna import — production rollout runbook
 
-2026-10-05. Bu belge uygulanmamış production işlemlerinin planıdır. Yerel kalite ve branch push tamamlandı; salt okunur preflight çalıştı. **Readiness BLOCKED; production mutation/deploy/secrets/flags/release yapılmadı.**
+2026-10-05. Bu belge henüz uygulanmamış production işlemlerinin planıdır. Yerel kalite kapısı PASS, feature branch'leri push edildi, production salt okunur preflight **PASS**. Production'da hiçbir mutation, deploy, secret, Vault, cron, flag veya release işlemi yapılmadı. Rollout'u bekleyen engeller şema değil, aşağıdaki yayın girdileri ve onaylardır.
 
-## Kanıt ve kesin history farkı
+## Hedef ve kanıt
 
-Final rapor `INVITE_RECIPE_FINAL_REPORT.md`; safe katalog kanıtı `INVITE_RECIPE_PREFLIGHT_EVIDENCE.json`. Hedef `kagvxhyvxxypspdxcuxz` / `dietbridge_Production`, ACTIVE_HEALTHY, eu-central-1. Prepared preflight ve iki ek JSON catalog sorgusu read-only transaction/rollback ile çalıştı; yalnız metadata okundu.
+Hedef proje `kagvxhyvxxypspdxcuxz` / `dietbridge_Production`, eu-central-1, ACTIVE_HEALTHY, PostgreSQL 17.6.1.052, bağlantı hedefi `db.kagvxhyvxxypspdxcuxz.supabase.co`. Başka proje (staging, test, GroundLess, eski proje) ile devam edilmez.
 
-Remote58/repo62. Remote-only0. Repo-only:
+Kanıt dosyaları: `INVITE_RECIPE_MIGRATION_RECONCILIATION.md` (62 satırlık versiyon matrisi ve kararlar), `INVITE_RECIPE_PREFLIGHT_EVIDENCE.json` (katalog metadata'sı), `INVITE_RECIPE_FINAL_REPORT.md`.
 
-| Dosya | Bu yayındaki işlem |
-| --- | --- |
-| 20260817120000_push_registry_outbox_backend.sql | Eski deferred dosya. Bu feature'ın prerequisite'i değil. Kendiliğinden uygulanmaz; ayrı explicit history/scope kararı gerekir. |
-| 20261005120859_dietitian_invite_codes.sql | Invite için onaylı ilk feature migration. |
-| 20261005124951_recipe_import_core.sql | Import için onaylı ikinci feature migration. |
-| 20261005132107_recipe_import_extraction_metrics.sql | Core'dan sonra üçüncü feature migration. |
+## Migration history kararı
 
-Remote sonversion20260901200413. Kapasite/approval/CSPRNG/relationship unique index, capacity/transition/notification trigger'ları; recipe constraints/RLS; private avatars/recipe-images ve pgcrypto/pg_cron/pg_net/Vault mevcut. Yeni feature tabloları/bucket/Edge/cron/secret/Vault girdileri henüz yok.
+Remote 58, repo 62, remote-only 0. Matris: MATCH 57, HISTORY_PRESENT_BUT_SCHEMA_DRIFT 1, LOCAL_ONLY_NEW 4.
 
-**Körlemesine db push, bulk migration-history repair veya eski deferred migration'ı bu üçdosyayla birlikte uygulama yok.** Backup/restore kanıtı, migration scope ve diğer production izinleri alınmadan aşağıdaki yazma adımları başlatılmaz.
+| Version | Durum | Karar |
+|---|---|---|
+| `20260817120000_push_registry_outbox_backend` | History yok, objelerinin hiçbiri yok (kısmi iz yok) | **NO_ACTION**: Push 6C.2+ ile bilinçli ertelenmiş; bu yayına dahil edilmez, history adoption yapılmaz |
+| `20260713010300_critical_table_rls` | History var; `protect_dietitian_profile_system_fields` + trigger yok | **NO_ACTION**: Koruma `trg_sync_dietitian_verification_fields` ve own-row UPDATE `WITH CHECK` ile eşdeğer; preflight 06 bunu her seferinde doğrular |
+| `20261005120859_dietitian_invite_codes` | Yeni | Apply |
+| `20261005124951_recipe_import_core` | Yeni | Apply |
+| `20261005132107_recipe_import_extraction_metrics` | Yeni | Apply |
 
-## Canonical 24 adım
+Hiçbir tarihsel versiyon için history adoption gerekmiyor.
 
-1. **DONE/PASS**: Web npm ci/typecheck/lint/full test/build;508counted tests+custom gates;72focused;35invite/30import disposable. Mobile443tests,Doctor18/18,exportsPASS. Water static failure kapalı.
-2. **DONE**: Web `codex/invite-recipe-regression` ve Mobile `codex/invite-code-mobile` commit/push; local/remote eşit. Water ayrı commit; preflight/report ayrı docs commit. Main merge/PR yok.
-3. **DONE/BLOCKED**: Production identity/history salt okunur doğrulandı. Yukarıdaki exact4version farkına scope kararı ve ileri migration tracking planı alın; metadata preflight yayın anında tekrarlansın.
-4. **PENDING**: Açık production rollout onayı ve backup/PITR/Storage geri yükleme/deneme restore kanıtı. DB backup'ın Storage payload'ını tek başına kapsadığını varsaymayın.
-5. Yalnız onaylı `20261005120859_dietitian_invite_codes.sql` artifact'ını uygulayın; yeni tablolar/RPC privileges, identity guard, attempt cleanup cron ve legacy uyumluluğunu postflight ile doğrulayın.
-6. `preview-dietitian-invite` Edge'i JWT doğrulaması açık yayınlayın.
-7. Gerçek Android release SHA-256 fingerprint(s), Apple Team ID ve iki platform `com.dietbridge.app` kimlik doğrulaması. Association generator'ını yalnız bu değerlerle çalıştırın; placeholder yayınlamayın.
-8. Mobil feature branch'i onaylı signed release/store sürecine alın.
-9. Fiziksel Android/iOS HTTPS association smoke: cold/warm start, logout→login/signup→preview, restart/session restore, explicit connect ve stale response koruması. Custom scheme fallback tek başına verified HTTPS kanıtı değildir.
-10. Mobil sürüm dağıtılıp9geçince ayrı onayla web `VITE_CLIENT_INVITE_MODE=invite_code` build/deploy. Default/rollback `legacy_email`.
-11. Ayrı izinli production-safe invite smoke: preview→explicit connect, same idempotency, other dietitian, capacity/rate, leave/notification ve legacy pending. Test account/relationship oluşturma bu smoke onayında açıkça yer almalı.
-12. Yalnız onaylı `20261005124951_recipe_import_core.sql` artifact'ını uygulayın.
-13. Ardından `20261005132107_recipe_import_extraction_metrics.sql` artifact'ını uygulayın; model metric constraint `gpt-6-luna` ve service-only finish'i doğrulayın.
-14. `process-recipe-import` Edge'i JWT açık yayınlayın.
-15. `cleanup-recipe-imports` Edge'i gateway JWT kapalı, handler dedicated-token kontrolü açık yayınlayın.
-16. Server-only `OPENAI_API_KEY`, `OPENAI_RECIPE_MODEL=gpt-6-luna` yapılandırın. Anahtar Vite/Expo/client/source/log'a konmaz. API key bu kapanışta istenmedi/üretilmedi.
-17. Dedicated `RECIPE_IMPORT_CLEANUP_TOKEN` ile Vault `recipe_import_cleanup_url` (tam güvenilir endpoint) ve `recipe_import_cleanup_token` eşleşmesini hazırlayın. Core migration'ın `recipe-import-cleanup` */15 ve invite migration'ın `cleanup-invite-code-attempts` hourly17 cron metadata'sını kontrol edin; duplicate cron oluşturmayın.
-18. Cleanup health: gerçek HTTP response, Storage delete→DB ack sırası, cleanup_pending/overdue/orphan backlog ve hata alarmı doğrulansın. Secret/Vault yokken dispatcher false döner. Scheduler çalışması cleanup başarısı değildir.
-19. Explicit izinli, kişisel veri içermeyen synthetic CSV/XLS/XLSX deterministic preview/edit/selection/save/cleanup smoke. Invalid nutrition/save transaction/owner isolation negatifleri yalnız onaylı test kapsamındadır.
-20. **OPTIONAL**: Ayrı ücretli çağrı onayıyla GPT-6 Luna PDF/DOC/DOCX/JPG/PNG smoke ve gerçek hesapta model/document/vision desteğini doğrulama. Mock provider sonucu canlı extraction doğruluğu değildir.
-21. Cleanup health18 ve smoke19geçince ayrı onayla `VITE_RECIPE_IMPORT_ENABLED=true` build/deploy.
-22. `supabase/preflight/invite_recipe_postflight.sql` ve catalog preflight'ı tekrarlayın. Yeni actual migration version/name mapping'ini repo canonical history ile kontrol edin; deployment öncesi/sonrası SHAs ve artifacts kaydedilsin.
-23. Cron HTTP failures, stale processing, failed cleanup, overdue objects, provider token/attempt/duration ve cost izlemesi. Raw documents/prompts/responses loglanmaz.
-24. Legacy email removal daha sonraki ayrı görev/migration: backend/mobile/device/web cutover ve pending population değerlendirmesi+yeniden explicit onay. Mevcut email RPC bu yayında korunur.
+## Neden `supabase db push` kullanılmaz
 
-## Tek artifact uygulama ve Edge komutları — yalnız ayrı onaylı rollout için
+`db push` bütün bekleyen dosyaları uygular; production'da bekleyen dört dosyanın biri ertelenmiş push migration'ıdır. Bu yüzden `db push` (her türlü bayrakla) bu yayında **yasak**tır. Supabase MCP `apply_migration` da kullanılmaz: history'ye yeni üretilmiş bir versiyon yazar ve repo dosya adlarıyla yeni bir alias farkı yaratır. Toplu `migration repair` yasaktır.
 
-Bu kapanışta **hiçbiri çalıştırılmadı**. SQL için Supabase `apply_migration` operasyonuna aşağıdaki sabit project/name ve ilgili dosyanın **tam, gözden geçirilmiş SQL bytes** girdisi verilir. Tool SQL migration'ını ve history kaydını yönetir; gerçek atanan versiyonu sonuçtan/list_migrations'dan kaydedin. Production'da atanacak versiyon hazırlanmış dosya timestamp'inden farklıysa mapping ve canonical source filename'i kontrollü release commit'inde hizalayın; eski58kayda bulk repair yapmayın. Bu history yöntemi ve scope ilk migration'dan önce açıkça onaylanmalı.
+## Versiyon bazında uygulama prosedürü
 
-| API operasyonu | project_id | name | query kaynağı |
-| --- | --- | --- | --- |
-| apply_migration (adım5) | kagvxhyvxxypspdxcuxz | dietitian_invite_codes | supabase/migrations/20261005120859_dietitian_invite_codes.sql |
-| apply_migration (adım12) | kagvxhyvxxypspdxcuxz | recipe_import_core | supabase/migrations/20261005124951_recipe_import_core.sql |
-| apply_migration (adım13) | kagvxhyvxxypspdxcuxz | recipe_import_extraction_metrics | supabase/migrations/20261005132107_recipe_import_extraction_metrics.sql |
+Her migration dosyası kendi `begin; … commit;` bloğunu içerir ve önkoşul eksikse kendini durdurur. Onaylı rollout'ta her versiyon için sırayla:
 
-Her artifact önce approved staging/disposable'da yeniden uygulanıp SQL+RLS/Storage matrix'ini geçmeli. Prod operation sonrası migration history ve obje/grant/trigger postflight eşleşmeden sonraki adım yok. Scalar count tek başına history eşleşmesi değildir.
+1. Preflight'ı çalıştırın ve 20 satırın tamamının `PASS` olduğunu görün (ilk migration'dan sonra 04/05/12/23/32 gibi "henüz yok" kontrolleri beklendiği gibi değişir; ikinci ve üçüncü dosya öncesinde postflight sonucu esas alınır).
+2. Dosyayı tek başına uygulayın.
+3. Postflight ile objeleri, grant'leri, RLS'i, trigger'ları ve cron'u doğrulayın.
+4. Yalnız postflight geçtiyse, yalnız o versiyonu history'ye kaydedin.
+5. `migration list` ile remote'un tam bir versiyon arttığını ve `20260817120000`'ın hâlâ yalnız local olduğunu görün.
 
-Onaylı Edge adımlarının PowerShell komutları (CLI2.110.0 help ile flags doğrulandı; yalnız help çalıştı):
+```powershell
+# Operator değişkeni: production bağlantı dizesi (değeri loglanmaz, rapora yazılmaz)
+psql $env:DIETBRIDGE_PROD_DB_URL -v ON_ERROR_STOP=1 -f supabase/preflight/invite_recipe_preflight.sql
+psql $env:DIETBRIDGE_PROD_DB_URL -v ON_ERROR_STOP=1 -f supabase/migrations/20261005120859_dietitian_invite_codes.sql
+psql $env:DIETBRIDGE_PROD_DB_URL -v ON_ERROR_STOP=1 -f supabase/preflight/invite_recipe_postflight.sql
+npx supabase@2.110.0 migration repair --status applied 20261005120859 --linked
+npx supabase@2.110.0 migration list --linked
+```
+
+Aynı beş adım `20261005124951` ve ardından `20261005132107` için, araya davet smoke'u girdikten sonra tekrarlanır. Uygulama başarısız olursa transaction geri döner; o versiyon için repair çalıştırılmaz. Repair yalnız tek versiyon argümanıyla çalıştırılır.
+
+## Preflight kapısı
+
+`supabase/preflight/invite_recipe_preflight.sql` tek bir read-only transaction içinde tek sonuç kümesi döndürür ve rollback eder; yalnız katalog/metadata okur. 2026-10-05 sonucu: **20/20 PASS**.
+
+| Alan | Check | Sonuç |
+|---|---|---|
+| Güvenlik | 01 read-only transaction | PASS |
+| History | 02 remote history birebir 58 versiyon; 03 ertelenmiş push yok; 04 feature versiyonları yok; 05 yarım feature objesi yok; 06 doğrulama koruması eşdeğer | PASS |
+| Davet | 10 onay/kapasite/kullanım/bildirim/legacy RPC/CSPRNG; 11 tek pending/active index; 12 üç ilişki trigger'ı; 13 ortak advisory kapasite kilidi + active+pending sayımı + helper'lar tarayıcıya kapalı; 14 enum'lar; 15 `private` şeması | PASS |
+| Tarif | 20 kolonlar; 21 constraint'ler; 22 RLS + dört owner policy; 23 `recipe-images` private, `recipe-imports` henüz yok; 24 `extensions.digest` | PASS |
+| Altyapı | 30 pgcrypto 1.3, pg_cron 1.6.4, pg_net 0.19.5, supabase_vault 0.3.1; 31 `cron.schedule/unschedule`, `vault.decrypted_secrets`, `net.http_post`; 32 feature cron'ları henüz yok | PASS |
+
+`recipe-imports` bucket'ı ve iki Storage policy'si core migration tarafından oluşturulur; manuel önkoşul gerekmez. Cron işleri migration'lar tarafından oluşturulur (`cleanup-invite-code-attempts` saatlik :17, `recipe-import-cleanup` */15). Vault değerleri yokken dispatcher hiçbir şey göndermez.
+
+## Edge Function hazırlığı
+
+| Function | JWT | Gerekli env | DB/RPC | Storage |
+|---|---|---|---|---|
+| `preview-dietitian-invite` | açık | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (platform sağlar, PRESENT) | `preview_dietitian_invite_code` (davet migration'ı) | `avatars` (mevcut, kısa süreli signed URL) |
+| `process-recipe-import` | açık | platform env + `OPENAI_API_KEY`, `OPENAI_RECIPE_MODEL=gpt-6-luna` | `recipe_import_limits`, `claim_recipe_import`, `finish_recipe_import`, `ack_recipe_import_cleanup` | `recipe-imports` |
+| `cleanup-recipe-imports` | kapalı, handler token kontrolü | platform env + `RECIPE_IMPORT_CLEANUP_TOKEN` | `recipe_import_cleanup_candidates`, `ack_recipe_import_cleanup` | `recipe-imports` |
+
+Production'da şu an yalnız dört eski Edge Function var; üç yeni function deploy edilmedi.
+
+## Sunucu yapılandırması (yalnız ad/varlık)
+
+| Ad | Yer | Durum |
+|---|---|---|
+| `OPENAI_API_KEY` | Edge secret | MISSING |
+| `OPENAI_RECIPE_MODEL` (= `gpt-6-luna`) | Edge secret | MISSING |
+| `RECIPE_IMPORT_CLEANUP_TOKEN` | Edge secret | MISSING |
+| `recipe_import_cleanup_url` | Vault | MISSING |
+| `recipe_import_cleanup_token` | Vault (Edge token ile aynı değer) | MISSING |
+
+Model sözleşmesi tutarlı: kod sabiti, metrics migration constraint'i, `.env.example` ve testler yalnız `gpt-6-luna` kullanıyor; fallback yok, `store:false`.
+
+## Yedekleme kapısı: BACKUP/PITR VERIFIED
+
+İlk production mutation'dan önce zorunludur ve bu görevde doğrulanmadı. Migration'lar additive olsa da: PITR veya güncel fiziksel yedeğin varlığı ve geri dönüş noktası kaydedilmeli, mümkünse ayrı bir projeye deneme restore yapılmalıdır. Veritabanı yedeği Storage nesnelerini kapsamaz; `recipe-imports` geçici yüklemeler içerir ve geri yükleme planına dahil edilmez. Sorun durumunda tercih, destructive rollback yerine hedefli forward-fix migration'ıdır.
+
+## Yayın sırası
+
+1. **DONE** Tam kalite kapısı PASS.
+2. **DONE** Production kimlik doğrulaması.
+3. **DONE** Migration history mutabakatı (yukarıdaki karar).
+4. **PENDING** BACKUP/PITR VERIFIED.
+5. **NONE** Tarihsel versiyon bazlı mutabakat: gerekli değil (iki NO_ACTION kararı).
+6. Davet migration'ı `20261005120859` (prosedür yukarıda).
+7. Davet postflight + tek versiyon kaydı.
+8. `preview-dietitian-invite` deploy (JWT açık).
+9. Mobile release hazırlığı (`codex/invite-code-mobile` inceleme/merge onayı).
+10. Gerçek Android SHA-256 ve Apple Team ID ile `.well-known` dosyaları.
+11. Mobile release.
+12. Fiziksel cihaz deep-link smoke (cold/warm start, login/signup sonrası preview, restart restore).
+13. Web `VITE_CLIENT_INVITE_MODE=invite_code` (geri dönüş `legacy_email`).
+14. Onaylı davet production smoke.
+15. Import core migration `20261005124951`.
+16. Extraction metrics migration `20261005132107`.
+17. Import postflight + tek versiyon kayıtları.
+18. `process-recipe-import` deploy (JWT açık).
+19. `cleanup-recipe-imports` deploy (`--no-verify-jwt`, handler token kontrolü).
+20. `OPENAI_API_KEY`, `OPENAI_RECIPE_MODEL=gpt-6-luna`, `RECIPE_IMPORT_CLEANUP_TOKEN`.
+21. Vault `recipe_import_cleanup_url` ve `recipe_import_cleanup_token`.
+22. Cron: migration'ın oluşturduğu `recipe-import-cleanup` işinin aktif olduğunu doğrulayın; ikinci bir iş oluşturmayın.
+23. Cleanup health: gerçek HTTP yanıtı, Storage silme → DB ack, `cleanup_pending`/gecikmiş birikim, alarm.
+24. Kişisel veri içermeyen deterministic CSV/XLS/XLSX smoke (onaylı).
+25. İsteğe bağlı, ayrıca onaylı ücretli GPT-6 Luna smoke.
+26. `VITE_RECIPE_IMPORT_ENABLED=true`.
+27. İzleme: cron HTTP hataları, takılı işler, cleanup gecikmesi, token/deneme/süre ve maliyet.
+28. Legacy e-posta davetinin kaldırılması: ayrı görev ve ayrı onay.
+
+Edge deploy komutları (yalnız onaylı rollout'ta):
 
 ```powershell
 npx supabase@2.110.0 functions deploy preview-dietitian-invite --project-ref kagvxhyvxxypspdxcuxz
 npx supabase@2.110.0 functions deploy process-recipe-import --project-ref kagvxhyvxxypspdxcuxz
 npx supabase@2.110.0 functions deploy cleanup-recipe-imports --project-ref kagvxhyvxxypspdxcuxz --no-verify-jwt
-```
-
-Gerçek association input'ları güvenli operator değişkenlerinde mevcut olduktan sonra (bu görevde çalıştırılmadı):
-
-```powershell
 node scripts/createInviteDomainAssociations.mjs --android-sha256=$env:DIETBRIDGE_ANDROID_RELEASE_SHA256 --apple-team-id=$env:DIETBRIDGE_APPLE_TEAM_ID
 ```
 
-Bu generator yalnız dosya üretir. `https://app.dietbridge.com.tr/.well-known/assetlinks.json` ve `/.well-known/apple-app-site-association` HTTPS/Content-Type/redirect davranışı ayrıca yayın ve cihazda doğrulanmalı.
+## Rollout engelleri
 
-## Import sözleşmesi ve geri dönüş
+Şema veya history engeli yok. Kalan engeller: BACKUP/PITR VERIFIED; her production adımı için açık onay (migration, Edge deploy, secret/Vault, web flag'leri, smoke kayıtları); üç Edge secret ve iki Vault değeri; gerçek Android release SHA-256 ve Apple Team ID; mobile release ve fiziksel cihaz smoke'u.
 
-Runtime yalnız OpenAI Responses API **gpt-6-luna**, fallback NONE, `store:false`, strict JSON schema, max1semantic repair+2total transport retry. Gerçek OpenAI smoke NOT RUN. `store:false` provider/account düzeyinde zero-retention garantisi değildir. Ürün uyarısı belgeyi gerçek redaksiyondan geçirmez.
+Ayrı risk: Mobile `app.json` Eylül'den beri EAS proje kimliği içeriyor ve push istemcisi `register_push_installation` RPC'sini çağırıyor; bu RPC production'da yok (push migration ertelenmiş). Bu mevcut bir durumdur, davet/import'u etkilemez; eski belgelerdeki "Mobile'da EAS kimliği yok" varsayımı artık geçerli değil ve Push kapsamında ele alınmalıdır.
 
-`recipe_import_limits()` authority:5MiB input,20recipes,200data rows,50columns,20MiB expanded,24hTTL. Bucket file_size_limit birlikte koordine edilir. XLSX !ref absolute bounds conversion'dan önce korunur; dış parser'ın bütün davranışına güvenlik garantisi verilmez. Eksik kcal/macros null kalır, tamamlanmadan save olmaz; extraction doğrudan recipe yazmaz; batch tek transaction'dır.
+## Geri dönüş ve forward-fix
 
-Normal worker completion hemen raw delete→ack. Hata durable queue; expiry+15min retry outage/backlog altında fiziksel24h hard deadline garantisi değildir.18başarısızsa import flag açılmaz; alarm/operator cleanup planı gerekir.
+Önce flag'ler: `VITE_CLIENT_INVITE_MODE=legacy_email`, `VITE_RECIPE_IMPORT_ENABLED=false`. Gerekirse Edge function çağrıları durdurulur, cleanup çalışmaya devam eder. Mevcut ilişkiler, kaydedilmiş tarifler, import metadata'sı ve bucket destructive drop ile silinmez. Bir migration sonrası sorun çıkarsa yeni, küçük bir forward-fix migration'ı hazırlanır ve aynı versiyon bazlı prosedürle uygulanır. Kaydedilmiş batch'ler için undo yoktur; kullanımdaki tariflere cascade delete yapılmaz.
 
-Rollback önce flags `legacy_email` / import disabled. Worker girişleri gerekirse durdurulur; mevcut cleanup çalışır tutulur. İlişkiler, kaydedilmiş tarifler, metadata/bucket destructive drop ile silinmez; targeted forward-fix tercih edilir. Saved IDs receipt'tir; batch undo yok, kullanımdaki tariflere cascade delete yapılmaz.
-
-Kalan gerçek girdiler final report matrix'inde. Bir sonraki aşama **ayrı onaylı release-preparation**, ardından post-release-validation.
+Runtime sözleşmesi: OpenAI Responses API, `gpt-6-luna`, fallback yok, `store:false`, strict JSON schema, en fazla 1 semantic onarım ve toplam 2 transport retry. Limitler `recipe_import_limits()`: 5 MiB, 20 tarif, 200 satır, 50 sütun, 20 MiB açılmış boyut, 24 saat. Gerçek OpenAI smoke çalıştırılmadı.

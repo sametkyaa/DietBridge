@@ -1,8 +1,8 @@
 # DietBridge — final yerel kapanış ve yayın hazırlığı
 
-2026-10-05, Europe/Istanbul. Son salt okunur preflight: 17:52 +03:00.
+2026-10-05, Europe/Istanbul. Son salt okunur preflight ve history mutabakatı: 2026-10-05.
 
-**LOCAL CLOSURE: PASS. WEB FULL QUALITY GATE: PASS. MOBILE QUALITY GATE: PASS. FEATURE SECURITY: PASS (aşağıdaki kanıt sınırlarıyla). Her iki feature branch push edildi. PRODUCTION READ-ONLY PREFLIGHT: BLOCKED (inceleme başarıyla çalıştı; yayın girdileri ve history kararı eksik). PRODUCTION MUTATED: NO.**
+**LOCAL CLOSURE: PASS. WEB FULL QUALITY GATE: PASS. MOBILE QUALITY GATE: PASS. FEATURE SECURITY: PASS (aşağıdaki kanıt sınırlarıyla). Her iki feature branch push edildi. PRODUCTION READ-ONLY PREFLIGHT: PASS (20/20; history mutabakatı tamamlandı). Rollout girdileri ve onayları eksik. PRODUCTION MUTATED: NO.**
 
 ## A. Git ve görev kapsamı
 
@@ -134,51 +134,42 @@ Mühürlü raporlar: Web `C:\Users\drsam\.codex\state\plugins\codex-security\sca
 
 Final committed source incelemesi: client→Edge→RPC owner/role boundaries, service-only claim/finish, exact private upload intent, active relation direct-write restriction, immutable relationship parties, MIME/signature/ZIP expansion ve XLSX pre-conversion bounds, response/retry/timeout caps kontrol edildi. **Yeni High/Critical feature finding yok; feature security PASS bu hedefli source/test incelemesinin sonucudur, eski partial scan raporunu complete sertifika yapmaz.** Gerçek secret literal taraması60 Web/14 Mobile task file üzerinde0bulgu; eski model/Terra/Anthropic/Claude runtime0; client OpenAI/service-role symbols0. Yeni güvenlik taraması gerektirecek runtime değişikliği water kapanışında yapılmadı; Daybreak başvurusu istenmedi.
 
-## H. Production read-only preflight
+## H. Production read-only preflight ve history mutabakatı
 
-**Çalıştırıldı; yayın readiness BLOCKED.** Proje `kagvxhyvxxypspdxcuxz` / `dietbridge_Production`, ACTIVE_HEALTHY, eu-central-1, PostgreSQL17.6.1.052. Prepared `supabase/preflight/invite_recipe_preflight.sql` `BEGIN TRANSACTION READ ONLY ... ROLLBACK` ile çalıştı. Connector çoklu SELECT'in yalnız bir sonuç grubunu döndürdüğünden eksik kanıt varsayılmadı: iki ek read-only JSON catalog sorgusu bütün metadata'yı topladı; `transaction_read_only=on` doğrulandı. Project, migration ve Edge metadata listeleri ve CLI secret **adları/durumları** okundu. Customer/Auth rows, tarif gövdeleri, object path'leri, invite codes veya decrypted secrets okunmadı.
+**PASS.** Proje `kagvxhyvxxypspdxcuxz` / `dietbridge_Production`, eu-central-1, ACTIVE_HEALTHY, PostgreSQL 17.6.1.052, hedef `db.kagvxhyvxxypspdxcuxz.supabase.co`; kimlik doğrulandı. Bütün sorgular `BEGIN TRANSACTION READ ONLY … ROLLBACK` içinde çalıştı ve yalnız katalog/metadata okudu; müşteri satırı, Auth satırı, Storage nesne adı, tarif gövdesi, davet kodu veya secret değeri okunmadı.
 
-Kanıt: `docs/INVITE_RECIPE_PREFLIGHT_EVIDENCE.json` (safe catalog metadata; secret değeri yok). Remote58migration; repo62; remote-only0. Repo-only exact fark:
+`supabase/preflight/invite_recipe_preflight.sql` tek sonuç kümesi döndüren, check bazlı (PASS/FAIL/BLOCKED) bir sürüme çevrildi; eski sürüm birden çok SELECT içerdiği için connector yalnız son sonucu gösteriyordu. Statik denetim: üç ifade (`BEGIN READ ONLY`, tek `WITH … SELECT`, `ROLLBACK`), string dışı yazma anahtar kelimesi yok. Production sonucu **20/20 PASS**.
 
-1. `20260817120000_push_registry_outbox_backend.sql` — önceden deferred, bu feature'ın prerequisite'i değil; ayrı scope/history kararı gerektirir.
-2. `20261005120859_dietitian_invite_codes.sql`.
-3. `20261005124951_recipe_import_core.sql`.
-4. `20261005132107_recipe_import_extraction_metrics.sql`.
+History: remote 58, repo 62, remote-only 0. Matris (`INVITE_RECIPE_MIGRATION_RECONCILIATION.md`): MATCH 57, HISTORY_PRESENT_BUT_SCHEMA_DRIFT 1, LOCAL_ONLY_NEW 4. Eski "58/59" farkının exact versiyonu `20260817120000_push_registry_outbox_backend.sql`: history yok, 3 tablo/5 fonksiyon/2 trigger'ın hiçbiri yok, kısmi iz yok; Push 6C.2+ ile bilinçli ertelenmiş. Karar **NO_ACTION** (bu yayına dahil edilmez, adoption yapılmaz). Şema taramasında ayrıca `20260713010300`'ın `protect_dietitian_profile_system_fields` fonksiyonu/trigger'ı eksik bulundu; koruma `trg_sync_dietitian_verification_fields` ve own-row UPDATE `WITH CHECK` ile eşdeğer sağlanıyor, karar **NO_ACTION**. Tarihsel versiyonlar için history adoption gerekmiyor.
 
-Remote tail `20260901200413`. History repair, migration apply veya `db push` yok. Eski deferred migration üç yeni dosyayla kendiliğinden uygulanmamalı.
+Davet önkoşulları **READY**: onay helper'ı, kapasite/kullanım helper'ları (aynı advisory kilit anahtarı, active+pending sayımı, tarayıcıya kapalı), bildirim fonksiyonu, legacy e-posta RPC'si, CSPRNG, tek pending/active index, üç ilişki trigger'ı, enum'lar ve kapalı `private` şeması. Tarif import önkoşulları **READY**: 12 kanonik kolon, 10 constraint, RLS + dört owner policy, private `recipe-images`, `extensions.digest`; import migration mevcut `recipes` kolonlarını değiştirmiyor. `recipe-imports` bucket'ı ve policy'leri migration tarafından oluşturulur. Extensions pgcrypto 1.3, pg_cron 1.6.4, pg_net 0.19.5, supabase_vault 0.3.1 present; cleanup bağımlılıkları (`cron.schedule/unschedule`, `vault.decrypted_secrets`, `net.http_post`) present. Model sözleşmesi kod, migration constraint'i ve testlerde yalnız `gpt-6-luna`.
 
-Prerequisites:6temel tablo mevcut ve RLS açık; approval helper, effective capacity/active+pending usage helpers, legacy email RPC, notification helper, CSPRNG ve one-pending-or-active unique index mevcut. Capacity/transition/notification trigger'ları enabled. Capacity helper source metadata advisory capacity lock ve active+pending count'u doğruluyor; gerçek kullanıcı occupancy/plan satırı okunmadı. Recipes kolon/meal/calorie/macro/description/owner constraints ve approved owner CRUD policies mevcut. Legacy email authenticated execute var, anon yok; capacity helpers authenticated execute almıyor. Mevcut authenticated tablo grants içinde TRUNCATE/REFERENCES/TRIGGER da var; inherited baseline metadata, bu görevde değiştirilmedi, ayrı grant hardening incelemesine adaydır.
+`supabase db push` bu yayında yasak: bekleyen dört dosyanın biri ertelenmiş push migration'ıdır. Uygulama sırası versiyon bazlıdır: `20261005120859` → davet smoke → `20261005124951` → `20261005132107`; her dosya tek başına uygulanır, postflight geçince yalnız o versiyon `migration repair --status applied <version>` ile kaydedilir. Tam prosedür runbook'tadır.
 
-Private avatars/recipe-images bucket'ları5MiB ve beklenen MIME'larla mevcut. Yeni4feature tablosu, `recipe-imports` bucket, üçfeature Edge ve ikifeature cron henüz yok. Extensions pgcrypto1.3,pg_cron1.6.4,pg_net0.19.5,supabase_vault0.3.1 mevcut. Cleanup Vault adları ve üçilgili Edge config secret adı yok. Bunların henüz bulunmaması yerel test başarısızlığı değil, uygulanmamış rollout durumudur.
+## I. Rollout girdileri ve production durumu
 
-## I. Release input matrix ve production durumu
+Değerler rapora yazılmadı; yalnız ad ve varlık.
 
-Değerler rapora yazılmadı; present/missing yalnız kaynağı belirtilen durumdur. Bu kapanışta secret değeri istenmez.
-
-| Girdi | Durum / kanıt |
+| Girdi | Durum |
 | --- | --- |
-| OPENAI_API_KEY | **MISSING**,production Edge secret metadata. |
-| OPENAI_RECIPE_MODEL=gpt-6-luna | **MISSING**,Edge config; güvenli example/model constant PRESENT. |
-| RECIPE_IMPORT_CLEANUP_TOKEN | **MISSING**,Edge secret metadata. |
-| recipe_import_cleanup_url | **MISSING**,Vault name-only check. |
-| recipe_import_cleanup_token | **MISSING**,Vault name-only check; ileride Edge token'ıyla eşleşmeli. |
-| Android release SHA-256 fingerprints | **MISSING**,verilmiş/doğrulanmış gerçek release girdisi yok. |
-| Apple Team ID | **MISSING**,verilmiş/doğrulanmış gerçek release girdisi yok. |
-| com.dietbridge.app Android/iOS IDs | **PRESENT** app.json; signed release/association verification **MISSING**. |
-| Backup/PITR + restore evidence | **MISSING**,bu görevde doğrulanmış restore kanıtı yok. |
-| Deferred migration/history scope decision | **MISSING**,4repo-only versiyon için kesin kapsam kararı. |
-| Production migration approval | **MISSING**. |
-| Edge deployment/secrets/Vault/cron approval | **MISSING**. |
-| Mobile release + physical device smoke | **MISSING**. |
-| Web invite flag approval | **MISSING**. |
-| Recipe import flag approval | **MISSING**. |
-| Production-safe synthetic smoke approval | **MISSING**. |
-| Paid GPT-6 Luna smoke approval | **MISSING/OPTIONAL**,gerçek API smoke NOT RUN. |
+| `OPENAI_API_KEY` (Edge) | MISSING |
+| `OPENAI_RECIPE_MODEL=gpt-6-luna` (Edge) | MISSING |
+| `RECIPE_IMPORT_CLEANUP_TOKEN` (Edge) | MISSING |
+| `recipe_import_cleanup_url` (Vault) | MISSING |
+| `recipe_import_cleanup_token` (Vault) | MISSING |
+| Platform env `SUPABASE_URL/ANON_KEY/SERVICE_ROLE_KEY` | PRESENT |
+| Android release SHA-256 | MISSING |
+| Apple Team ID | MISSING |
+| BACKUP/PITR VERIFIED | MISSING |
+| Migration, Edge deploy, secret/Vault, flag, smoke onayları | MISSING |
+| Ücretli GPT-6 Luna smoke onayı | OPTIONAL |
 
-Production DB modified: **NO**. Production migration applied: **NO**. Production Storage modified: **NO**. Production Edge deployed: **NO**. Production secrets changed: **NO**. Production feature flags changed: **NO**. Production deployment performed: **NO**. Production users/relationships/test records created: **NO**. INSERT/UPDATE/DELETE/RPC/upload fixtures yalnız loopback disposable stack'teydi.
+Production DB modified: **NO**. Production migration applied: **NO**. History repair: **NO**. Production Storage modified: **NO**. Production Edge deployed: **NO**. Production secrets/Vault changed: **NO**. Cron changed: **NO**. Feature flags changed: **NO**. Production deployment performed: **NO**.
+
+Ayrı risk: Mobile `app.json` Eylül'den beri EAS proje kimliği içeriyor ve push istemcisi production'da bulunmayan `register_push_installation` RPC'sini çağırıyor. Davet/import'u etkilemiyor; Push kapsamında ele alınmalı.
 
 ## J. Kalan riskler, manuel kontrol ve sonraki aşama
 
-Water blocker kapandı. Kalanlar: explicit rollout/history kararı ve backup/restore; real signing association/device tests; secret/model erişimi; cleanup URL/token/cron health ve overdue monitoring; production-safe smoke/postflight. Mevcut lint/audit/main chunk uyarıları kaldı; unrelated major upgrade yapılmadı. Snapshot security kapsam sınırı, upstream billing idempotency, canlı extraction doğruluğu ve provider retention sınırları yukarıdadır.
+Water blocker kapandı. Kalanlar: BACKUP/PITR doğrulaması ve rollout onayları; real signing association/device tests; secret/model erişimi; cleanup URL/token/cron health ve overdue monitoring; production-safe smoke/postflight. Mevcut lint/audit/main chunk uyarıları kaldı; unrelated major upgrade yapılmadı. Snapshot security kapsam sınırı, upstream billing idempotency, canlı extraction doğruluğu ve provider retention sınırları yukarıdadır.
 
 24adımlık sıra ve tek migration/Edge operasyonları `INVITE_RECIPE_RELEASE_RUNBOOK.md` içinde güncellendi. Sonraki roadmap aşaması **ayrı onaylı release-preparation**, ardından **post-release-validation**. Prod rollout kendiliğinden başlamaz; legacy email cleanup ayrı sonraki görevdir.
