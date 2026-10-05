@@ -78,7 +78,8 @@ test('date, nullability, and cache-isolation safeguards are source-locked', () =
 test('MVP-10 daily water contract stays in persisted liters across Web and Mobile', () => {
   assert.match(inventory, /persisted `water_intake` is canonical liters/);
   assert.match(waterSharedContract, /1\.5/);
-  assert.match(mobileWaterTracker, /water\.toFixed\(2\)/);
+  assert.match(mobileWaterTracker, /(?:water\.toFixed\(2\)|formatLiters\(water\))/);
+  assert.match(mobileWaterTracker, /\.toFixed\(2\)/);
   assert.doesNotMatch(waterSharedContract, /point\.value\s*\/\s*1000/);
 });
 
