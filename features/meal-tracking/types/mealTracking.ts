@@ -14,7 +14,8 @@ export interface MealTrackingMeal {
   date: string;
   type: MealTrackingMealType;
   title: string;
-  time: string;
+  /** Null for legacy meals saved without a planned time. */
+  time: string | null;
   sortOrder: number;
   isCompleted: boolean;
   completedAt: string | null;
@@ -33,7 +34,7 @@ export interface MealTrackingOverviewMealEntry {
   id: string;
   type: MealTrackingMealType;
   label: string;
-  time: string;
+  time: string | null;
   title: string;
   status: MealTrackingMealStatus;
 }

@@ -120,7 +120,8 @@ test('Web and Mobile source paths preserve the same persisted water unit', () =>
   );
   assert.match(mobileAnalytics, /amount:\s*log\.amount/);
   assert.doesNotMatch(mobileAnalytics, /water_intake\s*\/\s*1000/);
-  assert.match(mobileWaterCard, /formatLiters\(\s*water\s*\)/);
+  assert.match(mobileWaterCard, /(?:water\.toFixed\(2\)|formatLiters\(water\))/);
+  assert.match(mobileWaterCard, /\.toFixed\(2\)/);
 });
 
 test('schema and date contract remain unchanged while water values stay nullable numeric liters', () => {

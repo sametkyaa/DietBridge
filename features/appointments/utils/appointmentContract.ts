@@ -229,6 +229,57 @@ export const getMonthCalendarDays = (monthKey: string): CalendarDay[] => {
   });
 };
 
+export interface AppointmentDateRange {
+  startDate: string;
+  endDate: string;
+}
+
+/**
+ * Number of appointments after the loaded range that the list view's
+ * "Yaklaşan Diğer Randevular" preview needs to stay complete.
+ */
+export const UPCOMING_APPOINTMENT_PREVIEW_LIMIT = 5;
+
+export const isAppointmentDateRange = (value: unknown): value is AppointmentDateRange => {
+  if (typeof value !== 'object' || value === null) return false;
+  const range = value as Partial<AppointmentDateRange>;
+  return typeof range.startDate === 'string'
+    && typeof range.endDate === 'string'
+    && getDateKeyParts(range.startDate) !== null
+    && getDateKeyParts(range.endDate) !== null
+    && range.startDate <= range.endDate;
+};
+
+/**
+ * Monday-first calendar grid of a month, including the leading and trailing
+ * days of the neighbouring months that the monthly view renders.
+ */
+export const getMonthCalendarRange = (monthKey: string): AppointmentDateRange | null => {
+  const days = getMonthCalendarDays(monthKey);
+  if (days.length === 0) return null;
+  return { startDate: days[0].date, endDate: days[days.length - 1].date };
+};
+
+/**
+ * Appointment loading window for one Istanbul civil date: the calendar grid
+ * of its month. Bounding the query by date keeps every screen's data complete
+ * regardless of how many appointments an account has accumulated overall.
+ */
+export const getAppointmentRangeForDate = (dateKey: string): AppointmentDateRange | null => {
+  const monthKey = getMonthKeyFromDateKey(dateKey);
+  return monthKey ? getMonthCalendarRange(monthKey) : null;
+};
+
+export const appointmentRangeCovers = (
+  outer: AppointmentDateRange | null | undefined,
+  inner: AppointmentDateRange,
+) => (
+  outer !== null
+  && outer !== undefined
+  && outer.startDate <= inner.startDate
+  && inner.endDate <= outer.endDate
+);
+
 export const formatDateKey = (
   value: string,
   options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' },

@@ -58,7 +58,10 @@ const normalizeIsoTimestamp = (value: unknown): string | null => {
   return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
 };
 
-const normalizeMealTime = (value: unknown): string => {
+// `meals.time` is nullable; a legacy meal without a planned time still has a
+// truthful completion event and must not hide the other activities.
+const normalizeMealTime = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
   if (typeof value !== 'string') throw invalidPayload('meal.time');
   const match = TIME_PATTERN.exec(value);
   if (!match) throw invalidPayload('meal.time');

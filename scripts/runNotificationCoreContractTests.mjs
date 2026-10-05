@@ -18,10 +18,11 @@ const readMigrationInventory = () => readdirSync(migrationDirectory)
   .filter((name) => /^\d+_.+\.sql$/.test(name))
   .sort();
 
-// This gate verifies the historical notification/account-deletion chain.
-// Later feature migrations are validated by their dedicated runtime harnesses.
-const files = readMigrationInventory().filter(name => name <= '20260901200413_client_account_deletion_scope_tightening.sql');
-assert(files.length === 59, 'NOTIFICATION_MIGRATION_COUNT_59_WITH_CLIENT_ACCOUNT_DELETION', 'count=' + files.length);
+// This gate verifies the historical notification/account-deletion chain through
+// the realtime/weight RPC migrations. Later feature migrations (invite, recipe
+// import) are validated by their dedicated runtime harnesses.
+const files = readMigrationInventory().filter(name => name <= '20261005120100_save_active_client_weight_canonical.sql');
+assert(files.length === 61, 'NOTIFICATION_MIGRATION_COUNT_61_WITH_REALTIME_AND_WEIGHT_RPC', 'count=' + files.length);
 
 const notificationFiles = files.filter((name) => /_notification_core_backend\.sql$/.test(name));
 assert(notificationFiles.length === 1, 'ONE_NOTIFICATION_CORE_MIGRATION', notificationFiles.join(','));
@@ -33,17 +34,19 @@ const pushRegistryMigrationName = '20260817120000_push_registry_outbox_backend.s
 assert(files.includes(markAllReadMigrationName), 'MARK_ALL_READ_MIGRATION_PRESENT', markAllReadMigrationName);
 assert(files.includes(appointmentReminderMigrationName), 'APPOINTMENT_REMINDER_MIGRATION_PRESENT', appointmentReminderMigrationName);
 assert(files.includes(pushRegistryMigrationName), 'PUSH_REGISTRY_MIGRATION_PRESENT', pushRegistryMigrationName);
-assert(files.at(-11) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_BEFORE_STANDALONE_ADMIN', files.at(-11));
-assert(files.at(-10) === '20260827084741_standalone_platform_admin_access.sql', 'STANDALONE_ADMIN_MIGRATION_BEFORE_DIPLOMA_STORAGE', files.at(-10));
-assert(files.at(-9) === '20260830060342_dietitian_diploma_storage_hardening.sql', 'DIPLOMA_STORAGE_MIGRATION_BEFORE_MEAL_PLAN_SAVE', files.at(-9));
-assert(files.at(-8) === '20260830141202_meal_plan_cross_day_identity_preservation.sql', 'CROSS_DAY_MEAL_PLAN_SAVE_BEFORE_SNAPSHOT_EDIT', files.at(-8));
-assert(files.at(-7) === '20260830185101_meal_plan_snapshot_edit_contract.sql', 'SNAPSHOT_EDIT_BEFORE_NEW_RECIPE_CUSTOM_SNAPSHOT', files.at(-7));
-assert(files.at(-6) === '20260831071948_meal_plan_new_recipe_custom_snapshot_contract.sql', 'NEW_RECIPE_CUSTOM_SNAPSHOT_BEFORE_MEAL_COMPLETION_PHOTO', files.at(-6));
-assert(files.at(-5) === '20260831190352_meal_completion_photo_contract.sql', 'MEAL_COMPLETION_PHOTO_BEFORE_GROCERY_LIST', files.at(-5));
-assert(files.at(-4) === '20260901083212_client_grocery_list.sql', 'GROCERY_LIST_BEFORE_CLIENT_ACCOUNT_DELETION', files.at(-4));
-assert(files.at(-3) === '20260901165402_client_account_deletion_backend.sql', 'CLIENT_ACCOUNT_DELETION_BACKEND_BEFORE_HARDENING', files.at(-3));
-assert(files.at(-2) === '20260901193000_client_account_deletion_hardening.sql', 'CLIENT_ACCOUNT_DELETION_HARDENING_BEFORE_SCOPE_TIGHTENING', files.at(-2));
-assert(files.at(-1) === '20260901200413_client_account_deletion_scope_tightening.sql', 'CLIENT_ACCOUNT_DELETION_MIGRATION_TAIL', files.at(-1));
+assert(files.at(-13) === '20260826133224_product_admin_dietitian_verification.sql', 'PRODUCT_ADMIN_MIGRATION_BEFORE_STANDALONE_ADMIN', files.at(-13));
+assert(files.at(-12) === '20260827084741_standalone_platform_admin_access.sql', 'STANDALONE_ADMIN_MIGRATION_BEFORE_DIPLOMA_STORAGE', files.at(-12));
+assert(files.at(-11) === '20260830060342_dietitian_diploma_storage_hardening.sql', 'DIPLOMA_STORAGE_MIGRATION_BEFORE_MEAL_PLAN_SAVE', files.at(-11));
+assert(files.at(-10) === '20260830141202_meal_plan_cross_day_identity_preservation.sql', 'CROSS_DAY_MEAL_PLAN_SAVE_BEFORE_SNAPSHOT_EDIT', files.at(-10));
+assert(files.at(-9) === '20260830185101_meal_plan_snapshot_edit_contract.sql', 'SNAPSHOT_EDIT_BEFORE_NEW_RECIPE_CUSTOM_SNAPSHOT', files.at(-9));
+assert(files.at(-8) === '20260831071948_meal_plan_new_recipe_custom_snapshot_contract.sql', 'NEW_RECIPE_CUSTOM_SNAPSHOT_BEFORE_MEAL_COMPLETION_PHOTO', files.at(-8));
+assert(files.at(-7) === '20260831190352_meal_completion_photo_contract.sql', 'MEAL_COMPLETION_PHOTO_BEFORE_GROCERY_LIST', files.at(-7));
+assert(files.at(-6) === '20260901083212_client_grocery_list.sql', 'GROCERY_LIST_BEFORE_CLIENT_ACCOUNT_DELETION', files.at(-6));
+assert(files.at(-5) === '20260901165402_client_account_deletion_backend.sql', 'CLIENT_ACCOUNT_DELETION_BACKEND_BEFORE_HARDENING', files.at(-5));
+assert(files.at(-4) === '20260901193000_client_account_deletion_hardening.sql', 'CLIENT_ACCOUNT_DELETION_HARDENING_BEFORE_SCOPE_TIGHTENING', files.at(-4));
+assert(files.at(-3) === '20260901200413_client_account_deletion_scope_tightening.sql', 'CLIENT_ACCOUNT_DELETION_SCOPE_TIGHTENING_BEFORE_REALTIME_PUBLICATION', files.at(-3));
+assert(files.at(-2) === '20261005120000_realtime_publication_core_tables.sql', 'REALTIME_PUBLICATION_BEFORE_WEIGHT_RPC', files.at(-2));
+assert(files.at(-1) === '20261005120100_save_active_client_weight_canonical.sql', 'SAVE_ACTIVE_CLIENT_WEIGHT_MIGRATION_TAIL', files.at(-1));
 const markAllReadSql = readFileSync(join(migrationDirectory, markAllReadMigrationName), 'utf8');
 const appointmentReminderSql = readFileSync(join(migrationDirectory, appointmentReminderMigrationName), 'utf8');
 

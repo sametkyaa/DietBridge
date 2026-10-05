@@ -20,7 +20,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 import DietitianAvatar from '../../../shared/components/DietitianAvatar';
 import { useAppointments } from '../../appointments/context/AppointmentContext';
-import { getTodayDateKey } from '../../appointments/utils/appointmentContract';
+import {
+  appointmentRangeCovers,
+  getAppointmentRangeForDate,
+  getTodayDateKey,
+} from '../../appointments/utils/appointmentContract';
 import { fetchDietitianClients } from '../../clients/services/clientService';
 import { Client } from '../../../shared/types';
 import { useDailyTasks } from '../hooks/useDailyTasks';
@@ -151,12 +155,22 @@ const DashboardPage = () => {
   const {
     error: appointmentsError,
     getAppointmentsByDate,
-    loading: appointmentsLoading,
+    loadedRange: loadedAppointmentRange,
+    loading: appointmentsRequestLoading,
     refreshAppointments,
+    requestAppointmentRange,
   } = useAppointments();
   
   // Get today's appointments dynamically
   const today = getTodayDateKey();
+  useEffect(() => {
+    const todayRange = getAppointmentRangeForDate(today);
+    if (todayRange) requestAppointmentRange(todayRange);
+  }, [requestAppointmentRange, today]);
+  const appointmentsLoading = appointmentsRequestLoading || (
+    !appointmentsError
+    && !appointmentRangeCovers(loadedAppointmentRange, { startDate: today, endDate: today })
+  );
   const todaysAppointments = getAppointmentsByDate(today)
     .filter((appointment) => appointment.status !== 'cancelled');
 

@@ -326,6 +326,51 @@ export const normalizeNotificationRow = (value: unknown): NotificationItem => {
   return notification;
 };
 
+/**
+ * A row whose category/event this client does not know yet (for example a
+ * type introduced after this build) is skipped instead of failing the whole
+ * list. Rows with a known type but a broken contract still fail closed.
+ */
+const isUnsupportedNotificationType = (value: unknown): boolean => {
+  const row = asRecord(value);
+  if (!row) return false;
+  const category = row.category;
+  const eventType = row.event_type;
+  if (typeof category !== 'string' || category.length === 0) return false;
+  if (typeof eventType !== 'string' || eventType.length === 0) return false;
+  if (!Object.prototype.hasOwnProperty.call(CATEGORY_EVENTS, category)) return true;
+  return !Object.prototype.hasOwnProperty.call(CATEGORY_EVENTS[category as NotificationCategory], eventType);
+};
+
+let hasWarnedUnsupportedNotificationType = false;
+
+const warnUnsupportedNotificationTypeOnce = (): void => {
+  if (hasWarnedUnsupportedNotificationType) return;
+  hasWarnedUnsupportedNotificationType = true;
+  console.warn('[notifications] Desteklenmeyen bildirim türü atlandı.');
+};
+
+const normalizeSupportedNotificationRows = (rows: readonly unknown[]): NotificationItem[] => {
+  const notifications: NotificationItem[] = [];
+  for (const row of rows) {
+    if (isUnsupportedNotificationType(row)) {
+      warnUnsupportedNotificationTypeOnce();
+      continue;
+    }
+    notifications.push(normalizeNotificationRow(row));
+  }
+  return notifications;
+};
+
+const getNotificationRowCursor = (value: unknown): NotificationCursor => {
+  const row = asRecord(value);
+  if (!row) return malformed('row');
+  return {
+    occurredAt: requiredIsoTimestamp(row, 'occurred_at'),
+    id: requiredUuid(row, 'id'),
+  };
+};
+
 const requireAuthenticatedUser = async (fallbackMessage: string): Promise<string> => {
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user?.id || !isValidUuid(data.user.id)) {
@@ -384,20 +429,25 @@ export const listNotifications = async (
     throw new NotificationServiceError('MALFORMED', 'Bildirim yanıtı beklenmeyen bir biçimde geldi.');
   }
 
-  let notifications: NotificationItem[];
+  // hasMore and the keyset cursor come from the raw page so skipped
+  // unsupported rows never stall or repeat pagination.
+  const hasMore = data.length > pageSize;
+  const pageRows = data.slice(0, pageSize);
+  let pageNotifications: NotificationItem[];
+  let nextCursor: NotificationCursor | null;
   try {
-    notifications = data.map(normalizeNotificationRow);
+    pageNotifications = normalizeSupportedNotificationRows(pageRows);
+    nextCursor = hasMore && pageRows.length > 0
+      ? getNotificationRowCursor(pageRows[pageRows.length - 1])
+      : null;
   } catch (cause) {
     throw toNotificationServiceError(cause, 'MALFORMED', 'Bildirim yanıtı doğrulanamadı.');
   }
 
-  const hasMore = notifications.length > pageSize;
-  const pageNotifications = notifications.slice(0, pageSize);
-  const last = pageNotifications[pageNotifications.length - 1];
   return {
     notifications: pageNotifications,
     hasMore,
-    nextCursor: hasMore && last ? { occurredAt: last.occurredAt, id: last.id } : null,
+    nextCursor,
   };
 };
 
