@@ -1,6 +1,6 @@
 {
-  "phase": "RECIPE_IMPORT_FLAG_ENV_CONFIGURED_CODE_NOT_IN_MAIN",
-  "checkedAt": "2026-10-05T21:32:54.457Z",
+  "phase": "RECIPE_IMPORT_LIVE_ON_PRODUCTION_WEB",
+  "checkedAt": "2026-10-05T22:43:27.430Z",
   "target": {
     "ref": "kagvxhyvxxypspdxcuxz",
     "name": "dietbridge_Production",
@@ -154,7 +154,7 @@
     "Mobile invite BLOCKED_BY_RELEASE_SIGNING_INPUTS; Recipe independent",
     "PITR OFF/pre-invite recovery bound/offsite unverified; DB advisor notices recorded in P"
   ],
-  "nextSafeAction": "Production env set (VITE_RECIPE_IMPORT_ENABLED=true, VITE_CLIENT_INVITE_MODE=legacy_email). Feature becomes visible only after codex/invite-recipe-regression is integrated into main (3 main commits #44-#46 missing on branch) and Vercel builds main. PR/merge requires explicit user request (AGENTS.md section 5).",
+  "nextSafeAction": "Separately approved production migration gate for #46 (20261005120000, 20261005120100); one logged-in dietitian Recipes dialog check.",
   "p1Result": {
     "status": "DEPLOYED_PASS",
     "preflight": [
@@ -1301,7 +1301,7 @@
     {
       "stage": "recipe import flag",
       "token": "APPROVE_RECIPE_IMPORT_FLAG",
-      "status": "RECEIVED / PRODUCTION ENV CONFIGURED / NOT LIVE (code not in main)"
+      "status": "RECEIVED / ENV CONFIGURED / LIVE via PR #47 (main 230daee)"
     }
   ],
   "recipeDbDeployment": {
@@ -4049,5 +4049,86 @@
     },
     "blocker": "Recipe import Web code exists only on codex/invite-recipe-regression; main 441f72f has no import UI/service. Branch lacks main commits 8138171 (#44), 3fb7d5b (#45), 441f72f (#46); deploying the branch directly to production would roll those back.",
     "rollback": "Set VITE_RECIPE_IMPORT_ENABLED=false (keep legacy_email) and redeploy production; no data rollback needed."
+  },
+  "webRelease": {
+    "pr": 47,
+    "mergeCommit": "230daee712597d16066554256aaa3e607d6f13cf",
+    "mergeMethod": "squash",
+    "mergedAt": "2026-10-05T22:39:56Z",
+    "testedHead": "e279477877a8344a50841804d22428fd5425ac3b",
+    "treeEqualToTestedHead": true,
+    "mainBefore": "441f72f791387918fd170bcda827ae6a834985d3",
+    "featureBefore": "5e52618b8cdfe2e7c94b25bed3a05c9e5de19b09",
+    "claudePreserved": {
+      "44": {
+        "sha": "81381714e6befdbda419b2dc148f9a2ef3ed1399",
+        "files": 60,
+        "addedLinesChecked": 4,
+        "removedLinesChecked": 16,
+        "issues": 0
+      },
+      "45": {
+        "sha": "3fb7d5bb2bd93cd9a13f88ba2d0d0ae150474f99",
+        "files": 23,
+        "addedLinesChecked": 726,
+        "removedLinesChecked": 48,
+        "issues": 0
+      },
+      "46": {
+        "sha": "441f72f791387918fd170bcda827ae6a834985d3",
+        "files": 24,
+        "addedLinesChecked": 1158,
+        "removedLinesChecked": 44,
+        "issues": 0
+      }
+    },
+    "quality": {
+      "npmCi": "PASS",
+      "typecheck": "PASS",
+      "lint": "0 errors / 10 warnings",
+      "test": "536/536 + static gates",
+      "build": "PASS",
+      "featureE2E": "8/8",
+      "ci": {
+        "webQuality": "PASS",
+        "criticalE2E": "PASS",
+        "backendIntegration": "PASS"
+      }
+    },
+    "vercel": {
+      "deployment": "dpl_BZQd3XRhPNKmHw7uoS5NfzUaSJwz",
+      "state": "READY",
+      "sha": "230daee712597d16066554256aaa3e607d6f13cf"
+    },
+    "webSmoke": {
+      "mode": "read-only, unauthenticated",
+      "importButtonUnconditional": true,
+      "flagBuildValue": "true",
+      "inviteModeBuildValue": "legacy_email",
+      "inviteCodeRpcs": 0,
+      "secretsInBundle": 0,
+      "protectedRoutesRedirectToLogin": true,
+      "consoleErrors": 0,
+      "loggedInDialogCheck": "NOT RUN (no production data creation allowed)"
+    },
+    "infraHealth": {
+      "edgeFunctionsActiveUnchanged": 7,
+      "recipeCron": "active */15, last 3 runs succeeded, 0 failed/24h",
+      "cleanupPending": 0,
+      "overdue": 0,
+      "bucketPublic": false,
+      "history": 61
+    },
+    "finding46Migrations": {
+      "applied": false,
+      "missingVersions": [
+        "20261005120000",
+        "20261005120100"
+      ],
+      "saveActiveClientWeightExists": false,
+      "webCallsSince": "adfbf40 2026-07-18",
+      "preExisting": true,
+      "actionTaken": "none (DB mutation forbidden in this task)"
+    }
   }
 }

@@ -1,6 +1,6 @@
 # Davet kodu + GPT-6 Luna import — production rollout runbook
 
-2026-10-06. **RECIPE IMPORT FLAG: PRODUCTION ENV SET / NOT LIVE.** Vercel production env VITE_RECIPE_IMPORT_ENABLED=true and VITE_CLIENT_INVITE_MODE=legacy_email; no deploy triggered. Import code is only on codex/invite-recipe-regression; production builds main 441f72f. Integrating the branch into main (PR/merge) needs an explicit user request. All Recipe backend gates and smokes PASS. Invite/legacy ACTIVE, mobile signing-blocked/cutover DEFERRED. Latest report Y/evidence.
+2026-10-06. **RECIPE IMPORT: LIVE ON PRODUCTION WEB.** PR #47 squash-merged to main 230daee; Vercel dpl_BZQd3XRhPNKmHw7uoS5NfzUaSJwz READY; flag ON, invite mode legacy_email. #44/#45/#46 preserved. Open finding: #46 migrations not applied in production (separate approved gate). Mobile signing-blocked/cutover DEFERRED. Latest report AA/evidence.
 
 ## Hedef ve kanıt
 
@@ -245,3 +245,7 @@ scripts/runProductionLunaSmoke.mjs with APPROVE_GPT6_LUNA_SMOKE: one owned synth
 ## Recipe import flag — env set; awaiting main integration
 
 APPROVE_RECIPE_IMPORT_FLAG applied to Vercel production env only. The next production build from a main that contains the import code will show the import button with invite mode still legacy_email. Do not deploy the feature branch directly: it lacks main commits #44-#46. Rollback: VITE_RECIPE_IMPORT_ENABLED=false and redeploy.
+
+## Production Web release — LIVE
+
+PR #47 merged with required CI green (Web Quality, Backend Integration, Critical E2E). Feature E2E (mocked) runs via npm run test:e2e:features and is not part of CI. Rollback: set VITE_RECIPE_IMPORT_ENABLED=false (keep legacy_email) and redeploy main; no DB rollback. Before the next production DB gate, apply #46 migrations 20261005120000 and 20261005120100 through the versioned preflight/apply/postflight/history procedure; public.save_active_client_weight is currently missing in production.
