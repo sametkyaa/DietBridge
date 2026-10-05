@@ -29,6 +29,7 @@
     "test:client-account-deletion:runtime": "node scripts/runDisposableClientAccountDeletionRuntimeHarness.mjs",
     "test:realtime-weight:runtime": "node scripts/runDisposableRealtimeWeightRuntimeHarness.mjs",
     "test:e2e": "node scripts/runCriticalE2E.mjs",
+    "test:e2e:features": "playwright test -c playwright.features.config.ts",
     "test:e2e:install": "playwright install chromium",
     "quality": "npm run typecheck && npm run lint && npm run test && npm run build",
     "test:notification-core": "node scripts/runNotificationCoreContractTests.mjs",
