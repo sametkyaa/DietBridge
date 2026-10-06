@@ -6,6 +6,27 @@ import {
 } from '../services/mealPlanService';
 import type { PlanState, PlannedMealContent } from './mealPlanMove';
 
+const DEFAULT_SLOT_NAMES: Record<WeeklyMealInput['type'], string> = {
+  breakfast: 'kahvaltı',
+  lunch: 'öğle',
+  dinner: 'akşam',
+  snack: 'ara öğün',
+};
+
+/**
+ * Row name → meals.slot_label. The plain type names (Kahvaltı, Öğle, Akşam,
+ * Ara Öğün) are stored as null so older clients keep showing the type label;
+ * any other name ("Antrenman Öncesi") is persisted so it survives a reload.
+ */
+export const resolveMealSlotLabel = (
+  rowName: string,
+  type: WeeklyMealInput['type'],
+): string | null => {
+  const trimmed = rowName.trim().replace(/\s+/g, ' ');
+  if (!trimmed || trimmed.toLocaleLowerCase('tr-TR') === DEFAULT_SLOT_NAMES[type]) return null;
+  return trimmed.slice(0, 40).trim();
+};
+
 export interface MealPlanEditorRow {
   id: string;
   name: string;
@@ -66,8 +87,9 @@ export const buildWeeklyMealPlanPayload = ({
           throw new MealPlanValidationError('MISSING_MEAL_TIME', timeField);
         }
 
+        const mealType = mapMealTypeToDb(mealRow.name);
         const mealData: WeeklyMealInput = {
-          type: mapMealTypeToDb(mealRow.name),
+          type: mealType,
           title: content.name,
           sort_order: meals.findIndex((meal) => meal.id === mealRow.id),
           time: normalizeMealTime(mealRow.time, timeField),
@@ -77,6 +99,7 @@ export const buildWeeklyMealPlanPayload = ({
           recipe_id: content.source === 'recipe' ? content.recipeId ?? null : null,
           calories: content.calories,
           photo_url: resolvePhotoUrl?.(content, dayName, mealId) ?? null,
+          slot_label: resolveMealSlotLabel(mealRow.name, mealType),
         };
 
         if (content.mealId) mealData.id = content.mealId;
