@@ -249,7 +249,8 @@ test('active source chain uses real metrics, actions, export and functional sett
   assert.doesNotMatch(clientDetails, /compliance_score/);
   assert.match(clientDetails, /formatPercentageDisplay\(client\.compliance\)/);
   assert.doesNotMatch(clientDetails, /maximumFractionDigits: 1/);
-  assert.match(dashboard, /formatPercentageDisplay\(client\.compliance\)/);
+  assert.match(dashboard, /formatPercentageDisplay\(averageAdherence\)/);
+  assert.match(dashboard, /activeClients\s*\.map\(\(client\) => client\.compliance\)/);
   assert.doesNotMatch(dashboard, /%\{client\.compliance\}/);
   assert.match(sidebar, /<NavLink[\s\S]*to="\/"[\s\S]*aria-label="Panelim'e git"[\s\S]*APP_LOGO[\s\S]*DietBridge/);
   assert.match(sidebar, /label: 'Panelim', path: '\/'/);
