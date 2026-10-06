@@ -113,6 +113,8 @@ export interface WeeklyMealInput {
   source: 'manual' | 'recipe';
   recipe_id?: string | null;
   snapshot_mode?: 'recipe_master' | 'custom';
+  /** Optional custom slot name (meals.slot_label); null clears it, absent keeps the stored value. */
+  slot_label?: string | null;
 }
 
 export interface WeeklyMealPlanDayInput {
@@ -121,8 +123,9 @@ export interface WeeklyMealPlanDayInput {
   meals: WeeklyMealInput[];
 }
 
-export interface CanonicalMeal extends Required<Omit<WeeklyMealInput, 'recipe_id' | 'calories' | 'photo_url' | 'description' | 'snapshot_mode'>> {
+export interface CanonicalMeal extends Required<Omit<WeeklyMealInput, 'recipe_id' | 'calories' | 'photo_url' | 'description' | 'snapshot_mode' | 'slot_label'>> {
   id: string;
+  slot_label?: string | null;
   plan_id: string;
   calories: number | null;
   description: string | null;
@@ -150,6 +153,16 @@ const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const TIME_WITH_OPTIONAL_SECONDS_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/;
 const MEAL_TYPES = new Set<WeeklyMealInput['type']>(['breakfast', 'lunch', 'dinner', 'snack']);
+export const MEAL_SLOT_LABEL_MAX_LENGTH = 40;
+
+/** meals.slot_label contract: null, or a trimmed 1–40 character name. */
+export const isValidMealSlotLabel = (value: unknown): value is string | null => (
+  value === null
+  || (typeof value === 'string'
+    && value === value.trim()
+    && value.length >= 1
+    && value.length <= MEAL_SLOT_LABEL_MAX_LENGTH)
+);
 
 export const normalizeMealTime = (value: unknown, field = 'time'): string => {
   if (typeof value !== 'string') {
@@ -235,6 +248,9 @@ const assertWeeklyPayload = (weekStart: string, days: WeeklyMealPlanDayInput[]):
       }
       if (meal.description != null && (typeof meal.description !== 'string' || meal.description.length > 2000)) {
         throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', `${field}.description`);
+      }
+      if (meal.slot_label !== undefined && !isValidMealSlotLabel(meal.slot_label)) {
+        throw new MealPlanValidationError('INVALID_WEEK_PAYLOAD', `${field}.slot_label`);
       }
       if (meal.photo_url != null && !isCanonicalMealPhotoPath(meal.photo_url) && !isCanonicalRecipeImagePath(meal.photo_url)) {
         throw new MealPlanValidationError('INVALID_MEAL_PHOTO_PATH', `${field}.photo_url`);
@@ -394,6 +410,7 @@ const assertCanonicalResponse = (
           || (rawMeal.calories !== null && typeof rawMeal.calories !== 'number')
           || (rawMeal.description !== null && typeof rawMeal.description !== 'string')
           || (typeof rawMeal.description === 'string' && rawMeal.description.length > 2000)
+          || (rawMeal.slot_label !== undefined && !isValidMealSlotLabel(rawMeal.slot_label))
           || (rawMeal.photo_url !== null
             && !isReadableMealPhotoReference(rawMeal.photo_url)
             && !isCanonicalRecipeImagePath(rawMeal.photo_url))) {
@@ -501,7 +518,8 @@ export const fetchWeeklyMealPlan = async (
         sort_order,
         time,
         source,
-        recipe_id
+        recipe_id,
+        slot_label
       )
     `)
     .eq('client_id', clientId)

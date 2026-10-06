@@ -217,57 +217,68 @@ test('daily task migration creates the complete fail-closed schema and RLS contr
 
 test('Dashboard uses persistent tasks with real client IDs and distinct operational states', () => {
   const source = read('features/dashboard/pages/DashboardPage.tsx');
+  const panel = read('features/dashboard/components/DashboardTaskPanel.tsx');
+  const form = read('features/dashboard/components/DailyTaskFormModal.tsx');
   assert.doesNotMatch(source, /\bTASKS\b|custom-\$\{Date\.now|newTaskForm|timeInfo/u);
   assert.match(source, /useDailyTasks\(\)/);
   assert.match(source, /await updateTask\(editingTask\.id, taskDraft\)/);
   assert.match(source, /await createTask\(taskDraft\)/);
-  assert.match(source, /await deleteTask\(task\.id\)/);
+  assert.match(source, /await deleteTask\(taskToDelete\.id\)/);
   assert.match(source, /reopenTask\(task\.id\)/);
   assert.match(source, /completeTask\(task\.id\)/);
-  assert.match(source, /taskViewState\.status === 'loading'[\s\S]*taskViewState\.status === 'error'[\s\S]*visibleTasks\.length === 0/);
-  assert.match(source, /value=\{taskDraft\.clientId \|\| ''\}/);
-  assert.match(source, /disabled=\{pendingTaskAction !== null\}/);
+  assert.match(panel, /taskViewState\.status === 'loading' \? \([\s\S]*?\) : taskViewState\.status === 'error' \? \([\s\S]*?\) : manual\.length === 0 && automatic\.length === 0 \?/);
+  assert.match(form, /value=\{draft\.clientId \?\? ''\}/);
+  assert.match(source, /busy=\{pendingTaskAction !== null\}/);
   assert.match(source, /getPendingDailyTaskGroup\(taskDraft\.dueDate, taskDraft\.dueTime\)/);
   assert.match(source, /editingTask\?\.status === 'completed'[\s\S]*?\? 'completed'/);
-  assert.match(source, /taskDialogOpenerRef\.current = document\.activeElement as HTMLElement \| null/);
-  assert.match(source, /taskTitleInputRef\.current\?\.focus\(\)/);
-  assert.match(source, /event\.key === 'Escape'/);
-  assert.match(source, /event\.key !== 'Tab'/);
-  assert.match(source, /taskDialogOpenerRef\.current\?\.focus\(\)/);
+  // Focus trap, Escape and focus restore come from the shared Modal.
+  assert.match(form, /<Modal[\s\S]*initialFocusRef=\{titleRef\}/);
+  assert.match(form, /dismissible=\{!busy\}/);
+});
+
+test('automatic tasks are derived, never persisted and have no completion checkbox', () => {
+  const panel = read('features/dashboard/components/DashboardTaskPanel.tsx');
+  const service = read('features/dashboard/services/automaticTaskService.ts');
+  const automaticRow = panel.slice(panel.indexOf('const AutomaticTaskRow'), panel.indexOf('interface ManualTaskRowProps'));
+  assert.doesNotMatch(automaticRow, /Checkbox|onToggle|completeTask/);
+  assert.match(automaticRow, /<Tag>Otomatik<\/Tag>/);
+  assert.doesNotMatch(service, /\.insert\(|\.update\(|\.upsert\(|\.delete\(|daily_tasks/);
+  assert.match(service, /from\('meal_plans'\)/);
+  assert.match(service, /from\('measurements'\)/);
+  assert.match(service, /fetchPendingMealChangeRequests/);
 });
 
 test('Dashboard task details use persisted task content and keep task actions outside detail trigger', () => {
   const source = read('features/dashboard/pages/DashboardPage.tsx');
+  const panel = read('features/dashboard/components/DashboardTaskPanel.tsx');
+  const detail = read('features/dashboard/components/DailyTaskDetailModal.tsx');
   assert.match(source, /const \[selectedTaskId, setSelectedTaskId\] = useState<string \| null>\(null\)/);
-  assert.match(source, /const selectedTask = selectedTaskId[\s\S]*dailyTasks\.find\(\(task\) => task\.id === selectedTaskId\)/);
-  assert.match(source, /onClick=\{\(\) => openTaskDetails\(task\)\}/);
-  assert.match(source, /id="daily-task-detail-title"[\s\S]*\{selectedTask\.title\}/);
-  assert.match(source, /\{selectedTask\.description \|\| 'Açıklama eklenmemiş\.'\}/);
-  assert.match(source, /selectedTask\.status === 'completed' \? 'Tamamlandı' : 'Bekliyor'/);
-  assert.match(source, /formatTaskDueDate\(selectedTask\.dueDate\)/);
-  assert.match(source, /aria-label="Görev ayrıntısını kapat"[\s\S]*onClick=\{closeTaskDetails\}/);
-  assert.match(source, /if \(event\.key === 'Escape'\)[\s\S]*setSelectedTaskId\(null\)/);
+  assert.match(source, /const selectedTask = selectedTaskId \? dailyTasks\.find\(\(task\) => task\.id === selectedTaskId\)/);
+  assert.match(panel, /onClick=\{\(\) => onOpen\(task\)\}/);
+  assert.match(detail, /title=\{task\?\.title \?\? ''\}/);
+  assert.match(detail, /\{task\.description \|\| 'Açıklama eklenmemiş\.'\}/);
+  assert.match(detail, /task\.status === 'completed' \? 'Tamamlandı' : 'Bekliyor'/);
+  assert.match(detail, /formatTaskDue\(task\)/);
+  assert.match(source, /onClose=\{\(\) => setSelectedTaskId\(null\)\}/);
   assert.match(source, /dailyTasks\.some\(\(task\) => task\.id === selectedTaskId\)/);
-  assert.match(source, /onClick=\{\(\) => void \(task\.status === 'completed' \? reopenTask\(task\.id\) : completeTask\(task\.id\)\)\}/);
-  assert.match(source, /onClick=\{\(\) => openEditTaskModal\(task\)\}/);
-  assert.match(source, /onClick=\{\(\) => void handleDeleteTask\(task\)\}/);
+  assert.match(source, /void \(task\.status === 'completed' \? reopenTask\(task\.id\) : completeTask\(task\.id\)\)/);
+  assert.match(panel, /onClick=\{\(\) => onEdit\(task\)\}/);
+  assert.match(panel, /onClick=\{\(\) => onDelete\(task\)\}/);
+  // Deletion requires an explicit confirmation dialog.
+  assert.match(source, /<ConfirmDialog[\s\S]*title="Görev silinsin mi\?"/);
+  const trigger = panel.slice(panel.indexOf('onClick={() => onOpen(task)}'));
+  assert.doesNotMatch(trigger.slice(0, trigger.indexOf('</button>')), /<div|IconButton|Checkbox/);
 });
 
-test('Dashboard task identity uses the tenant-scoped client list, initials fallback and a general-task icon', () => {
+test('Dashboard task identity uses the tenant-scoped client list and general-task label', () => {
   const source = read('features/dashboard/pages/DashboardPage.tsx');
-  assert.match(source, /const clientById = new Map<string, Client>\([\s\S]*?clients\.map\(\(client\): \[string, Client\] => \[client\.id, client\]\)/);
-  assert.match(source, /clientById\.get\(task\.clientId\)\?\.profilePhotoUrl/);
-  assert.match(source, /onError=\{\(\) => setImageFailed\(true\)\}/);
-  assert.match(source, /getClientInitials\(name\)/);
-  assert.match(source, /task\.clientId !== null/);
-  assert.match(source, /<ListChecks className="h-5 w-5"/);
-  assert.match(source, /<ListChecks className="h-6 w-6"/);
-  const detailTriggerIndex = source.indexOf('onClick={() => openTaskDetails(task)}');
-  assert.notEqual(detailTriggerIndex, -1);
-  const detailTriggerStart = source.lastIndexOf('<button', detailTriggerIndex);
-  const detailTriggerEnd = source.indexOf('</button>', detailTriggerIndex);
-  assert.ok(detailTriggerStart >= 0 && detailTriggerEnd > detailTriggerStart);
-  assert.doesNotMatch(source.slice(detailTriggerStart, detailTriggerEnd), /<div/);
+  const panel = read('features/dashboard/components/DashboardTaskPanel.tsx');
+  const detail = read('features/dashboard/components/DailyTaskDetailModal.tsx');
+  assert.match(source, /const clientById = useMemo\(\(\) => new Map\(clients\.map\(\(client\) => \[client\.id, client\]\)\), \[clients\]\);/);
+  assert.match(source, /clientById\.get\(selectedTask\.clientId\)\?\.profilePhotoUrl/);
+  assert.match(detail, /<Avatar name=/);
+  assert.match(panel, /task\.clientId === null \? 'Genel görev · ' : ''/);
+  assert.match(detail, /task\.clientId === null \? 'Genel görev'/);
   assert.doesNotMatch(source, /task\.clientAvatar[^\n]*src=/);
 });
 
@@ -286,4 +297,74 @@ test('daily task runtime harness is loopback-only, compiles the real service and
   assert.match(source, /TEMPORARY_RELATIONSHIPS_ZERO/);
   assert.match(source, /TEMPORARY_AUTH_USERS_ZERO/);
   assert.match(source, /DISPOSABLE_DOCKER_RESIDUE_ZERO/);
+});
+
+const automatic = require(path.join(buildDir, 'features', 'dashboard', 'utils', 'automaticTaskContract.js'));
+
+const CLIENT_A = '22222222-2222-4222-8222-222222222222';
+const CLIENT_B = '33333333-3333-4333-8333-333333333333';
+const planDay = (clientId, planDate, mealCount, eatenCount) => ({ clientId, planDate, mealCount, eatenCount });
+
+test('automatic tasks: plan expiry is overdue and disappears once a current plan exists', () => {
+  const base = {
+    today: '2026-10-06',
+    clients: [{ id: CLIENT_A, name: 'Ayşe', connectedOn: '2026-08-01' }],
+    pendingRequests: [],
+    latestMeasurements: [{ clientId: CLIENT_A, measuredAt: '2026-10-01' }],
+  };
+  const expired = automatic.deriveAutomaticTasks({ ...base, planDays: [planDay(CLIENT_A, '2026-10-04', 4, 4)] });
+  const task = expired.find((item) => item.kind === 'plan_expired');
+  assert.ok(task);
+  assert.equal(task.group, 'overdue');
+  assert.equal(task.overdueDays, 2);
+  const renewed = automatic.deriveAutomaticTasks({ ...base, planDays: [planDay(CLIENT_A, '2026-10-04', 4, 4), planDay(CLIENT_A, '2026-10-08', 4, 0)] });
+  assert.equal(renewed.some((item) => item.kind === 'plan_expired' || item.kind === 'no_plan'), false);
+});
+
+test('automatic tasks: clients without planned meals get a no-plan task; empty plan rows do not count', () => {
+  const tasks = automatic.deriveAutomaticTasks({
+    today: '2026-10-06',
+    clients: [{ id: CLIENT_B, name: 'Zehra', connectedOn: '2026-10-05' }],
+    planDays: [planDay(CLIENT_B, '2026-10-07', 0, 0)],
+    pendingRequests: [],
+    latestMeasurements: [],
+  });
+  assert.deepEqual(tasks.map((item) => item.kind), ['no_plan']);
+  assert.match(tasks[0].detail, /bağlandı/);
+});
+
+test('automatic tasks: 3 planned days without any marked meal raise inactivity, one completion clears it', () => {
+  const base = {
+    today: '2026-10-06',
+    clients: [{ id: CLIENT_A, name: 'Can', connectedOn: '2026-09-01' }],
+    pendingRequests: [],
+    latestMeasurements: [{ clientId: CLIENT_A, measuredAt: '2026-10-01' }],
+  };
+  const planned = [
+    planDay(CLIENT_A, '2026-10-02', 4, 3),
+    planDay(CLIENT_A, '2026-10-03', 4, 0),
+    planDay(CLIENT_A, '2026-10-04', 4, 0),
+    planDay(CLIENT_A, '2026-10-05', 4, 0),
+    planDay(CLIENT_A, '2026-10-06', 4, 0),
+    planDay(CLIENT_A, '2026-10-10', 4, 0),
+  ];
+  const inactive = automatic.deriveAutomaticTasks({ ...base, planDays: planned });
+  const task = inactive.find((item) => item.kind === 'meal_inactivity');
+  assert.ok(task);
+  assert.equal(task.sinceDate, '2026-10-02');
+  const active = automatic.deriveAutomaticTasks({ ...base, planDays: [...planned.slice(0, 4), planDay(CLIENT_A, '2026-10-06', 4, 1), planned[5]] });
+  assert.equal(active.some((item) => item.kind === 'meal_inactivity'), false);
+});
+
+test('automatic tasks: pending change requests and stale measurements are listed per client', () => {
+  const tasks = automatic.deriveAutomaticTasks({
+    today: '2026-10-06',
+    clients: [{ id: CLIENT_A, name: 'Elif', connectedOn: '2026-01-01' }],
+    planDays: [planDay(CLIENT_A, '2026-10-12', 4, 0)],
+    pendingRequests: [{ id: '44444444-4444-4444-8444-444444444444', clientId: CLIENT_A, planDate: '2026-10-08', createdAt: '2026-10-05T18:20:00.000Z', slotLabel: 'Akşam' }],
+    latestMeasurements: [{ clientId: CLIENT_A, measuredAt: '2026-08-01' }],
+  });
+  assert.deepEqual(tasks.map((item) => item.kind), ['meal_change_request', 'measurement_due']);
+  assert.equal(tasks[0].requestId, '44444444-4444-4444-8444-444444444444');
+  assert.match(tasks[0].detail, /Akşam/);
 });

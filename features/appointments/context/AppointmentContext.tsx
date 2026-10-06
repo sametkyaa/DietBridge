@@ -18,6 +18,7 @@ import {
   deleteAppointmentService,
   fetchAppointmentsAfterDate,
   fetchAppointmentsInRange,
+  setAppointmentStatus,
   updateAppointment as updateAppointmentService,
 } from '../services/appointmentService';
 import {
@@ -45,6 +46,8 @@ interface AppointmentContextType {
   addAppointment: (draft: AppointmentDraft) => Promise<AppointmentMutationResult>;
   updateAppointment: (id: string, draft: AppointmentDraft) => Promise<AppointmentMutationResult>;
   deleteAppointment: (id: string) => Promise<AppointmentMutationResult>;
+  /** Marks an upcoming appointment completed or cancelled. */
+  changeAppointmentStatus: (id: string, status: 'completed' | 'cancelled') => Promise<AppointmentMutationResult>;
   checkAppointmentBooking: (
     draft: AppointmentDraft,
     appointmentId?: string,
@@ -74,6 +77,7 @@ const AppointmentContext = createContext<AppointmentContextType>({
   addAppointment: async () => ({ success: false }),
   updateAppointment: async () => ({ success: false }),
   deleteAppointment: async () => ({ success: false }),
+  changeAppointmentStatus: async () => ({ success: false }),
   checkAppointmentBooking: async () => ({
     success: false,
     message: 'Randevu kaydedilemedi. Lütfen tekrar deneyin.',
@@ -202,6 +206,12 @@ export const AppointmentProvider = ({ children }: PropsWithChildren) => {
     'Randevu silinemedi. Lütfen tekrar deneyin.',
   ), [runMutation]);
 
+  const changeAppointmentStatus = useCallback((id: string, status: 'completed' | 'cancelled') => runMutation(
+    `status:${id}`,
+    () => setAppointmentStatus(id, status),
+    'Randevu durumu güncellenemedi. Lütfen tekrar deneyin.',
+  ), [runMutation]);
+
   const checkAppointmentBooking = useCallback(async (
     draft: AppointmentDraft,
     appointmentId?: string,
@@ -236,6 +246,7 @@ export const AppointmentProvider = ({ children }: PropsWithChildren) => {
     addAppointment,
     updateAppointment,
     deleteAppointment,
+    changeAppointmentStatus,
     checkAppointmentBooking,
     clearMutationError: () => setMutationError(null),
     getAppointmentsByDate,
@@ -243,6 +254,7 @@ export const AppointmentProvider = ({ children }: PropsWithChildren) => {
     addAppointment,
     appointments,
     appointmentsAfterRange,
+    changeAppointmentStatus,
     checkAppointmentBooking,
     deleteAppointment,
     error,

@@ -133,12 +133,24 @@ const getLatestCompletionTimestamp = (
     : latest;
 }, null);
 
+/** Slot name shown to the dietitian: slot_label when set, otherwise the meal type name. */
+export const getMealSlotName = (meal: Pick<MealTrackingMeal, 'type' | 'slotLabel'>): string => (
+  meal.slotLabel?.trim() || MEAL_TYPE_LABELS[meal.type]
+);
+
+/** A today meal whose planned time has passed and is still unmarked. */
+export const isMealPastDue = (
+  meal: { status: MealTrackingMealStatus; time: string | null },
+  isToday: boolean,
+  nowTime: string,
+): boolean => meal.status === 'pending' && isToday && meal.time !== null && meal.time < nowTime;
+
 const createTodayMealEntries = (
   meals: ReadonlyArray<MealTrackingMeal>,
   today: string,
 ): MealTrackingOverviewMealEntry[] => {
-  const typeCounts = new Map<MealTrackingMeal['type'], number>();
-  meals.forEach((meal) => typeCounts.set(meal.type, (typeCounts.get(meal.type) ?? 0) + 1));
+  const nameCounts = new Map<string, number>();
+  meals.forEach((meal) => nameCounts.set(getMealSlotName(meal), (nameCounts.get(getMealSlotName(meal)) ?? 0) + 1));
 
   return [...meals]
     .sort(compareMealOrder)
@@ -146,12 +158,14 @@ const createTodayMealEntries = (
       kind: 'meal' as const,
       id: meal.id,
       type: meal.type,
-      label: (typeCounts.get(meal.type) ?? 0) > 1
-        ? `${MEAL_TYPE_LABELS[meal.type]} · ${formatOptionalMealTime(meal.time)}`
-        : MEAL_TYPE_LABELS[meal.type],
+      label: (nameCounts.get(getMealSlotName(meal)) ?? 0) > 1
+        ? `${getMealSlotName(meal)} · ${formatOptionalMealTime(meal.time)}`
+        : getMealSlotName(meal),
       time: meal.time,
       title: meal.title,
       status: getMealTrackingStatus(meal, meal.date, today),
+      completedAt: meal.completedAt,
+      hasCompletionPhoto: Boolean(meal.completionPhotoPath),
     }));
 };
 
@@ -250,4 +264,69 @@ export const groupMealTrackingDays = (
   return [...byDate.entries()]
     .sort(([left], [right]) => right.localeCompare(left))
     .map(([date, meals]) => summarizeMealTrackingDay(date, [...meals].sort(compareMealOrder)));
+};
+
+export interface MealTrackingOverviewKpis {
+  clientCount: number;
+  clientsWithPlan: number;
+  plannedCount: number;
+  completedCount: number;
+  /** Today: unmarked meals whose time has passed. 7d: planned but not completed. */
+  missedCount: number;
+  missedClientCount: number;
+  /** Today only: meals whose time has not come yet. */
+  upcomingCount: number;
+  nextTime: string | null;
+}
+
+/** Whether a client row needs attention: a past-due meal today, or any incomplete meal in 7 days. */
+export const hasUnmarkedMeals = (
+  client: MealTrackingOverviewClient,
+  view: MealTrackingOverviewView,
+  nowTime: string,
+): boolean => {
+  if (client.plannedCount === 0) return false;
+  if (view === '7d') return client.completedCount < client.plannedCount;
+  return client.mealSummary.some((entry) => entry.kind === 'meal' && isMealPastDue(entry, true, nowTime));
+};
+
+export const summarizeMealTrackingOverviewKpis = (
+  clients: ReadonlyArray<MealTrackingOverviewClient>,
+  view: MealTrackingOverviewView,
+  nowTime: string,
+): MealTrackingOverviewKpis => {
+  let missedCount = 0;
+  let upcomingCount = 0;
+  let nextTime: string | null = null;
+  let missedClientCount = 0;
+  for (const client of clients) {
+    if (view === '7d') {
+      const missed = client.plannedCount - client.completedCount;
+      missedCount += missed;
+      if (missed > 0) missedClientCount += 1;
+      continue;
+    }
+    let clientMissed = false;
+    for (const entry of client.mealSummary) {
+      if (entry.kind !== 'meal' || entry.status !== 'pending') continue;
+      if (isMealPastDue(entry, true, nowTime)) {
+        missedCount += 1;
+        clientMissed = true;
+      } else {
+        upcomingCount += 1;
+        if (entry.time && (!nextTime || entry.time < nextTime)) nextTime = entry.time;
+      }
+    }
+    if (clientMissed) missedClientCount += 1;
+  }
+  return {
+    clientCount: clients.length,
+    clientsWithPlan: clients.filter((client) => client.plannedCount > 0).length,
+    plannedCount: clients.reduce((sum, client) => sum + client.plannedCount, 0),
+    completedCount: clients.reduce((sum, client) => sum + client.completedCount, 0),
+    missedCount,
+    missedClientCount,
+    upcomingCount,
+    nextTime,
+  };
 };
