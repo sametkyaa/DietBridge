@@ -39,10 +39,23 @@
 .recipe-delete { display: grid; place-items: center; width: 34px; height: 34px; border: 0; background: transparent; color: rgb(var(--db-ink-3)); border-radius: 9px; }
 .recipe-delete:hover { background: rgb(var(--db-bad-bg)); color: rgb(var(--db-bad)); }
 .library-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 22px; color: rgb(var(--db-ink-3)); font-size: 11.5px; border-top: 1px solid rgb(var(--db-line)); }
-.meal-client-context { display: flex; gap: 18px; align-items: center; margin-bottom: 18px; padding: 14px 18px; background: rgb(var(--db-surface)); border: 1px solid rgb(var(--db-line)); border-radius: 14px; box-shadow: var(--db-shadow-card); }
+.meal-client-context { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin-bottom: 18px; padding: 14px 18px; background: rgb(var(--db-surface)); border: 1px solid rgb(var(--db-line)); border-radius: 14px; box-shadow: var(--db-shadow-card); }
+.meal-client-context > div:first-child { flex-shrink: 0; max-width: 100%; }
 .meal-client-context > div:first-child > button { border: 0; background: transparent; padding: 0; }
 .meal-client-context .client-avatar { width: 42px; height: 42px; }
-.meal-client-goal { flex: 1; color: rgb(var(--db-ink-2)); font-size: 12px; }
+.meal-client-goal { max-width: 180px; color: rgb(var(--db-ink-2)); font-size: 12px; overflow-wrap: anywhere; }
+.meal-client-details { flex: 1 1 380px; min-width: 0; padding-left: 20px; border-left: 1px solid rgb(var(--db-line)); }
+.meal-client-details-title { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; color: rgb(var(--db-ink-3)); font-size: 11px; font-weight: 500; }
+.meal-client-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.meal-client-fact { min-width: 0; }
+.meal-client-fact dt { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: rgb(var(--db-ink-2)); font-size: 12px; font-weight: 600; }
+.meal-client-fact dd { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; }
+.meal-client-tag { max-width: 100%; padding: 3px 8px; border-radius: 6px; background: rgb(var(--db-surface-alt)); color: rgb(var(--db-ink-2)); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.meal-client-restrictions dt { color: rgb(var(--db-bad)); }
+.meal-client-restrictions .meal-client-tag { background: rgb(var(--db-bad-bg)); color: rgb(var(--db-bad)); }
+.meal-client-unspecified, .meal-client-details-message { color: rgb(var(--db-ink-3)); font-size: 11px; line-height: 1.5; }
+.meal-client-details-message, .meal-client-details-error p { margin: 0; }
+.meal-client-details-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: rgb(var(--db-bad)); font-size: 12px; }
 .plan-summary-row { display: flex; gap: 18px; align-items: stretch; margin-bottom: 20px; }
 .plan-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex: 1; gap: 14px; min-width: 0; }
 .plan-kpis > div { padding: 15px 18px; }
@@ -98,6 +111,7 @@
 .meal-picker-search { width: 100% !important; margin-bottom: 12px; }
 .nutrition-drawer .meal-recipe-picker { border: 0; box-shadow: none; }
 @media (max-width: 1359px) {
+  .meal-client-details { flex-basis: 100%; padding: 12px 0 0; border-left: 0; border-top: 1px solid rgb(var(--db-line)); }
   .meal-plan-workspace { grid-template-columns: minmax(0, 1fr); }
   .meal-plan-rail { display: none; }
   .meal-mobile-picker { display: inline-flex; }
@@ -120,8 +134,8 @@
   .meal-client-context { flex-wrap: wrap; gap: 10px; padding: 12px; }
   .meal-client-context > div:first-child { flex: 1; }
   .meal-client-context > div:first-child > button { min-width: 0; width: 100%; }
-  .meal-client-goal { display: none; }
-  .meal-client-context > button { padding: 0 5px; font-size: 11px; }
+  .meal-client-goal { max-width: none; flex-basis: 100%; padding-left: 54px; }
+  .meal-client-facts { gap: 12px; }
   .plan-summary-row { flex-direction: column; gap: 12px; }
   .plan-kpis { gap: 11px; }
   .plan-kpis > div { padding: 13px; }
