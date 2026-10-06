@@ -4,6 +4,7 @@ import {
   fetchAnalyticsClients,
   fetchClientAnalytics,
 } from '../services/analyticsService';
+import { getPreviousPeriodNow } from '../utils/analyticsInsights';
 import type {
   AnalyticsClientOption,
   AnalyticsDateRangeKey,
@@ -21,6 +22,8 @@ export interface UseAnalyticsResult {
   selectedClient: AnalyticsClientOption | null;
   rangeKey: AnalyticsDateRangeKey;
   report: ClientAnalyticsReport | null;
+  /** Same-length period right before the selected one; null for "Tüm Zamanlar" or when it failed to load. */
+  previousReport: ClientAnalyticsReport | null;
   analyticsStatus: AnalyticsStatus;
   analyticsError: string | null;
   selectClient: (clientId: string | null) => void;
@@ -48,6 +51,7 @@ export const useAnalytics = (): UseAnalyticsResult => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [rangeKey, setRangeKey] = useState<AnalyticsDateRangeKey>('30d');
   const [report, setReport] = useState<ClientAnalyticsReport | null>(null);
+  const [previousReport, setPreviousReport] = useState<ClientAnalyticsReport | null>(null);
   const [analyticsStatus, setAnalyticsStatus] = useState<AnalyticsStatus>('idle');
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const clientRequestGeneration = useRef(0);
@@ -85,6 +89,7 @@ export const useAnalytics = (): UseAnalyticsResult => {
     }
 
     setReport(null);
+    setPreviousReport(null);
     setAnalyticsStatus('loading');
     setAnalyticsError(null);
 
@@ -93,6 +98,15 @@ export const useAnalytics = (): UseAnalyticsResult => {
       if (generation !== analyticsRequestGeneration.current) return;
       setReport(nextReport);
       setAnalyticsStatus('success');
+      // The comparison is optional: a failure here never hides the current report.
+      const previousNow = getPreviousPeriodNow(nextReport.range);
+      if (previousNow) {
+        fetchClientAnalytics(selectedClientId, rangeKey, previousNow)
+          .then((previous) => {
+            if (generation === analyticsRequestGeneration.current) setPreviousReport(previous);
+          })
+          .catch(() => undefined);
+      }
     } catch (cause) {
       if (generation !== analyticsRequestGeneration.current) return;
       setReport(null);
@@ -118,6 +132,7 @@ export const useAnalytics = (): UseAnalyticsResult => {
   const selectClient = useCallback((clientId: string | null) => {
     analyticsRequestGeneration.current += 1;
     setReport(null);
+    setPreviousReport(null);
     setAnalyticsError(null);
     setAnalyticsStatus(clientId === null ? 'idle' : 'loading');
     setSelectedClientId(clientId);
@@ -127,6 +142,7 @@ export const useAnalytics = (): UseAnalyticsResult => {
     if (nextRangeKey === rangeKey) return;
     analyticsRequestGeneration.current += 1;
     setReport(null);
+    setPreviousReport(null);
     setAnalyticsError(null);
     setAnalyticsStatus(selectedClientId === null ? 'idle' : 'loading');
     setRangeKey(nextRangeKey);
@@ -140,6 +156,7 @@ export const useAnalytics = (): UseAnalyticsResult => {
     selectedClient: clients.find((client) => client.id === selectedClientId) ?? null,
     rangeKey,
     report,
+    previousReport,
     analyticsStatus,
     analyticsError,
     selectClient,

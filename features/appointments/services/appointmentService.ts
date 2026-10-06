@@ -13,6 +13,7 @@ import {
 export const APPOINTMENT_LOAD_ERROR = 'Randevular yüklenemedi. Lütfen tekrar deneyin.';
 export const APPOINTMENT_SAVE_ERROR = 'Randevu kaydedilemedi. Lütfen tekrar deneyin.';
 export const APPOINTMENT_DELETE_ERROR = 'Randevu silinemedi. Lütfen tekrar deneyin.';
+export const APPOINTMENT_STATUS_ERROR = 'Randevu durumu güncellenemedi. Lütfen tekrar deneyin.';
 export const APPOINTMENT_SLOT_CONFLICT_ERROR = 'Bu tarih ve saatte zaten bir randevunuz bulunuyor.';
 export const APPOINTMENT_SLOT_CONFLICT_CONSTRAINT = 'appointments_dietitian_date_time_upcoming_unique';
 
@@ -390,5 +391,35 @@ export const deleteAppointmentService = async (id: string): Promise<void> => {
 
   if (error || data?.id !== id) {
     throw new AppointmentServiceError(APPOINTMENT_DELETE_ERROR, error);
+  }
+};
+
+/**
+ * Closes an upcoming appointment as completed or cancelled. Only upcoming rows
+ * of the current dietitian change; a row that is no longer upcoming fails
+ * instead of being silently overwritten. Cancelling notifies the client
+ * through the existing appointment notification trigger.
+ */
+export const setAppointmentStatus = async (
+  id: string,
+  status: Extract<Appointment['status'], 'completed' | 'cancelled'>,
+): Promise<Appointment> => {
+  if (!id || (status !== 'completed' && status !== 'cancelled')) {
+    throw new AppointmentServiceError(APPOINTMENT_STATUS_ERROR);
+  }
+  const dietitianId = await requireCurrentDietitianId(APPOINTMENT_STATUS_ERROR);
+  const { data, error } = await supabase
+    .from('appointments')
+    .update({ status })
+    .eq('id', id)
+    .eq('dietitian_id', dietitianId)
+    .eq('status', SLOT_BLOCKING_APPOINTMENT_STATUSES[0])
+    .select(APPOINTMENT_SELECT)
+    .maybeSingle();
+  if (error || !data) throw new AppointmentServiceError(APPOINTMENT_STATUS_ERROR, error);
+  try {
+    return mapAppointment(data as unknown as AppointmentRow);
+  } catch (cause) {
+    throw new AppointmentServiceError(APPOINTMENT_STATUS_ERROR, cause);
   }
 };

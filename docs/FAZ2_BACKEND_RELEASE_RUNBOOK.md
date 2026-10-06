@@ -82,15 +82,26 @@ update private.notification_producer_flags set enabled = true, updated_at = now(
  where producer = 'client_meal_plan_updated';
 ```
 
-## Başvuru sonucu e-postası — gerçek blocker
+## Başvuru sonucu e-postası
 
-Projede bugün işlemsel e-posta sağlayıcısı yok. Kod ve kuyruk hazır; çalışması için
-production'da şu secret'lar gerekir (değerler uydurulmadı, repo'ya yazılmaz):
+Sağlayıcı: mevcut Resend hesabı; `auth.dietbridge.com.tr` alan adı Resend'de
+doğrulanmış durumda (Supabase Auth e-postaları da buradan gider). Başvuru e-postaları
+için **ayrı** bir Resend API anahtarı kullanılır (izin: yalnızca gönderme, alan adı:
+`auth.dietbridge.com.tr`); Auth'un kullandığı anahtar paylaşılmaz.
+
+Production Edge Function secret'ları (Dashboard → Edge Functions → Secrets). Anahtar
+değeri repo'ya, PR'a veya sohbete yazılmaz:
+
+| Secret | Değer |
+|---|---|
+| `RESEND_API_KEY` | Başvuru e-postaları için oluşturulan ayrı Resend anahtarı |
+| `APPLICATION_EMAIL_FROM` | `DietBridge <bildirim@auth.dietbridge.com.tr>` (doğrulanmış alan adıyla bitmeli) |
+| `DIETBRIDGE_PANEL_URL` | `https://app.dietbridge.com.tr/login` (e-postadaki "Panele giriş" bağlantısı) |
+
+Fonksiyon deploy'u Faz 2 migration'ları uygulandıktan sonra yapılır (kuyruk tablosu
+ve RPC'ler `20261006090600` ile gelir):
 
 ```bash
-supabase secrets set RESEND_API_KEY=<resend api key>
-supabase secrets set APPLICATION_EMAIL_FROM="DietBridge <bildirim@dietbridge.com.tr>"   # doğrulanmış gönderici alan adı
-supabase secrets set DIETBRIDGE_PANEL_URL=https://<web panel adresi>
 supabase functions deploy send-application-result-emails
 ```
 
@@ -98,6 +109,17 @@ Secret'lar yokken fonksiyon `503 provider_not_configured` döner ve kuyruktaki
 satırları **talep etmez**; admin ekranında "kuyrukta bekliyor" bilgisi gösterilir.
 Kuyruk düzenli boşaltılmak istenirse service-role anahtarıyla zamanlanmış bir çağrı
 (ör. pg_cron + pg_net, Vault'ta saklanan URL/anahtar) ayrıca kurulmalıdır.
+Adımlar: iki Vault kaydı (`application_result_email_function_url`,
+`application_result_email_service_role_key`) Dashboard → Vault üzerinden elle
+eklenir, ardından `supabase/rollout/enable_application_result_email_dispatch.sql`
+çalıştırılır (10 dakikada bir, `application-result-email-dispatch`).
+
+## Production notu: ertelenmiş push kaydı
+
+`20260817120000_push_registry_outbox_backend` production'da bilinçli olarak
+uygulanmamıştır. `20261006090400` bu durumda push fonksiyonunu aramaz; bunun
+yerine hiçbir push nesnesinin (push tabloları, yakalama fonksiyonu, bildirim
+trigger'ı) bulunmadığını ön ve son kontrolde doğrular.
 
 ## Geri dönüş
 

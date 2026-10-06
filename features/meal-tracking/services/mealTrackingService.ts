@@ -1,7 +1,7 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { isValidUuid } from '../../../shared/utils/uuid';
 import { isCanonicalRecipeImagePath } from '../../recipes/services/recipeService';
-import { isReadableMealPhotoReference } from '../../meal-plans/services/mealPhotoService';
+import { isCanonicalMealCompletionPhotoPath, isReadableMealPhotoReference } from '../../meal-plans/services/mealPhotoService';
 import { fetchActiveDietitianClientListForUser } from '../../clients/services/clientService';
 import {
   groupMealTrackingDays,
@@ -36,7 +36,9 @@ const MEAL_TRACKING_SELECT = `
     sort_order,
     is_eaten,
     completed_at,
-    photo_url
+    photo_url,
+    slot_label,
+    completion_photo_url
   )
 `;
 
@@ -85,6 +87,18 @@ const normalizePhotoPath = (value: unknown): string | null => {
   return value;
 };
 
+const normalizeSlotLabel = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') throw createContractError('slot_label');
+  return value.trim() || null;
+};
+
+const normalizeCompletionPhotoPath = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  if (!isCanonicalMealCompletionPhotoPath(value)) throw createContractError('completion_photo_url');
+  return value;
+};
+
 const normalizeMeal = (
   rawMeal: unknown,
   planId: string,
@@ -122,6 +136,8 @@ const normalizeMeal = (
     isCompleted: meal.is_eaten,
     completedAt,
     photoPath: normalizePhotoPath(meal.photo_url),
+    slotLabel: normalizeSlotLabel(meal.slot_label),
+    completionPhotoPath: normalizeCompletionPhotoPath(meal.completion_photo_url),
   };
 };
 

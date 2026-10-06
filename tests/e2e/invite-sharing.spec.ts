@@ -27,8 +27,8 @@ test('code copy, HTTPS link, QR PNG, WhatsApp and pause controls render without 
   await page.getByRole('button',{name:'QR oluştur'}).click();await expect(page.getByAltText('Diyetisyen davet bağlantısı QR kodu')).toBeVisible();
   await expect(page.getByRole('link',{name:'QR PNG indir'})).toHaveAttribute('download','dietbridge-davet.png');
   await expect(page.getByRole('link',{name:'WhatsApp’ta paylaş'})).toHaveAttribute('href',/wa\.me/);
-  await page.getByRole('button',{name:'Yeni bağlantıları durdur'}).click();await expect(page.getByText('Yeni bağlantılar durduruldu.',{exact:true})).toBeVisible();
-  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Kodu yenile'}).click();await expect(page.getByText('DB-ABCD-2345-EFGH-6788',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Yeni bağlantıları durdur'}).click();await expect(page.getByText('Yeni bağlantılar durduruldu',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Yeni bağlantıları aç'})).toBeVisible();
+  await page.getByRole('button',{name:'Kodu yenile'}).click();await expect(page.getByText('Geçersiz olacak',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Evet, kodu yenile'}).click();await expect(page.getByText('DB-ABCD-2345-EFGH-6788',{exact:true})).toBeVisible();await expect(page.getByText('Davet kodunuz yenilendi.',{exact:true})).toBeVisible();
   expect(errors).toEqual([]);
 });
 test('default legacy client invitation still renders email entry',async({page})=>{

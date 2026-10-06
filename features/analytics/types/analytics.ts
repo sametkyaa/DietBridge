@@ -149,6 +149,33 @@ export interface AnalyticsDataQuality {
   incompleteMacroMeals: number;
 }
 
+export type MealDayCellState = 'done' | 'partial' | 'missed' | 'open' | 'none';
+
+export interface MealDayCell {
+  date: string;
+  planned: number;
+  completed: number;
+  state: MealDayCellState;
+}
+
+export interface MealDayMatrixRow {
+  type: AnalyticsMealType;
+  cells: MealDayCell[];
+  planned: number;
+  completed: number;
+  percentage: number | null;
+}
+
+/** Meal type × day completion grid for the last days of the selected range. */
+export interface MealDayMatrix {
+  dates: string[];
+  rows: MealDayMatrixRow[];
+  dayTotals: Array<{ date: string; planned: number; completed: number; percentage: number | null }>;
+  planned: number;
+  completed: number;
+  percentage: number | null;
+}
+
 export interface ClientAnalyticsReport {
   clientId: string;
   dietitianId: string;
@@ -161,6 +188,7 @@ export interface ClientAnalyticsReport {
   weeklyAdherence: AnalyticsAdherencePoint[];
   mealTypeAdherence: AnalyticsMealTypeAdherence[];
   plannedNutrition: PlannedNutritionSummary;
+  mealDayMatrix: MealDayMatrix;
   dataQuality: AnalyticsDataQuality;
 }
 
