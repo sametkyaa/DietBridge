@@ -1,20 +1,9 @@
-import { useState } from 'react';
-import {
-  AlertCircle,
-  BadgeCheck,
-  CreditCard,
-  KeyRound,
-  Loader2,
-  LogOut,
-  Mail,
-  ShieldCheck,
-  UserRound,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SubscriptionPanel from '../../subscriptions/components/SubscriptionPanel';
 import { useAuth } from '../../auth/context/AuthContext';
 import { requestCurrentUserPasswordReset } from '../../auth/services/authService';
+import { Badge, Button, Callout, Card, Icon, PageContainer, PageHeader, cx, type IconName, type Tone } from '../../../shared/ui';
 
 type SettingsSection = 'account' | 'billing' | 'security';
 
@@ -22,11 +11,11 @@ const sectionItems: Array<{
   key: SettingsSection;
   label: string;
   description: string;
-  icon: LucideIcon;
+  icon: IconName;
 }> = [
-  { key: 'account', label: 'Hesap', description: 'Profil özeti', icon: UserRound },
-  { key: 'billing', label: 'Plan ve Ödeme', description: 'Abonelik ve limit', icon: CreditCard },
-  { key: 'security', label: 'Güvenlik ve Oturum', description: 'Şifre ve çıkış', icon: ShieldCheck },
+  { key: 'account', label: 'Hesap', description: 'Profil özeti', icon: 'user' },
+  { key: 'billing', label: 'Plan ve Ödeme', description: 'Abonelik ve limit', icon: 'sliders-horizontal' },
+  { key: 'security', label: 'Güvenlik ve Oturum', description: 'Şifre ve çıkış', icon: 'lock' },
 ];
 
 const profileStatusLabel = (status: string | null | undefined): string => {
@@ -37,6 +26,28 @@ const profileStatusLabel = (status: string | null | undefined): string => {
     default: return 'Hazır';
   }
 };
+
+const profileStatusTone = (status: string | null | undefined): Tone => {
+  switch (status) {
+    case 'approved': return 'ok';
+    case 'pending': return 'warn';
+    case 'rejected': return 'bad';
+    default: return 'neutral';
+  }
+};
+
+const SectionHeading = ({ id, icon, title, description, addon }: { id: string; icon: IconName; title: string; description: string; addon?: ReactNode }) => (
+  <div className="flex flex-col gap-3 border-b border-line pb-5 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex items-start gap-3">
+      <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-sunk text-brand"><Icon name={icon} size={19} /></span>
+      <div>
+        <h2 id={id} className="m-0 text-18 font-bold">{title}</h2>
+        <p className="m-0 mt-1 text-13.5 text-ink-2">{description}</p>
+      </div>
+    </div>
+    {addon}
+  </div>
+);
 
 const SettingsPage = () => {
   const navigate = useNavigate();
@@ -103,19 +114,17 @@ const SettingsPage = () => {
   };
 
   return (
-    <div className="mx-auto min-h-screen max-w-7xl p-4 md:p-8">
-      <header className="mb-8">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Çalışma alanı</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-800">Ayarlar</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-          Hesabınızı, aboneliğinizi ve oturum güvenliğinizi tek bir yerden yönetin.
-        </p>
-      </header>
+    <PageContainer>
+      <PageHeader
+        eyebrow="Çalışma alanı"
+        title="Ayarlar"
+        description="Hesabınızı, aboneliğinizi ve oturum güvenliğinizi tek bir yerden yönetin."
+      />
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
+      <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-12">
         <aside className="md:col-span-4 lg:col-span-3">
-          <nav className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm md:flex-col" aria-label="Ayarlar bölümleri">
-            {sectionItems.map(({ key, label, description, icon: Icon }) => {
+          <nav className="flex gap-1.5 overflow-x-auto rounded-card border border-line bg-surface p-2 shadow-card md:flex-col" aria-label="Ayarlar bölümleri">
+            {sectionItems.map(({ key, label, description, icon }) => {
               const isActive = activeSection === key;
               return (
                 <button
@@ -123,12 +132,15 @@ const SettingsPage = () => {
                   type="button"
                   onClick={() => setActiveSection(key)}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`flex min-w-max flex-1 items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 md:flex-none md:px-4 ${isActive ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                  className={cx(
+                    'flex min-h-11 min-w-max flex-1 items-center gap-3 rounded-control px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:shadow-focus md:flex-none',
+                    isActive ? 'bg-sunk text-ink' : 'text-ink-2 hover:bg-sunk/60',
+                  )}
                 >
-                  <Icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-primary' : 'text-slate-400'}`} aria-hidden="true" />
+                  <Icon name={icon} size={18} className={isActive ? 'text-brand' : 'text-ink-3'} />
                   <span className="min-w-0">
-                    <span className="block whitespace-nowrap text-sm font-semibold">{label}</span>
-                    <span className="hidden text-xs text-slate-400 md:block">{description}</span>
+                    <span className="block whitespace-nowrap text-14 font-semibold">{label}</span>
+                    <span className="hidden text-12 text-ink-3 md:block">{description}</span>
                   </span>
                 </button>
               );
@@ -136,118 +148,100 @@ const SettingsPage = () => {
           </nav>
         </aside>
 
-        <main className="min-w-0 md:col-span-8 lg:col-span-9">
+        <div className="min-w-0 md:col-span-8 lg:col-span-9">
           {activeSection === 'account' && (
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" aria-labelledby="settings-account-title">
-              <div className="flex flex-col gap-4 border-b border-slate-100 pb-6 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="mb-3 inline-flex rounded-xl bg-emerald-50 p-2.5 text-primary"><UserRound className="h-5 w-5" aria-hidden="true" /></div>
-                  <h2 id="settings-account-title" className="text-xl font-bold text-slate-800">Hesap</h2>
-                  <p className="mt-1 text-sm text-slate-500">Kısa hesap ve profil özeti.</p>
-                </div>
-                <div className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                  <BadgeCheck className="h-4 w-4" aria-hidden="true" />
-                  {profileStatusLabel(currentProfileStatus)}
-                </div>
-              </div>
+            <Card as="section" padding="none" className="p-5 sm:p-6" aria-labelledby="settings-account-title">
+              <SectionHeading
+                id="settings-account-title"
+                icon="user"
+                title="Hesap"
+                description="Kısa hesap ve profil özeti."
+                addon={<Badge tone={profileStatusTone(currentProfileStatus)} dot className="self-start">{profileStatusLabel(currentProfileStatus)}</Badge>}
+              />
 
-              <dl className="grid gap-4 py-6 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ad Soyad</dt>
-                  <dd className="mt-2 break-words text-sm font-semibold text-slate-800">{accountName}</dd>
+              <dl className="m-0 grid gap-3 py-5 sm:grid-cols-2">
+                <div className="rounded-db border border-line bg-canvas p-4">
+                  <dt className="text-12 font-semibold uppercase tracking-[0.06em] text-ink-3">Ad Soyad</dt>
+                  <dd className="m-0 mt-1.5 break-words text-14.5 font-semibold">{accountName}</dd>
                 </div>
-                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
-                  <dt className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400"><Mail className="h-3.5 w-3.5" aria-hidden="true" /> E-posta</dt>
-                  <dd className="mt-2 break-words text-sm font-semibold text-slate-800">{accountEmail || 'Veri yok'}</dd>
+                <div className="rounded-db border border-line bg-canvas p-4">
+                  <dt className="flex items-center gap-1.5 text-12 font-semibold uppercase tracking-[0.06em] text-ink-3"><Icon name="envelope" size={13} /> E-posta</dt>
+                  <dd className="m-0 mt-1.5 break-words text-14.5 font-semibold">{accountEmail || 'Veri yok'}</dd>
                 </div>
               </dl>
 
-              <div className="flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => navigate('/profile')}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                >
-                  Profili Görüntüle
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/profile/edit')}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                >
-                  Profili Düzenle
-                </button>
+              <div className="flex flex-col gap-2.5 border-t border-line pt-5 sm:flex-row">
+                <Button variant="secondary" onClick={() => navigate('/profile')}>Profili Görüntüle</Button>
+                <Button variant="primary" leftIcon="pencil-simple" onClick={() => navigate('/profile/edit')}>Profili Düzenle</Button>
               </div>
-            </section>
+            </Card>
           )}
 
           {activeSection === 'billing' && (
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" aria-labelledby="settings-billing-title">
-              <div className="mb-6 border-b border-slate-100 pb-6">
-                <div className="mb-3 inline-flex rounded-xl bg-blue-50 p-2.5 text-blue-600"><CreditCard className="h-5 w-5" aria-hidden="true" /></div>
-                <h2 id="settings-billing-title" className="text-xl font-bold text-slate-800">Plan ve Ödeme</h2>
-                <p className="mt-1 text-sm text-slate-500">Mevcut aboneliğinizi ve danışan kullanımınızı görüntüleyin.</p>
+            <Card as="section" padding="none" className="p-5 sm:p-6" aria-labelledby="settings-billing-title">
+              <SectionHeading
+                id="settings-billing-title"
+                icon="sliders-horizontal"
+                title="Plan ve Ödeme"
+                description="Mevcut aboneliğinizi, dönem bilginizi ve danışan kullanımınızı görüntüleyin."
+              />
+              <div className="pt-5">
+                <SubscriptionPanel />
               </div>
-              <SubscriptionPanel />
-            </section>
+            </Card>
           )}
 
           {activeSection === 'security' && (
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" aria-labelledby="settings-security-title">
-              <div className="border-b border-slate-100 pb-6">
-                <div className="mb-3 inline-flex rounded-xl bg-violet-50 p-2.5 text-violet-600"><ShieldCheck className="h-5 w-5" aria-hidden="true" /></div>
-                <h2 id="settings-security-title" className="text-xl font-bold text-slate-800">Güvenlik ve Oturum</h2>
-                <p className="mt-1 text-sm text-slate-500">Oturum erişiminizi koruyun ve hesabınızdan güvenle çıkış yapın.</p>
-              </div>
+            <Card as="section" padding="none" className="p-5 sm:p-6" aria-labelledby="settings-security-title">
+              <SectionHeading
+                id="settings-security-title"
+                icon="lock"
+                title="Güvenlik ve Oturum"
+                description="Oturum erişiminizi koruyun ve hesabınızdan güvenle çıkış yapın."
+              />
 
-              <div className="py-6">
-                <div className="flex flex-col gap-4 rounded-xl border border-slate-100 bg-slate-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="py-5">
+                <div className="flex flex-col gap-4 rounded-db border border-line bg-canvas p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-start gap-3">
-                    <div className="rounded-lg bg-white p-2 text-slate-500 shadow-sm"><Mail className="h-4 w-4" aria-hidden="true" /></div>
+                    <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-control bg-surface text-ink-3 shadow-card"><Icon name="envelope" size={16} /></span>
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Hesap e-postası</p>
-                      <p className="mt-1 break-words text-sm font-semibold text-slate-800">{accountEmail || 'Veri yok'}</p>
+                      <p className="m-0 text-12 font-semibold uppercase tracking-[0.06em] text-ink-3">Hesap e-postası</p>
+                      <p className="m-0 mt-1 break-words text-14.5 font-semibold">{accountEmail || 'Veri yok'}</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void handlePasswordReset()}
+                  <Button
+                    variant="secondary"
+                    leftIcon="key"
+                    loading={isResettingPassword}
                     disabled={isResettingPassword || !accountEmail}
-                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void handlePasswordReset()}
+                    className="shrink-0"
                   >
-                    {isResettingPassword ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <KeyRound className="h-4 w-4" aria-hidden="true" />}
                     {isResettingPassword ? 'Gönderiliyor...' : 'Şifre Yenileme Bağlantısı Gönder'}
-                  </button>
+                  </Button>
                 </div>
-                <p className="mt-3 text-xs leading-5 text-slate-400">Bağlantı, bu hesabın e-posta adresine gönderilir ve şifre yenileme ekranına yönlendirir.</p>
+                <p className="m-0 mt-3 text-12.5 leading-5 text-ink-3">Bağlantı, bu hesabın e-posta adresine gönderilir ve şifre yenileme ekranına yönlendirir.</p>
                 {resetFeedback && (
-                  <div className={`mt-4 flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${resetFeedback.type === 'success' ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-red-100 bg-red-50 text-red-700'}`} role={resetFeedback.type === 'error' ? 'alert' : 'status'}>
-                    {resetFeedback.type === 'success' ? <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
-                    <span>{resetFeedback.message}</span>
-                  </div>
+                  <Callout tone={resetFeedback.type === 'success' ? 'ok' : 'bad'} role={resetFeedback.type === 'error' ? 'alert' : 'status'} className="mt-4">
+                    {resetFeedback.message}
+                  </Callout>
                 )}
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-800">Oturumu kapat</p>
-                  <p className="mt-1 text-xs text-slate-500">Bu cihazdaki DietBridge oturumunuz sonlandırılır.</p>
+                  <p className="m-0 text-14 font-semibold">Oturumu kapat</p>
+                  <p className="m-0 mt-1 text-12.5 text-ink-2">Bu cihazdaki DietBridge oturumunuz sonlandırılır.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void handleSignOut()}
-                  disabled={isSigningOut}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSigningOut ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <LogOut className="h-4 w-4" aria-hidden="true" />}
+                <Button variant="danger" leftIcon="sign-out" loading={isSigningOut} disabled={isSigningOut} onClick={() => void handleSignOut()}>
                   {isSigningOut ? 'Çıkış yapılıyor...' : 'Çıkış Yap'}
-                </button>
+                </Button>
               </div>
-            </section>
+            </Card>
           )}
-        </main>
+        </div>
       </div>
-    </div>
+    </PageContainer>
   );
 };
 

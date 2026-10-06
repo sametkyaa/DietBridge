@@ -34,6 +34,7 @@ import {
 } from '../features/clients/services/clientService';
 import {
   mapMealTypeToDb,
+  MEAL_SLOT_LABEL_MAX_LENGTH,
   fetchWeeklyMealPlan,
   getMealPlanErrorLogContext,
   getMealPlanUserMessage,
@@ -79,6 +80,10 @@ import {
   type PlannedMealContent,
 } from '../features/meal-plans/utils/mealPlanMove';
 import { buildWeeklyMealPlanPayload } from '../features/meal-plans/utils/mealPlanPayload';
+import { findDietaryConflicts, summarizeDailyCalories } from '../features/meal-plans/utils/mealPlanInsights';
+import { useNutritionTarget } from '../features/clients/hooks/useNutritionTarget';
+import { formatNutritionTarget } from '../features/clients/services/nutritionTargetService';
+import { NutritionTargetEditor } from '../features/clients/components/NutritionTargetEditor';
 import {
   applyMealPlanSnapshotEdit,
   createMealPlanSnapshotDraft,
@@ -154,12 +159,6 @@ interface MealEditSession {
   initialImagePreview: string | null;
 }
 
-const DEFAULT_MEAL_ROWS: MealRow[] = [
-  { id: 'm1', name: 'Kahvaltı', time: '08:00' },
-  { id: 'm2', name: 'Öğle', time: '12:30' },
-  { id: 'm3', name: 'Akşam', time: '19:00' },
-];
-
 const MEAL_PHOTO_ERROR_MESSAGE = 'Lütfen en fazla 5 MiB boyutunda JPEG, PNG veya WebP görsel seçin.';
 
 const isLocalObjectUrl = (value: string | null | undefined): value is string => (
@@ -200,7 +199,9 @@ type MealRowNameByPlacement = Map<string, string>;
 
 const getMealRowDetails = (meal: MealPlanReadMeal, rowNamesByPlacement?: MealRowNameByPlacement) => {
   const placementKey = `${meal.type}-${meal.time}-${meal.sort_order}`;
-  const rowName = rowNamesByPlacement?.get(placementKey) ?? (meal.type === 'breakfast' ? 'Kahvaltı'
+  // A persisted slot_label is the dietitian's own row name (e.g. "Antrenman Öncesi").
+  const storedSlotLabel = typeof meal.slot_label === 'string' ? meal.slot_label.trim() : '';
+  const rowName = storedSlotLabel || rowNamesByPlacement?.get(placementKey) || (meal.type === 'breakfast' ? 'Kahvaltı'
     : meal.type === 'lunch' ? 'Öğle'
       : meal.type === 'dinner' ? 'Akşam'
         : 'Ara Öğün');
@@ -229,9 +230,9 @@ const mapCanonicalPlansToEditor = (
 
   const orderedRows = [...rowDetails.values()]
     .sort((left, right) => left.sortOrder - right.sortOrder || compareOptionalMealTimes(left.time, right.time) || left.key.localeCompare(right.key));
-  const meals = orderedRows.length === 0
-    ? DEFAULT_MEAL_ROWS.map((meal) => ({ ...meal }))
-    : orderedRows.map((details, index) => ({ id: `meal-loaded-${index}`, name: details.rowName, time: details.time }));
+  // No hardcoded rows: an empty week has no rows until the dietitian adds one
+  // or the previous week's structure is offered (see loadWeeklyPlan).
+  const meals = orderedRows.map((details, index) => ({ id: `meal-loaded-${index}`, name: details.rowName, time: details.time }));
   const rowIdByKey = new Map(orderedRows.map((details, index) => [details.key, meals[index].id]));
   const weeklyPlan: PlanState = {};
   const planNotes: PlanNotesState = {};
@@ -358,7 +359,8 @@ const MealPlans = () => {
   const copyTargetRef = useRef('');
   
   // Dynamic Meals State (Editable)
-  const [meals, setMeals] = useState<MealRow[]>(DEFAULT_MEAL_ROWS);
+  const [meals, setMeals] = useState<MealRow[]>([]);
+  const [structureNotice, setStructureNotice] = useState<string | null>(null);
 
   const [weeklyPlan, setWeeklyPlan] = useState<PlanState>({});
   const weeklyPlanRef = useRef<PlanState>({});
@@ -440,7 +442,8 @@ const MealPlans = () => {
         const storageKey = `dietbridge:meal-plans:last-client:${user.id}`;
         const storedClientId = localStorage.getItem(storageKey);
         const navClientId = (location.state as { clientId?: string } | null)?.clientId;
-        const preferredId = [navClientId, storedClientId].find((id) => id && isValidUuid(id));
+        const queryClientId = new URLSearchParams(location.search).get('clientId');
+        const preferredId = [navClientId, queryClientId, storedClientId].find((id) => id && isValidUuid(id));
         const nextClient = activeClients.find((client) => client.id === preferredId)
           ?? activeClients[0]
           ?? null;
@@ -462,7 +465,22 @@ const MealPlans = () => {
     };
     void loadClients();
     return () => { active = false; };
-  }, [clientLoadAttempt, location.state]);
+  }, [clientLoadAttempt, location.search, location.state]);
+
+  const nutritionTarget = useNutritionTarget(selectedClient?.id ?? null);
+  const [isEditingNutritionTarget, setIsEditingNutritionTarget] = useState(false);
+  const currentNutritionTarget = nutritionTarget.state.status === 'success' ? nutritionTarget.state.target : null;
+  const nutritionTargetLabel = formatNutritionTarget(currentNutritionTarget);
+  const dailyCalorieTotals = summarizeDailyCalories(
+    DAYS,
+    meals.map((meal) => meal.id),
+    weeklyPlan,
+    currentNutritionTarget,
+  );
+
+  useEffect(() => {
+    setIsEditingNutritionTarget(false);
+  }, [selectedClient?.id]);
 
   const loadRecipes = useCallback(async () => {
     setIsLoadingRecipes(true);
@@ -526,7 +544,30 @@ const MealPlans = () => {
       );
       if (requestId !== planRequestRef.current) return;
       const editor = mapCanonicalPlansToEditor(plans, snapshot.weekStart, photoPreviews);
-      setMeals(editor.meals);
+      let rows = editor.meals;
+      let notice: string | null = null;
+      if (rows.length === 0) {
+        // Empty week: offer last week's row layout (names and times only, no meals).
+        const previousWeekStart = shiftMealPlanWeek(snapshot.weekStart, -1);
+        try {
+          const previousPlans = await fetchWeeklyMealPlan(
+            snapshot.clientId,
+            snapshot.dietitianId,
+            previousWeekStart,
+            getMealPlanWeekDates(previousWeekStart)[6],
+          );
+          if (requestId !== planRequestRef.current) return;
+          const previousRows = createPreviousWeekCopy(previousPlans, previousWeekStart).meals;
+          if (previousRows.length > 0) {
+            rows = previousRows.map((row, index) => ({ ...row, id: `meal-structure-${index}` }));
+            notice = 'Bu hafta boş. Geçen haftanın öğün düzeni kullanıldı; öğünler kopyalanmadı.';
+          }
+        } catch (error) {
+          console.error('Previous week structure could not be loaded:', getMealPlanErrorLogContext(error));
+        }
+      }
+      setStructureNotice(notice);
+      setMeals(rows);
       setWeeklyPlan(editor.weeklyPlan);
       setPlanNotes(editor.planNotes);
       setIsPlanEmpty(editor.isEmpty);
@@ -1577,7 +1618,7 @@ const MealPlans = () => {
                     </div>
                   )}
 
-                  {isPlanEmpty && !isLoadingPlan && (
+                  {isPlanEmpty && !isLoadingPlan && !structureNotice && (
                     <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
                       Bu hafta için kaydedilmiş öğün yok. Boş bir plan oluşturabilirsiniz.
                     </div>
@@ -1596,6 +1637,26 @@ const MealPlans = () => {
                      ))}
                   </div>
 
+                  <datalist id="meal-row-name-options">
+                    {MEAL_OPTIONS.map((option) => <option key={option} value={option} />)}
+                  </datalist>
+
+                  {structureNotice && !isLoadingPlan && (
+                    <div className="border-b border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800" role="status">
+                      {structureNotice}
+                    </div>
+                  )}
+
+                  {meals.length === 0 && !isLoadingPlan && (
+                    <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center" role="status">
+                      <p className="font-semibold text-slate-700">Bu haftada öğün satırı yok.</p>
+                      <p className="max-w-md text-sm text-slate-500">Planı kurmak için önce bir öğün satırı ekleyin (ör. Kahvaltı 08:00). Satır adı ve saati kaydedildiğinde danışanın uygulamasında aynı görünür.</p>
+                      <button type="button" onClick={() => setIsAddMealModalOpen(true)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">
+                        <Plus className="h-4 w-4" /> Öğün ekle
+                      </button>
+                    </div>
+                  )}
+
                   {/* Dynamic Meal Rows */}
                   {meals.map((meal, idx) => (
                     <div key={meal.id} className={`grid grid-cols-8 divide-x divide-slate-100 ${idx !== meals.length - 1 ? 'border-b border-slate-100' : ''}`}>
@@ -1609,15 +1670,16 @@ const MealPlans = () => {
                           <div className="flex flex-col items-center w-full px-1 gap-1 relative z-10 pl-5">
                              {/* Meal Type Dropdown */}
                              <div className="relative w-full">
-                                <select 
+                                <input
+                                   type="text"
                                    value={meal.name}
+                                   list="meal-row-name-options"
+                                   maxLength={MEAL_SLOT_LABEL_MAX_LENGTH}
+                                   aria-label="Öğün adı"
+                                   title={meal.name}
                                    onChange={(e) => handleUpdateMeal(meal.id, 'name', e.target.value)}
-                                   className="appearance-none w-full text-center font-bold text-slate-700 text-sm bg-transparent border-b border-transparent hover:border-primary/30 focus:border-primary focus:outline-none py-1 cursor-pointer transition-colors"
-                                >
-                                   {MEAL_OPTIONS.map(opt => (
-                                     <option key={opt} value={opt}>{opt}</option>
-                                   ))}
-                                </select>
+                                   className="w-full text-center font-bold text-slate-700 text-xs bg-transparent border-b border-transparent hover:border-primary/30 focus:border-primary focus:outline-none py-1 transition-colors"
+                                />
                              </div>
 
                              {/* Time Input - Manual Text Entry */}
@@ -1716,6 +1778,24 @@ const MealPlans = () => {
                                         </span>
                                         <span className="text-[10px] text-slate-400">{cellContent.macros.protein}g Prot</span>
                                      </div>
+                                     {(() => {
+                                       const conflicts = findDietaryConflicts(
+                                         `${cellContent.name} ${cellContent.description ?? ''}`,
+                                         clientDetails?.foodIntolerances ?? [],
+                                         clientDetails?.dislikedFoods ?? [],
+                                       );
+                                       if (conflicts.intolerances.length === 0 && conflicts.dislikes.length === 0) return null;
+                                       return (
+                                         <div className="flex flex-wrap gap-1 px-1">
+                                           {conflicts.intolerances.map((item) => (
+                                             <span key={`i-${item}`} className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700" title="Danışanın belirttiği intolerans">⚠ {item}</span>
+                                           ))}
+                                           {conflicts.dislikes.map((item) => (
+                                             <span key={`d-${item}`} className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Danışanın sevmediği besin">Sevmiyor: {item}</span>
+                                           ))}
+                                         </div>
+                                       );
+                                     })()}
                                    </button>
                                     <div className="absolute left-2 top-2 z-10 flex items-center gap-1">
                                       <button
@@ -1768,6 +1848,32 @@ const MealPlans = () => {
                     </div>
                   ))}
 
+                  {meals.length > 0 && (
+                    <div className="grid grid-cols-8 divide-x divide-slate-100 border-t border-slate-200 bg-slate-50/70" aria-label="Günlük planlanan kalori">
+                      <div className="flex flex-col items-center justify-center p-2 text-center">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Günlük toplam</span>
+                        {nutritionTargetLabel && <span className="mt-0.5 text-[11px] text-slate-400">Hedef {nutritionTargetLabel}</span>}
+                      </div>
+                      {dailyCalorieTotals.map((total) => (
+                        <div key={total.day} className="flex flex-col items-center justify-center p-2 text-center">
+                          {total.mealCount === 0 ? (
+                            <span className="text-xs text-slate-400">—</span>
+                          ) : (
+                            <>
+                              <span className={`text-sm font-bold tabular-nums ${total.status === 'below' ? 'text-amber-700' : total.status === 'above' ? 'text-rose-700' : total.status === 'within' ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                {total.calories.toLocaleString('tr-TR')} kcal
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                {total.status === 'below' ? 'Hedefin altında' : total.status === 'above' ? 'Hedefin üstünde' : total.status === 'within' ? 'Hedef aralığında' : `${total.mealCount} öğün`}
+                                {total.missingCalories > 0 ? ` · ${total.missingCalories} öğünde kalori yok` : ''}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Add New Meal Row Button */}
                   <div className="border-t border-slate-200 bg-slate-50 p-2">
                     <button 
@@ -1817,6 +1923,35 @@ const MealPlans = () => {
                 </div>
               </div>
             ) : <p className="text-xs text-slate-400">{isClientDetailsEmpty ? 'Yok' : 'Danışan ayrıntısı bulunamadı.'}</p>}
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-bold text-slate-700">Günlük kalori hedefi</p>
+                {nutritionTarget.state.status === 'success' && !isEditingNutritionTarget && (
+                  <button type="button" onClick={() => setIsEditingNutritionTarget(true)} className="min-h-8 rounded-md px-2 text-xs font-semibold text-primary hover:bg-emerald-50">
+                    {currentNutritionTarget ? 'Düzenle' : 'Belirle'}
+                  </button>
+                )}
+              </div>
+              {nutritionTarget.state.status === 'loading' || nutritionTarget.state.status === 'idle' ? (
+                <p className="mt-1 text-xs text-slate-500">Yükleniyor…</p>
+              ) : nutritionTarget.state.status === 'error' ? (
+                <p className="mt-1 text-xs text-rose-700" role="alert">
+                  {nutritionTarget.state.message}{' '}
+                  <button type="button" onClick={() => void nutritionTarget.reload()} className="font-semibold underline">Tekrar dene</button>
+                </p>
+              ) : isEditingNutritionTarget && selectedClient ? (
+                <div className="mt-2">
+                  <NutritionTargetEditor
+                    clientId={selectedClient.id}
+                    target={currentNutritionTarget}
+                    onSaved={(saved) => { nutritionTarget.setTarget(saved); setIsEditingNutritionTarget(false); }}
+                    onCancel={() => setIsEditingNutritionTarget(false)}
+                  />
+                </div>
+              ) : (
+                <p className="mt-1 text-sm font-semibold text-slate-800">{nutritionTargetLabel ?? <span className="text-xs font-normal text-slate-400">Henüz belirlenmedi; günlük toplamlar hedefle karşılaştırılmaz.</span>}</p>
+              )}
+            </div>
           </div>
         ) : (
           <div className="p-6 border-b border-slate-100 bg-slate-50 flex items-center justify-center text-slate-400 text-sm">

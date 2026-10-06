@@ -1,40 +1,44 @@
-import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { 
-  CheckCircle2, 
-  Search, 
-  ChevronRight, 
-  Calendar, 
-  ClipboardList,
-  MessageCircle,
-  X,
-  Plus,
-  User,
-  AlertCircle,
-  Edit2,
-  Loader2,
-  RefreshCw,
-  RotateCcw,
-  Trash2,
-  ListChecks,
-} from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import DietitianAvatar from '../../../shared/components/DietitianAvatar';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useAppointments } from '../../appointments/context/AppointmentContext';
 import {
   appointmentRangeCovers,
   getAppointmentRangeForDate,
+  getMondayFirstWeekRange,
+  getTimeZoneDateTimeKey,
   getTodayDateKey,
+  sortAppointmentsChronologically,
 } from '../../appointments/utils/appointmentContract';
+import { useAuth } from '../../auth/context/AuthContext';
+import { fetchChatConversations } from '../../chat/services/chatService';
+import { useUnreadCounts } from '../../chat/context/UnreadCountsContext';
 import { fetchDietitianClients } from '../../clients/services/clientService';
-import { Client } from '../../../shared/types';
+import { MealChangeRequestReviewDialog } from '../../meal-change-requests/components/MealChangeRequestReviewDialog';
+import { fetchPendingMealChangeRequests } from '../../meal-change-requests/services/mealChangeRequestService';
+import type { MealChangeRequest } from '../../meal-change-requests/types/mealChangeRequest';
+import NotificationBell from '../../notifications/components/NotificationBell';
+import type { Appointment, Client } from '../../../shared/types';
+import {
+  Callout,
+  ConfirmDialog,
+  KpiGrid,
+  KpiTile,
+  LinkButton,
+  PageContainer,
+  PageHeader,
+} from '../../../shared/ui';
+import { formatPercentageDisplay } from '../../../shared/utils/percentageDisplay';
+import { DailyTaskDetailModal } from '../components/DailyTaskDetailModal';
+import { DailyTaskFormModal } from '../components/DailyTaskFormModal';
+import { DashboardClientSearch } from '../components/DashboardClientSearch';
+import { DashboardTaskPanel, type TaskTab } from '../components/DashboardTaskPanel';
+import { NextAppointmentBanner } from '../components/NextAppointmentBanner';
+import { RecentMessagesCard, type RecentMessagesState } from '../components/RecentMessagesCard';
+import { TodayScheduleCard } from '../components/TodayScheduleCard';
+import { useAutomaticTasks } from '../hooks/useAutomaticTasks';
 import { useDailyTasks } from '../hooks/useDailyTasks';
-import type { DailyTask, DailyTaskDraft, DailyTaskGroups } from '../types/dailyTask';
+import type { DailyTask, DailyTaskDraft } from '../types/dailyTask';
 import { getIstanbulDateKey, getPendingDailyTaskGroup } from '../utils/dailyTaskContract';
 import { getDashboardFocusMessage, summarizeDashboard } from '../utils/dashboardContract';
-import NotificationBell from '../../notifications/components/NotificationBell';
-import { formatPercentageDisplay } from '../../../shared/utils/percentageDisplay';
-
-type TaskFilter = keyof DailyTaskGroups;
 
 const emptyTaskDraft = (): DailyTaskDraft => ({
   clientId: null,
@@ -45,96 +49,58 @@ const emptyTaskDraft = (): DailyTaskDraft => ({
   priority: 'medium',
 });
 
-const TASK_FILTERS: Array<{ key: TaskFilter; label: string }> = [
-  { key: 'overdue', label: 'Geciken' },
-  { key: 'today', label: 'Bugün' },
-  { key: 'upcoming', label: 'Yaklaşan' },
-  { key: 'completed', label: 'Tamamlanan' },
-];
+/** Istanbul has used a fixed UTC+03:00 offset since 2016. */
+const appointmentStartMs = (appointment: Pick<Appointment, 'date' | 'time'>) => (
+  Date.parse(`${appointment.date}T${appointment.time}:00+03:00`)
+);
 
-const getClientInitials = (name: string): string => {
-  const initials = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toLocaleUpperCase('tr-TR'))
-    .join('');
-
-  return initials || '?';
+const greetingFor = (hour: number): string => {
+  if (hour < 5) return 'İyi geceler';
+  if (hour < 12) return 'Günaydın';
+  if (hour < 18) return 'İyi günler';
+  return 'İyi akşamlar';
 };
 
-const TaskClientAvatar: React.FC<{
-  name: string;
-  src: string | null;
-  sizeClassName: string;
-}> = ({ name, src, sizeClassName }) => {
-  const [imageFailed, setImageFailed] = useState(false);
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [src]);
-
-  if (!src || imageFailed) {
-    return (
-      <span
-        role="img"
-        aria-label={`${name} profil fotoğrafı yok`}
-        className={`${sizeClassName} flex shrink-0 items-center justify-center rounded-full bg-emerald-100 font-bold text-emerald-700`}
-      >
-        {getClientInitials(name)}
-      </span>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={name}
-      onError={() => setImageFailed(true)}
-      className={`${sizeClassName} shrink-0 rounded-full object-cover`}
-    />
-  );
-};
-
-const formatTaskDueDate = (dateKey: string): string => {
-  const date = new Date(`${dateKey}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return 'Tarih belirtilmemiş';
-
-  return new Intl.DateTimeFormat('tr-TR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(date);
+const formatLongDate = (now: Date) => {
+  const weekday = new Intl.DateTimeFormat('tr-TR', { weekday: 'long', timeZone: 'Europe/Istanbul' }).format(now);
+  const date = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Istanbul' }).format(now);
+  return `${weekday}, ${date}`;
 };
 
 const DashboardPage = () => {
-  const navigate = useNavigate();
-  // Clients State
+  const { dietitianProfile, user } = useAuth();
+  const userId = user?.id ?? null;
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // ---- clients (real list; also feeds search + task form) -----------------
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
   const [clientLoadError, setClientLoadError] = useState(false);
+  const loadClients = useCallback(async () => {
+    setLoadingClients(true);
+    setClientLoadError(false);
+    try {
+      setClients(await fetchDietitianClients());
+    } catch (error) {
+      console.error('Dashboard client load failed:', error instanceof Error ? error.message : 'unknown');
+      setClients([]);
+      setClientLoadError(true);
+    } finally {
+      setLoadingClients(false);
+    }
+  }, []);
+  useEffect(() => {
+    void loadClients();
+  }, [loadClients]);
+  const activeClients = useMemo(() => clients.filter((client) => client.status === 'Aktif'), [clients]);
+  const pendingClientCount = clients.length - activeClients.length;
+  const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
 
-  // Search State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  // Task Management State
-  const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [taskFilter, setTaskFilter] = useState<TaskFilter>('today');
-  const [taskDraft, setTaskDraft] = useState<DailyTaskDraft>(emptyTaskDraft);
-  const taskDialogRef = useRef<HTMLDivElement>(null);
-  const taskDetailDialogRef = useRef<HTMLDivElement>(null);
-  const taskTitleInputRef = useRef<HTMLInputElement>(null);
-  const taskDetailCloseButtonRef = useRef<HTMLButtonElement>(null);
-  const taskDialogOpenerRef = useRef<HTMLElement | null>(null);
-  const taskDetailOpenerRef = useRef<HTMLElement | null>(null);
-  const pendingTaskActionRef = useRef<string | null>(null);
-
+  // ---- tasks ---------------------------------------------------------------
   const {
     viewState: taskViewState,
     tasks: dailyTasks,
@@ -149,62 +115,23 @@ const DashboardPage = () => {
     deleteTask,
     clearMutationError,
   } = useDailyTasks();
-  pendingTaskActionRef.current = pendingTaskAction;
-  
-  // Fetch appointments from context
-  const {
-    error: appointmentsError,
-    getAppointmentsByDate,
-    loadedRange: loadedAppointmentRange,
-    loading: appointmentsRequestLoading,
-    refreshAppointments,
-    requestAppointmentRange,
-  } = useAppointments();
-  
-  // Get today's appointments dynamically
-  const today = getTodayDateKey();
-  useEffect(() => {
-    const todayRange = getAppointmentRangeForDate(today);
-    if (todayRange) requestAppointmentRange(todayRange);
-  }, [requestAppointmentRange, today]);
-  const appointmentsLoading = appointmentsRequestLoading || (
-    !appointmentsError
-    && !appointmentRangeCovers(loadedAppointmentRange, { startDate: today, endDate: today })
-  );
-  const todaysAppointments = getAppointmentsByDate(today)
-    .filter((appointment) => appointment.status !== 'cancelled');
-
-  // Fetch Clients
-  const loadClients = useCallback(async () => {
-    setLoadingClients(true);
-    setClientLoadError(false);
-    try {
-      const data = await fetchDietitianClients();
-      setClients(data);
-    } catch (error) {
-      console.error('Failed to fetch clients:', error);
-      setClients([]);
-      setClientLoadError(true);
-    } finally {
-      setLoadingClients(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadClients();
-  }, [loadClients]);
+  const { state: automaticState, refresh: refreshAutomatic } = useAutomaticTasks();
+  const [taskFilter, setTaskFilter] = useState<TaskTab>('today');
+  const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
+  const [taskDraft, setTaskDraft] = useState<DailyTaskDraft>(emptyTaskDraft);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<DailyTask | null>(null);
 
   const openCreateTaskModal = () => {
-    taskDialogOpenerRef.current = document.activeElement as HTMLElement | null;
     clearMutationError();
     setEditingTask(null);
     setTaskDraft(emptyTaskDraft());
     setIsAddTaskModalOpen(true);
   };
-
   const openEditTaskModal = (task: DailyTask) => {
-    taskDialogOpenerRef.current = document.activeElement as HTMLElement | null;
     clearMutationError();
+    setSelectedTaskId(null);
     setEditingTask(task);
     setTaskDraft({
       clientId: task.clientId,
@@ -216,18 +143,13 @@ const DashboardPage = () => {
     });
     setIsAddTaskModalOpen(true);
   };
-
-  const openTaskDetails = (task: DailyTask) => {
-    taskDetailOpenerRef.current = document.activeElement as HTMLElement | null;
-    setSelectedTaskId(task.id);
+  const closeTaskModal = () => {
+    if (pendingTaskAction !== null) return;
+    setIsAddTaskModalOpen(false);
+    setEditingTask(null);
   };
-
-  const closeTaskDetails = () => {
-    setSelectedTaskId(null);
-  };
-
-  const handleTaskSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleTaskSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     const result = editingTask
       ? await updateTask(editingTask.id, taskDraft)
       : await createTask(taskDraft);
@@ -239,666 +161,249 @@ const DashboardPage = () => {
     setEditingTask(null);
     setTaskFilter(nextFilter);
   };
-
-  const handleDeleteTask = async (task: DailyTask) => {
-    if (!window.confirm(`“${task.title}” görevi silinsin mi?`)) return;
-    await deleteTask(task.id);
+  const toggleTask = (task: DailyTask) => {
+    void (task.status === 'completed' ? reopenTask(task.id) : completeTask(task.id));
   };
-
-  // Filter clients for main search
-  const filteredClients = searchQuery.length > 0 
-    ? clients.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : [];
-
-  const activeTaskClients = clients.filter((client) => client.status === 'Aktif');
-  const visibleTasks = taskGroups[taskFilter];
-  const dashboardSummary = summarizeDashboard({
-    todayAppointments: todaysAppointments,
-    tasks: taskGroups,
-  });
-  const appointmentsSummaryReady = !appointmentsLoading && !appointmentsError;
-  const tasksSummaryReady = taskViewState.status === 'success';
-  const dashboardFocusMessage = appointmentsError || taskViewState.status === 'error'
-    ? 'Bugünün özeti şu anda tamamlanamadı. Verileri tekrar deneyin.'
-    : !appointmentsSummaryReady || !tasksSummaryReady
-      ? 'Bugünün özeti yükleniyor...'
-      : getDashboardFocusMessage(dashboardSummary);
-
-  // Close search dropdowns when clicking outside
+  const confirmDeleteTask = async () => {
+    if (!taskToDelete) return;
+    const result = await deleteTask(taskToDelete.id);
+    if (result.success) setTaskToDelete(null);
+  };
+  const selectedTask = selectedTaskId ? dailyTasks.find((task) => task.id === selectedTaskId) ?? null : null;
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      // Main Search
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setIsSearchOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (!isAddTaskModalOpen) return;
-    taskTitleInputRef.current?.focus();
-
-    const handleDialogKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        if (pendingTaskActionRef.current === null) setIsAddTaskModalOpen(false);
-        return;
-      }
-      if (event.key !== 'Tab' || !taskDialogRef.current) return;
-      const focusable: HTMLElement[] = Array.from(taskDialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ));
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleDialogKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleDialogKeyDown);
-      taskDialogOpenerRef.current?.focus();
-    };
-  }, [isAddTaskModalOpen]);
-
-  const selectedTask = selectedTaskId
-    ? dailyTasks.find((task) => task.id === selectedTaskId) ?? null
-    : null;
-  const clientById = new Map<string, Client>(
-    clients.map((client): [string, Client] => [client.id, client]),
-  );
-  const selectedTaskClient = selectedTask?.clientId
-    ? clientById.get(selectedTask.clientId)
-    : undefined;
-
-  useEffect(() => {
-    if (selectedTaskId && !dailyTasks.some((task) => task.id === selectedTaskId)) {
-      setSelectedTaskId(null);
-    }
+    if (selectedTaskId && !dailyTasks.some((task) => task.id === selectedTaskId)) setSelectedTaskId(null);
   }, [dailyTasks, selectedTaskId]);
 
-  useEffect(() => {
-    if (!selectedTaskId) return;
-    taskDetailCloseButtonRef.current?.focus();
-
-    const handleDetailKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setSelectedTaskId(null);
+  // ---- pending meal change request review ---------------------------------
+  const [reviewRequest, setReviewRequest] = useState<MealChangeRequest | null>(null);
+  const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
+  const openReview = async (requestId: string) => {
+    setReviewLoadError(null);
+    try {
+      const pending = await fetchPendingMealChangeRequests({ limit: 100 });
+      const request = pending.find((item) => item.id === requestId) ?? null;
+      if (!request) {
+        setReviewLoadError('Bu talep artık beklemede değil.');
+        void refreshAutomatic();
         return;
       }
-      if (event.key !== 'Tab' || !taskDetailDialogRef.current) return;
+      setReviewRequest(request);
+    } catch {
+      setReviewLoadError('Talep yüklenemedi. Lütfen tekrar deneyin.');
+    }
+  };
 
-      const focusable: HTMLElement[] = Array.from(taskDetailDialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ));
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
+  // ---- appointments --------------------------------------------------------
+  const {
+    appointments,
+    appointmentsAfterRange,
+    error: appointmentsError,
+    getAppointmentsByDate,
+    loadedRange,
+    loading: appointmentsRequestLoading,
+    refreshAppointments,
+    requestAppointmentRange,
+  } = useAppointments();
+  const today = getTodayDateKey(now);
+  useEffect(() => {
+    const todayRange = getAppointmentRangeForDate(today);
+    if (todayRange) requestAppointmentRange(todayRange);
+  }, [requestAppointmentRange, today]);
+  const appointmentsLoading = appointmentsRequestLoading || (
+    !appointmentsError
+    && !appointmentRangeCovers(loadedRange, { startDate: today, endDate: today })
+  );
+  const todaysAppointments = sortAppointmentsChronologically<Appointment>(
+    getAppointmentsByDate(today).filter((appointment) => appointment.status !== 'cancelled'),
+  );
+  const nowTime = getTimeZoneDateTimeKey(now).slice(11);
+  const nextAppointment = useMemo(() => {
+    const nowMs = now.getTime();
+    return sortAppointmentsChronologically<Appointment>([...appointments, ...appointmentsAfterRange]
+      .filter((appointment) => appointment.status === 'upcoming' && appointmentStartMs(appointment) >= nowMs))[0] ?? null;
+  }, [appointments, appointmentsAfterRange, now]);
+  const week = getMondayFirstWeekRange(today);
+  const weekAppointments = week
+    ? appointments.filter((appointment) => (
+      appointment.status !== 'cancelled' && appointment.date >= week.startDate && appointment.date <= week.endDate
+    ))
+    : [];
+  const weekRemaining = weekAppointments.filter((appointment) => (
+    appointment.status === 'upcoming' && appointmentStartMs(appointment) >= now.getTime()
+  )).length;
+  const weekCovered = week !== null && appointmentRangeCovers(loadedRange, week);
 
-    document.addEventListener('keydown', handleDetailKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleDetailKeyDown);
-      taskDetailOpenerRef.current?.focus();
-    };
-  }, [selectedTaskId]);
+  // ---- messages --------------------------------------------------------------
+  const { state: unreadState, countForConversation } = useUnreadCounts();
+  const [recentMessages, setRecentMessages] = useState<RecentMessagesState>({ status: 'loading' });
+  const loadRecentMessages = useCallback(async () => {
+    if (!userId) return;
+    setRecentMessages({ status: 'loading' });
+    try {
+      setRecentMessages({ status: 'success', conversations: await fetchChatConversations(userId) });
+    } catch {
+      setRecentMessages({ status: 'error' });
+    }
+  }, [userId]);
+  useEffect(() => {
+    void loadRecentMessages();
+  }, [loadRecentMessages]);
+
+  // ---- KPIs (all from real data) -------------------------------------------
+  const adherenceValues = activeClients
+    .map((client) => client.compliance)
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+  const averageAdherence = adherenceValues.length > 0
+    ? adherenceValues.reduce((total, value) => total + value, 0) / adherenceValues.length
+    : null;
+
+  const dashboardSummary = summarizeDashboard({ todayAppointments: todaysAppointments, tasks: taskGroups });
+  const focusMessage = appointmentsError || taskViewState.status === 'error'
+    ? 'Bugünün özeti şu anda tamamlanamadı. Verileri tekrar deneyin.'
+    : appointmentsLoading || taskViewState.status !== 'success'
+      ? 'Bugünün özeti yükleniyor…'
+      : getDashboardFocusMessage(dashboardSummary);
+
+  const firstName = dietitianProfile?.first_name?.trim();
+  const istanbulHour = Number(nowTime.slice(0, 2));
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <header className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">Kontrol Paneli</h1>
-          <p className="text-slate-500 mt-1">Tekrar hoş geldiniz, Diyetisyen!</p>
-        </div>
-        <div className="flex items-center gap-6">
-          
-          {/* Search Bar with Dropdown */}
-          <div className="relative" ref={searchRef}>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Danışan ara..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setIsSearchOpen(true);
-              }}
-              onFocus={() => setIsSearchOpen(true)}
-              className="pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-64 text-sm transition-all shadow-sm"
-            />
-            {searchQuery && (
-              <button 
-                onClick={() => {
-                  setSearchQuery('');
-                  setIsSearchOpen(false);
-                }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+    <PageContainer>
+      <PageHeader
+        eyebrow={<span className="capitalize">{formatLongDate(now)}</span>}
+        title={firstName ? `${greetingFor(istanbulHour)}, ${firstName}` : greetingFor(istanbulHour)}
+        description={focusMessage}
+        actions={(
+          <>
+            <DashboardClientSearch clients={clients} />
+            <NotificationBell />
+            <LinkButton variant="primary" leftIcon="plus" to="/appointments?new=1">Yeni randevu</LinkButton>
+          </>
+        )}
+      />
 
-            {/* Dropdown Results */}
-            {isSearchOpen && searchQuery && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                {filteredClients.length > 0 ? (
-                  <div className="py-1">
-                    <p className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50">Sonuçlar</p>
-                    {filteredClients.map(client => (
-                      <button
-                        key={client.id}
-                        onClick={() => {
-                          navigate(`/clients/${client.id}`);
-                          setSearchQuery('');
-                          setIsSearchOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 transition-colors group border-b border-slate-50 last:border-0"
-                      >
-                        <img src={client.avatar} alt={client.name} className="w-8 h-8 rounded-full object-cover ring-2 ring-slate-100 group-hover:ring-primary/20" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-slate-700 group-hover:text-primary transition-colors truncate">{client.name}</p>
-                          <p className="text-xs text-slate-400 truncate">{client.goal}</p>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-primary" />
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-4 text-center text-slate-500 text-sm">
-                    Sonuç bulunamadı.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+      {nextAppointment && (
+        <NextAppointmentBanner
+          appointment={nextAppointment}
+          isToday={nextAppointment.date === today}
+          minutesUntil={Math.max(0, Math.round((appointmentStartMs(nextAppointment) - now.getTime()) / 60_000))}
+        />
+      )}
 
-          <NotificationBell />
+      <KpiGrid className="grid-cols-2">
+        <KpiTile
+          icon="users-three-duotone"
+          label="Aktif danışan"
+          loading={loadingClients}
+          value={clientLoadError ? '—' : activeClients.length}
+          hint={clientLoadError ? 'Danışanlar yüklenemedi' : pendingClientCount > 0 ? `${pendingClientCount} onay bekliyor` : 'Onay bekleyen yok'}
+        />
+        <KpiTile
+          icon="calendar-check-duotone"
+          label="Bu hafta randevu"
+          loading={!weekCovered && !appointmentsError}
+          value={appointmentsError ? '—' : weekAppointments.length}
+          hint={appointmentsError ? 'Randevular yüklenemedi' : `Bugün ${todaysAppointments.length} · kalan ${weekRemaining}`}
+        />
+        <KpiTile
+          icon="check-circle-duotone"
+          label="Ortalama öğün uyumu"
+          loading={loadingClients}
+          value={averageAdherence === null ? '—' : formatPercentageDisplay(averageAdherence)}
+          hint={averageAdherence === null ? 'Son 7 günde planlı öğün yok' : `Son 7 gün · ${adherenceValues.length} danışan`}
+        />
+        <KpiTile
+          icon="chat-circle-dots-duotone"
+          label="Okunmamış mesaj"
+          loading={unreadState.status === 'loading'}
+          value={unreadState.status === 'success' ? unreadState.total : '—'}
+          hint={unreadState.status === 'success'
+            ? unreadState.conversationsWithUnread > 0 ? `${unreadState.conversationsWithUnread} danışandan` : 'Tüm mesajlar okundu'
+            : 'Sayı alınamadı'}
+        />
+      </KpiGrid>
 
-          <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <DietitianAvatar
-              alt="Profil"
-              className="w-12 h-12 rounded-full border-2 border-white shadow-sm object-cover"
-            />
-          </button>
-        </div>
-      </header>
+      {reviewLoadError && <Callout tone="warn" className="mb-4">{reviewLoadError}</Callout>}
 
-      {/* Operational summary */}
-      <section aria-labelledby="dashboard-summary-title" className="mb-8">
-        <div className="rounded-2xl border border-primary/15 bg-primary/5 p-5">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-primary">Bugünün odağı</p>
-            <h2 id="dashboard-summary-title" className="mt-1 text-lg font-bold text-slate-800">{dashboardFocusMessage}</h2>
-          </div>
-        </div>
-      </section>
-
-      {/* Main Grid */}
-      <div className="grid grid-cols-12 gap-8">
-        {/* Left Column */}
-        <div className="col-span-12 lg:col-span-8 space-y-8">
-          
-          {/* Persistent Daily Tasks */}
-          <section id="daily-tasks" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-xl font-bold text-slate-800">Günlük Görevler</h3>
-                <p className="mt-1 text-xs text-slate-500">Kalıcı iş listenizi yönetin.</p>
-              </div>
-              <button
-                type="button"
-                onClick={openCreateTaskModal}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-primary-dark"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" /> Yeni Görev Ekle
-              </button>
-            </div>
-
-            <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist" aria-label="Görev görünümü">
-              {TASK_FILTERS.map(({ key, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={taskFilter === key}
-                  onClick={() => setTaskFilter(key)}
-                  className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
-                    taskFilter === key
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  {label} ({taskGroups[key].length})
-                </button>
-              ))}
-            </div>
-
-            {taskMutationError && (
-              <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {taskMutationError}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {taskViewState.status === 'loading' ? (
-                <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
-                  <Loader2 className="h-5 w-5 animate-spin" /> Görevler yükleniyor...
-                </div>
-              ) : taskViewState.status === 'error' ? (
-                <div role="alert" className="py-8 text-center">
-                  <p className="text-sm font-medium text-rose-600">{taskViewState.message}</p>
-                  <button type="button" onClick={() => void refreshDailyTasks()} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-primary">
-                    <RefreshCw className="h-4 w-4" /> Tekrar dene
-                  </button>
-                </div>
-              ) : visibleTasks.length === 0 ? (
-                <div className="py-8 text-center text-sm text-slate-400">
-                  Bu görünümde görev bulunmuyor.
-                </div>
-              ) : visibleTasks.map((task) => (
-                <div key={task.id} className="flex flex-col gap-3 rounded-xl border border-slate-100 p-3 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between">
-                  <button
-                    type="button"
-                    onClick={() => openTaskDetails(task)}
-                    aria-label={`${task.title} görev ayrıntılarını aç`}
-                    className="flex min-w-0 flex-1 items-center gap-4 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    {task.clientId !== null ? (
-                      <TaskClientAvatar
-                        name={task.clientName || 'Atanan danışan'}
-                        src={clientById.get(task.clientId)?.profilePhotoUrl || null}
-                        sizeClassName="h-11 w-11"
-                      />
-                    ) : (
-                      <span
-                        role="img"
-                        aria-label="Genel görev"
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"
-                      >
-                        <ListChecks className="h-5 w-5" aria-hidden="true" />
-                      </span>
-                    )}
-                    <span className="min-w-0">
-                      <span className={`block truncate font-semibold ${task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</span>
-                      <span className="mt-1 block text-xs text-slate-500">
-                        {task.clientName || 'Genel görev'} · {new Date(`${task.dueDate}T00:00:00`).toLocaleDateString('tr-TR')}
-                        {task.dueTime ? ` ${task.dueTime}` : ''}
-                      </span>
-                      <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        task.priority === 'high' ? 'bg-rose-50 text-rose-600' : task.priority === 'low' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'
-                      }`}>
-                        {task.priority === 'high' ? 'Yüksek' : task.priority === 'low' ? 'Düşük' : 'Orta'} öncelik
-                      </span>
-                    </span>
-                  </button>
-                  <div className="flex items-center justify-end gap-1">
-                    <button
-                      type="button"
-                      onClick={() => void (task.status === 'completed' ? reopenTask(task.id) : completeTask(task.id))}
-                      disabled={pendingTaskAction !== null}
-                      className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
-                    >
-                      {pendingTaskAction === `complete:${task.id}` || pendingTaskAction === `reopen:${task.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : task.status === 'completed' ? <RotateCcw className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                      {task.status === 'completed' ? 'Tekrar aç' : 'Tamamla'}
-                    </button>
-                    <button type="button" onClick={() => openEditTaskModal(task)} disabled={pendingTaskAction !== null} aria-label={`${task.title} görevini düzenle`} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-primary disabled:opacity-50">
-                      <Edit2 className="h-4 w-4" />
-                    </button>
-                    <button type="button" onClick={() => void handleDeleteTask(task)} disabled={pendingTaskAction !== null} aria-label={`${task.title} görevini sil`} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50">
-                      {pendingTaskAction === `delete:${task.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Quick actions */}
-          <section aria-labelledby="quick-actions-title" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <div className="mb-5">
-              <h3 id="quick-actions-title" className="text-xl font-bold text-slate-800">Hızlı işlemler</h3>
-              <p className="mt-1 text-xs text-slate-500">Bugünkü iş akışınıza doğrudan geçin.</p>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
-              <button type="button" onClick={() => navigate('/appointments')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
-                <Calendar className="h-5 w-5 text-primary" aria-hidden="true" />
-                <span className="flex-1 text-sm font-bold text-slate-700">Randevu ekle / düzenle</span>
-                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
-              </button>
-              <button type="button" onClick={() => navigate('/clients')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
-                <User className="h-5 w-5 text-primary" aria-hidden="true" />
-                <span className="flex-1 text-sm font-bold text-slate-700">Danışanları yönet</span>
-                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
-              </button>
-              <button type="button" onClick={() => navigate('/meal-plans')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
-                <ClipboardList className="h-5 w-5 text-primary" aria-hidden="true" />
-                <span className="flex-1 text-sm font-bold text-slate-700">Beslenme planlarını aç</span>
-                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
-              </button>
-              <button type="button" onClick={() => navigate('/messages')} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5">
-                <MessageCircle className="h-5 w-5 text-primary" aria-hidden="true" />
-                <span className="flex-1 text-sm font-bold text-slate-700">Mesajlara git</span>
-                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden="true" />
-              </button>
-            </div>
-          </section>
-        </div>
-
-        {/* Right Column */}
-        <div className="col-span-12 lg:col-span-4 space-y-8">
-          
-          {/* Appointments */}
-          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-slate-800">Bugünkü Randevular</h3>
-            </div>
-            
-            {appointmentsLoading ? (
-              <div className="py-6 text-center text-sm text-slate-400">Randevular yükleniyor...</div>
-            ) : appointmentsError ? (
-              <div role="alert" className="py-6 text-center">
-                <p className="text-sm text-rose-600">Bugünkü randevular yüklenemedi.</p>
-                <button
-                  type="button"
-                  onClick={() => void refreshAppointments()}
-                  className="mt-2 text-sm font-bold text-primary hover:underline"
-                >
-                  Tekrar dene
-                </button>
-              </div>
-            ) : todaysAppointments.length > 0 ? (
-              <div className="space-y-6 relative">
-                {/* Timeline Line */}
-                <div className="absolute left-[3.25rem] top-2 bottom-2 w-0.5 bg-slate-100"></div>
-
-                {todaysAppointments.map((apt) => (
-                  <div key={apt.id} className="flex gap-4 relative">
-                    <div className="flex flex-col items-end w-10 flex-shrink-0 pt-0.5">
-                      <span className="font-bold text-slate-800 leading-none">{apt.time}</span>
-                      <span className="text-xs text-slate-400 mt-1">{apt.duration}</span>
-                    </div>
-                    <div className={`relative pl-4 border-l-4 ${
-                      apt.type === 'Görüntülü Görüşme' ? 'border-primary' : apt.type === 'Yüzyüze' ? 'border-orange-400' : 'border-blue-400'
-                    }`}>
-                      <div className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 bg-white rounded-full border-2 border-inherit"></div>
-                      <p className="font-semibold text-slate-800 leading-tight mb-1">{apt.title}</p>
-                      <p className="text-sm text-slate-500">{apt.clientName} · {apt.type}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-6 text-slate-400">
-                <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Bugün için randevu bulunmuyor.</p>
-              </div>
-            )}
-            
-            <button 
-              onClick={() => navigate('/appointments')}
-              className="w-full mt-6 py-3 rounded-xl border border-dashed border-slate-300 text-slate-500 font-medium hover:bg-slate-50 hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2"
-            >
-               Tüm Randevuları Gör
-            </button>
-          </section>
-
-          {/* My Clients */}
-          <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h3 className="text-xl font-bold text-slate-800 mb-6">Danışanlarım</h3>
-            <div className="space-y-5">
-              {loadingClients ? (
-                <div className="text-center py-4 text-slate-400">Yükleniyor...</div>
-              ) : clients.length > 0 ? (
-                clients.slice(0, 5).map((client) => (
-                  <div 
-                    key={client.id} 
-                    onClick={() => navigate(`/clients/${client.id}`)}
-                    className="flex items-center justify-between group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <img src={client.avatar} alt={client.name} className="w-10 h-10 rounded-full object-cover ring-2 ring-white group-hover:ring-primary/20 transition-all" />
-                      <div>
-                        <p className="font-semibold text-slate-800 text-sm group-hover:text-primary transition-colors">{client.name}</p>
-                        <p className="text-xs text-slate-500">{client.goal}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {client.compliance === null || !Number.isFinite(client.compliance) ? (
-                        <span className="text-xs font-medium text-slate-400">Veri yok</span>
-                      ) : (
-                        <>
-                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className={`h-full rounded-full ${client.compliance > 80 ? 'bg-primary' : client.compliance > 70 ? 'bg-yellow-400' : 'bg-red-500'}`}
-                              style={{ width: `${Math.min(100, Math.max(0, client.compliance))}%` }}
-                            />
-                          </div>
-                          <span className={`text-sm font-bold ${client.compliance > 80 ? 'text-primary' : client.compliance > 70 ? 'text-yellow-500' : 'text-red-500'}`}>
-                            {formatPercentageDisplay(client.compliance)}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-slate-400">
-                  <div className="bg-slate-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <Search className="w-6 h-6 text-slate-300" />
-                  </div>
-                  <p className="text-sm font-medium text-slate-600 mb-1">Henüz danışanınız yok</p>
-                  <p className="text-xs">İlk danışanınızı eklediğinizde burada görünecek.</p>
-                </div>
-              )}
-            </div>
-            <button 
-              onClick={() => navigate('/clients')}
-              className="w-full mt-6 py-3 rounded-xl border border-dashed border-slate-300 text-slate-500 font-medium hover:bg-slate-50 hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2"
-            >
-               Tüm Danışanları Gör
-            </button>
-          </section>
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <DashboardTaskPanel
+          activeTab={taskFilter}
+          onTabChange={setTaskFilter}
+          taskViewState={taskViewState}
+          groups={taskGroups}
+          automaticState={automaticState}
+          mutationError={isAddTaskModalOpen ? null : taskMutationError}
+          pendingAction={pendingTaskAction}
+          onCreate={openCreateTaskModal}
+          onRetryTasks={() => void refreshDailyTasks()}
+          onRetryAutomatic={() => void refreshAutomatic()}
+          onToggle={toggleTask}
+          onOpen={(task) => setSelectedTaskId(task.id)}
+          onEdit={openEditTaskModal}
+          onDelete={(task) => setTaskToDelete(task)}
+          onReviewRequest={(requestId) => void openReview(requestId)}
+        />
+        <div className="flex flex-col gap-5">
+          <TodayScheduleCard
+            appointments={todaysAppointments}
+            loading={appointmentsLoading}
+            error={Boolean(appointmentsError)}
+            nowTime={nowTime}
+            nextAppointmentId={nextAppointment?.date === today ? nextAppointment.id : null}
+            onRetry={() => void refreshAppointments()}
+          />
+          <RecentMessagesCard
+            state={recentMessages}
+            currentUserId={userId}
+            unreadCountFor={countForConversation}
+            onRetry={() => void loadRecentMessages()}
+          />
         </div>
       </div>
 
-      {/* Task Detail Modal */}
-      {selectedTask && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div
-            ref={taskDetailDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="daily-task-detail-title"
-            className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200"
-          >
-            <div className="p-6 border-b border-slate-100 flex justify-between items-start gap-4">
-              <div className="min-w-0">
-                <p className="text-xs font-bold uppercase tracking-wide text-primary">Görev ayrıntısı</p>
-                <h2 id="daily-task-detail-title" className="mt-1 text-xl font-bold text-slate-800 break-words">{selectedTask.title}</h2>
-              </div>
-              <button
-                ref={taskDetailCloseButtonRef}
-                type="button"
-                aria-label="Görev ayrıntısını kapat"
-                onClick={closeTaskDetails}
-                className="shrink-0 p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <DailyTaskFormModal
+        open={isAddTaskModalOpen}
+        isEditing={editingTask !== null}
+        draft={taskDraft}
+        onDraftChange={setTaskDraft}
+        activeClients={activeClients}
+        clientsLoading={loadingClients}
+        clientsError={clientLoadError}
+        mutationError={taskMutationError}
+        saving={pendingTaskAction === 'create' || Boolean(pendingTaskAction?.startsWith('update:'))}
+        busy={pendingTaskAction !== null}
+        onSubmit={(event) => void handleTaskSubmit(event)}
+        onClose={closeTaskModal}
+      />
 
-            <div className="p-6 space-y-5">
-              <div className="flex items-center gap-3">
-                {selectedTask.clientId !== null ? (
-                  <TaskClientAvatar
-                    name={selectedTaskClient?.name || selectedTask.clientName || 'Atanan danışan'}
-                    src={selectedTaskClient?.profilePhotoUrl || null}
-                    sizeClassName="h-12 w-12"
-                  />
-                ) : (
-                  <span
-                    role="img"
-                    aria-label="Genel görev"
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"
-                  >
-                    <ListChecks className="h-6 w-6" aria-hidden="true" />
-                  </span>
-                )}
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Atanan</p>
-                  <p className="font-semibold text-slate-800">
-                    {selectedTask.clientId === null
-                      ? 'Genel görev'
-                      : selectedTaskClient?.name || selectedTask.clientName || 'Atanan danışan'}
-                  </p>
-                </div>
-              </div>
+      <DailyTaskDetailModal
+        task={selectedTask}
+        clientName={selectedTask?.clientId ? clientById.get(selectedTask.clientId)?.name ?? null : null}
+        clientPhotoUrl={selectedTask?.clientId ? clientById.get(selectedTask.clientId)?.profilePhotoUrl ?? null : null}
+        onClose={() => setSelectedTaskId(null)}
+        onEdit={openEditTaskModal}
+      />
 
-              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Durum</dt>
-                  <dd className="mt-1 font-semibold text-slate-800">
-                    {selectedTask.status === 'completed' ? 'Tamamlandı' : 'Bekliyor'}
-                  </dd>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Bitiş tarihi</dt>
-                  <dd className="mt-1 font-semibold text-slate-800">
-                    {formatTaskDueDate(selectedTask.dueDate)}{selectedTask.dueTime ? ` · ${selectedTask.dueTime}` : ''}
-                  </dd>
-                </div>
-              </dl>
+      <ConfirmDialog
+        open={taskToDelete !== null}
+        title="Görev silinsin mi?"
+        description={taskToDelete ? `“${taskToDelete.title}” kalıcı olarak silinecek.` : undefined}
+        confirmLabel="Sil"
+        tone="danger"
+        busy={taskToDelete !== null && pendingTaskAction === `delete:${taskToDelete.id}`}
+        onConfirm={() => void confirmDeleteTask()}
+        onCancel={() => setTaskToDelete(null)}
+      />
 
-              <div>
-                <h3 className="text-sm font-bold text-slate-700">Açıklama</h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-                  {selectedTask.description || 'Açıklama eklenmemiş.'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Task Modal */}
-      {isAddTaskModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div ref={taskDialogRef} role="dialog" aria-modal="true" aria-labelledby="daily-task-dialog-title" className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-               <h2 id="daily-task-dialog-title" className="text-xl font-bold text-slate-800">{editingTask ? 'Görevi Düzenle' : 'Yeni Görev Ekle'}</h2>
-               <button type="button" aria-label="Görev penceresini kapat" onClick={() => setIsAddTaskModalOpen(false)} disabled={pendingTaskAction !== null} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 disabled:opacity-50">
-                  <X className="w-5 h-5" />
-               </button>
-            </div>
-            
-            <form onSubmit={handleTaskSubmit} className="p-6 space-y-5">
-               {taskMutationError && (
-                 <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {taskMutationError}
-                 </div>
-               )}
-               <div className="space-y-1.5">
-                  <label htmlFor="daily-task-title" className="text-sm font-bold text-slate-700">Görev Başlığı</label>
-                  <input 
-                    id="daily-task-title"
-                    ref={taskTitleInputRef}
-                    type="text"
-                    required
-                    maxLength={160}
-                    placeholder="Örn: Haftalık raporu hazırla..."
-                    value={taskDraft.title}
-                    onChange={(e) => setTaskDraft({ ...taskDraft, title: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                  />
-               </div>
-
-               <div className="space-y-1.5">
-                  <label htmlFor="daily-task-description" className="text-sm font-bold text-slate-700">Açıklama (Opsiyonel)</label>
-                  <textarea
-                    id="daily-task-description"
-                    rows={3}
-                    maxLength={2000}
-                    value={taskDraft.description || ''}
-                    onChange={(e) => setTaskDraft({ ...taskDraft, description: e.target.value || null })}
-                    className="w-full resize-none px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                  />
-               </div>
-
-               <div className="space-y-1.5">
-                  <label htmlFor="daily-task-client" className="text-sm font-bold text-slate-700">İlgili Danışan (Opsiyonel)</label>
-                  <select
-                    id="daily-task-client"
-                    value={taskDraft.clientId || ''}
-                    onChange={(e) => setTaskDraft({ ...taskDraft, clientId: e.target.value || null })}
-                    disabled={loadingClients || clientLoadError}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm disabled:opacity-60"
-                  >
-                    <option value="">Genel görev</option>
-                    {activeTaskClients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-                  </select>
-                  {loadingClients && <p className="text-xs text-slate-500">Aktif danışanlar yükleniyor...</p>}
-                  {clientLoadError && <p role="alert" className="text-xs text-rose-600">Danışanlar yüklenemedi; yalnız genel görev kaydedilebilir.</p>}
-               </div>
-
-               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                 <div className="space-y-1.5">
-                   <label htmlFor="daily-task-date" className="text-sm font-bold text-slate-700">Bitiş Tarihi</label>
-                   <input id="daily-task-date" type="date" required value={taskDraft.dueDate} onChange={(e) => setTaskDraft({ ...taskDraft, dueDate: e.target.value })} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />
-                 </div>
-                 <div className="space-y-1.5">
-                   <label htmlFor="daily-task-time" className="text-sm font-bold text-slate-700">Saat (Opsiyonel)</label>
-                   <input id="daily-task-time" type="time" value={taskDraft.dueTime || ''} onChange={(e) => setTaskDraft({ ...taskDraft, dueTime: e.target.value || null })} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm" />
-                 </div>
-               </div>
-
-               <div className="space-y-1.5">
-                  <label htmlFor="daily-task-priority" className="text-sm font-bold text-slate-700">Öncelik</label>
-                  <select id="daily-task-priority" value={taskDraft.priority} onChange={(e) => setTaskDraft({ ...taskDraft, priority: e.target.value as DailyTaskDraft['priority'] })} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm">
-                    <option value="low">Düşük</option>
-                    <option value="medium">Orta</option>
-                    <option value="high">Yüksek</option>
-                  </select>
-               </div>
-
-               <div className="pt-2 flex gap-3">
-                  <button 
-                    type="button" 
-                    onClick={() => setIsAddTaskModalOpen(false)}
-                    disabled={pendingTaskAction !== null}
-                    className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors text-sm disabled:opacity-50"
-                  >
-                     İptal
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={pendingTaskAction !== null}
-                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors text-sm disabled:opacity-60"
-                  >
-                     {pendingTaskAction === 'create' || pendingTaskAction?.startsWith('update:') ? (
-                       <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Kaydediliyor</span>
-                     ) : editingTask ? 'Güncelle' : 'Ekle'}
-                  </button>
-               </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+      <MealChangeRequestReviewDialog
+        request={reviewRequest}
+        onClose={() => setReviewRequest(null)}
+        onReviewed={() => {
+          setReviewRequest(null);
+          void refreshAutomatic();
+        }}
+      />
+    </PageContainer>
   );
 };
 

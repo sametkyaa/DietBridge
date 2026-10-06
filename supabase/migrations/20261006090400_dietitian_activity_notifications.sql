@@ -19,6 +19,11 @@
 -- None of the new shapes is push-eligible (private.is_push_eligible_notification
 -- is unchanged), so no device receives a push for them.
 --
+-- The push registry (20260817120000) is deliberately deferred in production.
+-- Where it is absent, the migration instead requires that no push object
+-- exists at all (no push tables, no capture function, no notifications
+-- trigger), so nothing can be pushed; a partial push footprint stops it.
+--
 -- Duplicate protection: every producer writes a deterministic aggregation key
 -- and uses the (recipient_id, aggregation_key) unique index.
 begin;
@@ -30,9 +35,23 @@ begin
      or to_regclass('public.meal_plans') is null
      or to_regclass('public.meal_change_requests') is null
      or to_regclass('public.appointments') is null
-     or to_regclass('public.dietitian_clients') is null
-     or to_regprocedure('private.is_push_eligible_notification(text,text,text)') is null then
+     or to_regclass('public.dietitian_clients') is null then
     raise exception 'Dietitian activity notification prerequisites are missing.';
+  end if;
+
+  if to_regprocedure('private.is_push_eligible_notification(text,text,text)') is null
+     and (
+       to_regclass('private.push_installations') is not null
+       or to_regclass('private.push_occurrences') is not null
+       or to_regclass('private.push_deliveries') is not null
+       or to_regprocedure('private.capture_push_occurrence()') is not null
+       or exists (
+         select 1 from pg_catalog.pg_trigger
+          where tgrelid = 'public.notifications'::regclass
+            and tgname = 'trg_capture_push_occurrence'
+       )
+     ) then
+    raise exception 'Push objects exist without private.is_push_eligible_notification; inspect schema drift.';
   end if;
 
   if to_regclass('private.notification_producer_flags') is not null
@@ -743,10 +762,22 @@ $cron$;
 
 do $postflight$
 begin
-  if private.is_push_eligible_notification('client_activity', 'meal_photo_completed', 'client_meal_photo_completed')
-     or private.is_push_eligible_notification('meal_plan', 'updated', 'meal_plan_updated')
-     or private.is_push_eligible_notification('appointment', 'reminder_30m', 'appointment_reminder_30m') then
-    raise exception 'New notification shapes must not be push-eligible.';
+  if to_regprocedure('private.is_push_eligible_notification(text,text,text)') is not null then
+    if private.is_push_eligible_notification('client_activity', 'meal_photo_completed', 'client_meal_photo_completed')
+       or private.is_push_eligible_notification('meal_plan', 'updated', 'meal_plan_updated')
+       or private.is_push_eligible_notification('appointment', 'reminder_30m', 'appointment_reminder_30m') then
+      raise exception 'New notification shapes must not be push-eligible.';
+    end if;
+  elsif to_regclass('private.push_installations') is not null
+     or to_regclass('private.push_occurrences') is not null
+     or to_regclass('private.push_deliveries') is not null
+     or to_regprocedure('private.capture_push_occurrence()') is not null
+     or exists (
+       select 1 from pg_catalog.pg_trigger
+        where tgrelid = 'public.notifications'::regclass
+          and tgname = 'trg_capture_push_occurrence'
+     ) then
+    raise exception 'Push registry is absent but push objects exist; new notification shapes could be pushed.';
   end if;
 
   if (select enabled from private.notification_producer_flags where producer = 'client_meal_plan_updated') is not false then

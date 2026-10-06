@@ -1,8 +1,12 @@
 import { supabase } from '../../../lib/supabaseClient';
 import {
+  SUBSCRIPTION_DETAILS_ERROR,
   SUBSCRIPTION_OVERVIEW_ERROR,
+  SubscriptionDetailsResult,
   SubscriptionOverview,
   SubscriptionOverviewResult,
+  SubscriptionPeriod,
+  SubscriptionPlan,
 } from '../types/subscription';
 
 interface SubscriptionOverviewRow {
@@ -86,5 +90,84 @@ export const fetchSubscriptionOverview = async (): Promise<SubscriptionOverviewR
   } catch (cause) {
     console.error('Subscription overview unexpected error:', cause);
     return { status: 'error', userMessage: SUBSCRIPTION_OVERVIEW_ERROR };
+  }
+};
+
+interface SubscriptionPlanRow {
+  id: string | null;
+  name: string | null;
+  client_limit: number | null;
+  sort_order: number | null;
+}
+
+interface SubscriptionPeriodRow {
+  status: string | null;
+  current_period_end: string | null;
+}
+
+/** Drops malformed catalog rows instead of inventing names or limits. */
+export const mapSubscriptionPlanRows = (rows: unknown): SubscriptionPlan[] => {
+  if (!Array.isArray(rows)) return [];
+  return (rows as SubscriptionPlanRow[])
+    .filter((row) => typeof row?.id === 'string' && typeof row?.name === 'string' && row.name.trim() !== '')
+    .map((row) => ({
+      id: row.id as string,
+      name: (row.name as string).trim(),
+      clientLimit: toNonNegativeInt(row.client_limit),
+      sortOrder: toNullableInt(row.sort_order) ?? 0,
+    }))
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+};
+
+export const mapSubscriptionPeriodRow = (row: unknown): SubscriptionPeriod | null => {
+  if (!row || typeof row !== 'object') return null;
+  const { status, current_period_end: periodEnd } = row as SubscriptionPeriodRow;
+  const parsed = typeof periodEnd === 'string' ? new Date(periodEnd) : null;
+  return {
+    status: typeof status === 'string' && status ? status : 'no_subscription',
+    currentPeriodEnd: parsed && !Number.isNaN(parsed.getTime()) ? periodEnd : null,
+  };
+};
+
+/**
+ * Reads the active plan catalog and the signed-in dietitian's own billing
+ * period. Both tables are RLS-protected and read-only for the browser; a
+ * missing subscription row is a real state (period = null), not an error.
+ */
+export const fetchSubscriptionDetails = async (): Promise<SubscriptionDetailsResult> => {
+  try {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
+    if (userError || !userId) {
+      if (userError) console.error('Subscription details auth error:', userError);
+      return { status: 'error', userMessage: SUBSCRIPTION_DETAILS_ERROR };
+    }
+
+    const [plansResult, periodResult] = await Promise.all([
+      supabase
+        .from('subscription_plans')
+        .select('id, name, client_limit, sort_order')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true }),
+      supabase
+        .from('dietitian_subscriptions')
+        .select('status, current_period_end')
+        .eq('dietitian_id', userId)
+        .maybeSingle(),
+    ]);
+
+    if (plansResult.error || periodResult.error) {
+      console.error('Subscription details query error:', plansResult.error ?? periodResult.error);
+      return { status: 'error', userMessage: SUBSCRIPTION_DETAILS_ERROR };
+    }
+
+    return {
+      status: 'success',
+      plans: mapSubscriptionPlanRows(plansResult.data),
+      period: mapSubscriptionPeriodRow(periodResult.data),
+    };
+  } catch (cause) {
+    console.error('Subscription details unexpected error:', cause);
+    return { status: 'error', userMessage: SUBSCRIPTION_DETAILS_ERROR };
   }
 };

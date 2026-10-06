@@ -1,9 +1,36 @@
-
 import React, { useState } from 'react';
+import { EyeOff, Eye } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { APP_LOGO } from '../../../shared/constants';
-import { User, Mail, Lock, CheckCircle2, AlertCircle, ArrowRight, BarChart3, ShieldCheck, Users, Eye, EyeOff } from 'lucide-react';
 import { registerDietitian, RegistrationData } from '../../dietitians/services/dietitianService';
+import { AuthLayout } from '../components/AuthLayout';
+import { PasswordStrengthMeter } from '../components/PasswordStrengthMeter';
+import { PASSWORD_MIN_LENGTH } from '../utils/passwordStrength';
+import { Button, Callout, Icon, Input, LinkButton, cx } from '../../../shared/ui';
+
+const APPLICATION_STEPS = [
+  { title: 'Hesabınızı oluşturun', text: 'Ad, e-posta ve şifre' },
+  { title: 'Mesleki bilgilerinizi girin', text: 'E-posta doğrulamasından sonra: üniversite, mezuniyet, uzmanlık ve diploma' },
+  { title: 'Başvurunuz incelensin', text: 'Onaylandığınızda panele erişim açılır' },
+];
+
+const ApplicationSteps = ({ current }: { current: number }) => (
+  <>
+    <h2 className="m-0 max-w-md text-30 font-bold leading-tight tracking-[-0.4px]">Başvurunuz üç adımda tamamlanır.</h2>
+    <ol className="m-0 flex max-w-md list-none flex-col gap-5 p-0">
+      {APPLICATION_STEPS.map((step, index) => (
+        <li key={step.title} className="flex items-start gap-3.5">
+          <span aria-hidden="true" className={cx('grid h-9 w-9 shrink-0 place-items-center rounded-full text-14 font-bold', index <= current ? 'bg-white text-brand' : 'bg-white/15 text-white')}>
+            {index < current ? <Icon name="check" size={16} /> : index + 1}
+          </span>
+          <span>
+            <b className="block text-15 font-semibold">{step.title}</b>
+            <span className="block text-14 text-white/80">{step.text}</span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  </>
+);
 
 const RegisterPage = () => {
   const navigate = useNavigate();
@@ -44,6 +71,11 @@ const RegisterPage = () => {
 
     if (!normalizedFirstName || !normalizedLastName) {
       setError("Lütfen adınızı ve soyadınızı eksiksiz girin.");
+      return;
+    }
+
+    if (formData.password.length < PASSWORD_MIN_LENGTH) {
+      setError(`Şifre en az ${PASSWORD_MIN_LENGTH} karakter olmalıdır.`);
       return;
     }
 
@@ -90,207 +122,107 @@ const RegisterPage = () => {
 
   if (confirmationEmail) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f3faf7] px-4 py-8">
-        <div className="w-full max-w-lg rounded-[2rem] border border-slate-100 bg-white p-8 text-center shadow-[0_24px_70px_rgba(15,23,42,0.1)] sm:p-12">
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600">
-            <CheckCircle2 className="h-10 w-10" aria-hidden="true" />
-          </div>
-          <h2 className="text-2xl font-semibold tracking-tight text-[#10233f]">E-posta adresinizi doğrulayın</h2>
-          <p className="mt-4 text-base leading-7 text-slate-500">
-            <span className="font-semibold text-slate-700">{confirmationEmail}</span> adresine gönderilen bağlantıyı açın.
-            Doğrulama sonrasında mesleki başvurunuzu tamamlayabilirsiniz.
-          </p>
-          <Link
-            to="/login"
-            className="mt-8 inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-primary-dark focus:outline-none focus:ring-4 focus:ring-emerald-500/20"
-          >
-            Giriş Sayfasına Dön
-          </Link>
-        </div>
-      </div>
+      <AuthLayout aside={<ApplicationSteps current={1} />}>
+        <span aria-hidden="true" className="grid h-14 w-14 place-items-center rounded-card bg-ok-bg text-ok"><Icon name="envelope" size={26} /></span>
+        <h1 className="m-0 mt-5 text-26 font-bold tracking-[-0.3px]">E-posta adresinizi doğrulayın</h1>
+        <p className="m-0 mt-3 text-15 leading-7 text-ink-2">
+          <b className="font-semibold text-ink">{confirmationEmail}</b> adresine gönderilen bağlantıyı açın.
+          Doğrulama sonrasında mesleki başvurunuzu tamamlayabilirsiniz.
+        </p>
+        <LinkButton to="/login" variant="primary" size="lg" fullWidth className="mt-7">Giriş Sayfasına Dön</LinkButton>
+      </AuthLayout>
     );
   }
 
+  const passwordMismatch = formData.passwordConfirm.length > 0 && formData.password !== formData.passwordConfirm;
+  const passwordToggle = (
+    <button
+      type="button"
+      aria-label={showPasswords ? 'Şifreleri gizle' : 'Şifreleri göster'}
+      aria-pressed={showPasswords}
+      onClick={() => setShowPasswords(previous => !previous)}
+      className="grid h-7 w-7 place-items-center rounded-tag text-ink-3 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+    >
+      {showPasswords ? <EyeOff className="h-[17px] w-[17px]" aria-hidden="true" /> : <Eye className="h-[17px] w-[17px]" aria-hidden="true" />}
+    </button>
+  );
+
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f3faf7] text-slate-900">
-      <div className="mx-auto flex w-full max-w-[1560px] flex-col gap-4 px-4 py-3 sm:px-6 lg:flex-row lg:items-start lg:gap-6 lg:px-10 lg:py-4">
-        <aside className="relative flex min-h-[360px] flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white/75 px-6 py-6 shadow-[0_24px_70px_rgba(29,78,57,0.08)] backdrop-blur sm:px-8 sm:py-8 lg:sticky lg:top-4 lg:min-h-[calc(100vh-2rem)] lg:w-[360px] lg:shrink-0 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:py-3 lg:shadow-none">
-          <div className="pointer-events-none absolute -bottom-40 -left-36 h-80 w-80 rounded-full border-[28px] border-emerald-100/60 lg:-left-48" aria-hidden="true" />
-          <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-emerald-100/50 blur-3xl" aria-hidden="true" />
+    <AuthLayout aside={<ApplicationSteps current={0} />}>
+      <ol className="m-0 mb-5 flex list-none flex-wrap gap-3 p-0 text-12.5 font-semibold" aria-label="Başvuru adımları">
+        {['Hesap', 'Mesleki bilgiler', 'İnceleme'].map((label, index) => (
+          <li key={label} aria-current={index === 0 ? 'step' : undefined} className={cx('inline-flex items-center gap-1.5', index === 0 ? 'text-brand' : 'text-ink-3')}>
+            <span className={cx('grid h-5 w-5 place-items-center rounded-full text-11', index === 0 ? 'bg-brand text-white' : 'border border-line-strong')}>{index + 1}</span>
+            {label}
+          </li>
+        ))}
+      </ol>
+      <h1 className="m-0 text-28 font-bold tracking-[-0.4px]">Diyetisyen başvurusu</h1>
+      <p className="m-0 mt-2 text-14 text-ink-2">Önce hesabınızı oluşturun; e-posta doğrulamasından sonra mesleki bilgilerinizi ve diplomanızı ekleyeceksiniz.</p>
 
-          <div className="relative flex items-center gap-3">
-            <img src={APP_LOGO} alt="DietBridge" className="h-10 w-10 object-contain" />
-            <span className="text-xl font-semibold tracking-tight text-[#10233f]">DietBridge</span>
-          </div>
+      {error && (
+        <Callout tone="bad" role="alert" className="mt-5">
+          <span id="register-error">{error}</span>
+        </Callout>
+      )}
 
-          <div className="relative mt-10 lg:mt-16">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">DİYETİSYENLER İÇİN AKILLI YÖNETİM</p>
-            <h1 className="mt-5 text-4xl font-semibold leading-[1.08] tracking-tight text-[#10233f]">Diyetisyen Kaydı</h1>
-            <p className="mt-5 max-w-sm text-base leading-7 text-slate-500">Önce hesabınızı oluşturun, e-posta doğrulamasından sonra mesleki başvurunuzu tamamlayın.</p>
-          </div>
+      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4" noValidate>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input id="register-first-name" name="firstName" label="Ad" autoComplete="given-name" required value={formData.firstName} onChange={handleChange} placeholder="Adınız" aria-describedby={error ? 'register-error' : undefined} />
+          <Input id="register-last-name" name="lastName" label="Soyad" autoComplete="family-name" required value={formData.lastName} onChange={handleChange} placeholder="Soyadınız" aria-describedby={error ? 'register-error' : undefined} />
+        </div>
+        <Input id="register-email" type="email" name="email" label="E-posta" leadingIcon="envelope" autoComplete="email" required value={formData.email} onChange={handleChange} placeholder="ornek@eposta.com" aria-describedby={error ? 'register-error' : undefined} />
+        <div className="flex flex-col gap-2">
+          <Input
+            id="register-password"
+            type={showPasswords ? 'text' : 'password'}
+            name="password"
+            label="Şifre"
+            leadingIcon="lock"
+            autoComplete="new-password"
+            required
+            value={formData.password}
+            onChange={handleChange}
+            placeholder={`En az ${PASSWORD_MIN_LENGTH} karakter`}
+            aria-describedby="register-password-strength"
+            trailing={passwordToggle}
+          />
+          <PasswordStrengthMeter id="register-password-strength" password={formData.password} />
+        </div>
+        <Input
+          id="register-password-confirm"
+          type={showPasswords ? 'text' : 'password'}
+          name="passwordConfirm"
+          label="Şifre Tekrar"
+          leadingIcon="lock"
+          autoComplete="new-password"
+          required
+          value={formData.passwordConfirm}
+          onChange={handleChange}
+          placeholder="Şifrenizi tekrar girin"
+          error={passwordMismatch ? 'Şifreler eşleşmiyor.' : undefined}
+        />
 
-          <div className="relative mt-8 space-y-4 lg:mt-12">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm">
-                <Users className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[#10233f]">Danışan Yönetimi</p>
-                <p className="mt-1 text-sm leading-5 text-slate-500">Tüm danışanlarınızı düzenli olarak takip edin ve ilerlemelerini kolayca yönetin.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm">
-                <BarChart3 className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[#10233f]">Akıllı Takip</p>
-                <p className="mt-1 text-sm leading-5 text-slate-500">Gelişmeleri analiz edin, raporlar oluşturun ve süreci veriye dayalı yönetin.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm">
-                <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[#10233f]">Güvenli ve Güvenilir</p>
-                <p className="mt-1 text-sm leading-5 text-slate-500">Verileriniz bizimle güvende. Yüksek güvenlik standartları ile korunur.</p>
-              </div>
-            </div>
-          </div>
+        <div className="flex flex-col gap-2.5 rounded-db border border-line bg-surface p-3.5">
+          <label htmlFor="confirm-license" className="flex items-start gap-2.5 text-13.5 leading-6 text-ink-2">
+            <input type="checkbox" id="confirm-license" checked={formData.isConfirmed} onChange={handleCheckboxChange} className="mt-1 h-4 w-4 shrink-0 accent-[rgb(var(--db-brand))]" />
+            <span>Lisanslı bir diyetisyen olduğumu ve <a href="https://dietbridge.com.tr/kullanim-kosullari" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand hover:underline">Kullanım Koşulları</a>'nı kabul ediyorum.</span>
+          </label>
+          <label htmlFor="confirm-kvkk" className="flex items-start gap-2.5 text-13.5 leading-6 text-ink-2">
+            <input type="checkbox" id="confirm-kvkk" checked={formData.kvkkAccepted} onChange={handleKvkkChange} className="mt-1 h-4 w-4 shrink-0 accent-[rgb(var(--db-brand))]" />
+            <span><a href="https://dietbridge.com.tr/kvkk" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand hover:underline">KVKK Aydınlatma Metni</a>'ni okudum ve kişisel verilerimin işlenmesini kabul ediyorum.</span>
+          </label>
+        </div>
 
-          <div className="relative mt-8 border-t border-slate-200/80 pt-5 text-xs text-slate-400 lg:mt-auto">
-            <p>© 2025 DietBridge. Tüm hakları saklıdır.</p>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
-              <span>Gizlilik Politikası</span>
-              <span aria-hidden="true">·</span>
-              <span>Kullanım Şartları</span>
-            </div>
-          </div>
-        </aside>
+        <Button type="submit" variant="primary" size="lg" fullWidth rightIcon="arrow-right" loading={loading} disabled={loading}>
+          Hesap Oluştur
+        </Button>
+      </form>
 
-        <main className="w-full lg:flex-1">
-          <div className="mx-auto max-w-[1000px] rounded-[2rem] border border-slate-100 bg-white px-4 py-5 shadow-[0_24px_70px_rgba(15,23,42,0.1)] sm:px-7 sm:py-6 lg:px-10 lg:py-6">
-            <div className="flex flex-col items-center text-center">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50">
-                <img src={APP_LOGO} alt="DietBridge" className="h-7 w-7 object-contain" />
-              </div>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[#10233f]">Hesap Oluştur</h2>
-              <p className="mt-1 max-w-xl text-sm leading-6 text-slate-500">Diyetisyen başvurunuz için hesap bilgilerinizi oluşturun.</p>
-            </div>
-
-            {error && (
-              <div id="register-error" role="alert" className="mt-5 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="mt-6 space-y-3">
-              <section className="rounded-2xl border border-slate-200/80 bg-slate-50/40 p-4" aria-labelledby="personal-info-heading">
-                <div className="flex items-center gap-3 border-b border-slate-200/80 pb-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                    <User className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <div>
-                    <h3 id="personal-info-heading" className="text-base font-semibold text-[#10233f]">Kişisel Bilgiler</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Sizi tanımamız için temel bilgilerinizi paylaşın.</p>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <label htmlFor="register-first-name" className="text-xs font-semibold text-[#10233f]">Ad</label>
-                    <input id="register-first-name" type="text" name="firstName" required value={formData.firstName} onChange={handleChange} placeholder="Adınızı girin" aria-describedby={error ? 'register-error' : undefined} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" />
-                  </div>
-                  <div className="space-y-1">
-                    <label htmlFor="register-last-name" className="text-xs font-semibold text-[#10233f]">Soyad</label>
-                    <input id="register-last-name" type="text" name="lastName" required value={formData.lastName} onChange={handleChange} placeholder="Soyadınızı girin" aria-describedby={error ? 'register-error' : undefined} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" />
-                  </div>
-                  <div className="space-y-1">
-                    <label htmlFor="register-email" className="text-xs font-semibold text-[#10233f]">E-posta</label>
-                    <div className="relative">
-                      <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                      <input id="register-email" type="email" name="email" required value={formData.email} onChange={handleChange} placeholder="ornek@eposta.com" aria-describedby={error ? 'register-error' : undefined} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" />
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-slate-200/80 bg-slate-50/40 p-4" aria-labelledby="security-heading">
-                <div className="flex items-center gap-3 border-b border-slate-200/80 pb-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                    <Lock className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <div>
-                    <h3 id="security-heading" className="text-base font-semibold text-[#10233f]">Güvenlik</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Hesabınız için güçlü bir şifre oluşturun.</p>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <label htmlFor="register-password" className="text-xs font-semibold text-[#10233f]">Şifre</label>
-                    <div className="relative">
-                      <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                      <input id="register-password" type={showPasswords ? 'text' : 'password'} name="password" required value={formData.password} onChange={handleChange} placeholder="En az 8 karakter" aria-describedby={error ? 'register-error' : undefined} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-12 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" />
-                      <button
-                        type="button"
-                        aria-label={showPasswords ? 'Şifreleri gizle' : 'Şifreleri göster'}
-                        aria-pressed={showPasswords}
-                        onClick={() => setShowPasswords(previous => !previous)}
-                        className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                      >
-                        {showPasswords ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label htmlFor="register-password-confirm" className="text-xs font-semibold text-[#10233f]">Şifre Tekrar</label>
-                    <div className="relative">
-                      <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                      <input id="register-password-confirm" type={showPasswords ? 'text' : 'password'} name="passwordConfirm" required value={formData.passwordConfirm} onChange={handleChange} placeholder="Şifrenizi tekrar girin" aria-describedby={error ? 'register-error' : undefined} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" />
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <div className="flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
-                <input type="checkbox" id="confirm-license" checked={formData.isConfirmed} onChange={handleCheckboxChange} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-emerald-500/30" />
-                <label htmlFor="confirm-license" className="text-sm leading-6 text-slate-600">
-                  Lisanslı bir diyetisyen olduğumu ve <a href="https://dietbridge.com.tr/kullanim-kosullari" target="_blank" rel="noopener noreferrer" className="font-semibold text-emerald-700 hover:underline">Kullanım Koşulları</a>'nı kabul ediyorum.
-                </label>
-              </div>
-
-              <div className="flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
-                <input type="checkbox" id="confirm-kvkk" checked={formData.kvkkAccepted} onChange={handleKvkkChange} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-emerald-500/30" />
-                <label htmlFor="confirm-kvkk" className="text-sm leading-6 text-slate-600">
-                  <a href="https://dietbridge.com.tr/kvkk" target="_blank" rel="noopener noreferrer" className="font-semibold text-emerald-700 hover:underline">KVKK Aydınlatma Metni</a>'ni okudum ve kişisel verilerimin işlenmesini kabul ediyorum.
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-primary-dark focus:outline-none focus:ring-4 focus:ring-emerald-500/20 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {loading ? (
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                ) : (
-                  <>
-                    Hesap Oluştur <ArrowRight className="h-5 w-5" aria-hidden="true" />
-                  </>
-                )}
-              </button>
-
-              <div className="border-t border-slate-100 pt-5 text-center">
-                <p className="text-sm text-slate-500">
-                  Zaten hesabınız var mı? <Link to="/login" className="font-semibold text-emerald-600 hover:text-emerald-700 hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500/30">Giriş Yap</Link>
-                </p>
-              </div>
-            </form>
-          </div>
-        </main>
-      </div>
-    </div>
+      <p className="m-0 mt-7 text-center text-14 text-ink-2">
+        Zaten hesabınız var mı? <Link to="/login" className="font-semibold text-brand hover:text-brand-hi">Giriş Yap</Link>
+      </p>
+    </AuthLayout>
   );
 };
 
