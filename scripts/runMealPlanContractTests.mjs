@@ -84,6 +84,7 @@ const SOURCES = [
   'features/dashboard/utils/dashboardContract.ts',
   'features/dashboard/utils/automaticTaskContract.ts',
   'features/dashboard/services/dailyTaskService.ts',
+  'features/dashboard/services/automaticTaskDismissalService.ts',
   'features/notes/types/note.ts',
   'features/notes/utils/noteContract.ts',
   'features/notes/utils/noteFormat.ts',
@@ -151,6 +152,7 @@ const EXPECTED_OUTPUTS = [
   'features/dashboard/utils/dashboardContract.js',
   'features/dashboard/utils/automaticTaskContract.js',
   'features/dashboard/services/dailyTaskService.js',
+  'features/dashboard/services/automaticTaskDismissalService.js',
   'features/notes/types/note.js',
   'features/notes/utils/noteContract.js',
   'features/notes/utils/noteFormat.js',
@@ -314,6 +316,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'appointmentContracts.test.cjs'),
   join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs'),
   join(repoRoot, 'tests', 'dashboardClosureContracts.test.cjs'),
+  join(repoRoot, 'tests', 'automaticTaskDismissalContracts.test.cjs'),
   join(repoRoot, 'tests', 'analyticsContracts.test.cjs'),
   join(repoRoot, 'tests', 'analyticsInsightsContracts.test.cjs'),
   join(repoRoot, 'tests', 'waterSharedContract.test.cjs'),
@@ -344,7 +347,7 @@ const selectedTestFiles = process.argv.includes('--appointments-only')
   : process.argv.includes('--chat-only')
     ? testFiles.filter((file) => /chat(?:Contracts|Image|ScrollLifecycle)/i.test(file))
   : process.argv.includes('--daily-tasks-only')
-    ? [join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs')]
+    ? [join(repoRoot, 'tests', 'dashboardTaskContracts.test.cjs'), join(repoRoot, 'tests', 'automaticTaskDismissalContracts.test.cjs'), join(repoRoot, 'tests', 'dashboardClosureContracts.test.cjs')]
   : process.argv.includes('--notes-only')
     ? [join(repoRoot, 'tests', 'noteContracts.test.cjs')]
     : process.argv.includes('--analytics-only')

@@ -226,7 +226,7 @@ test('Dashboard uses persistent tasks with real client IDs and distinct operatio
   assert.match(source, /await deleteTask\(taskToDelete\.id\)/);
   assert.match(source, /reopenTask\(task\.id\)/);
   assert.match(source, /completeTask\(task\.id\)/);
-  assert.match(panel, /taskViewState\.status === 'loading' \? \([\s\S]*?\) : taskViewState\.status === 'error' \? \([\s\S]*?\) : manual\.length === 0 && automatic\.length === 0 \?/);
+  assert.match(panel, /taskViewState\.status === 'loading'[\s\S]*?\? \([\s\S]*?\) : taskViewState\.status === 'error' \? \([\s\S]*?\) : manual\.length === 0 && automatic\.length === 0 \?/);
   assert.match(form, /value=\{draft\.clientId \?\? ''\}/);
   assert.match(source, /busy=\{pendingTaskAction !== null\}/);
   assert.match(source, /getPendingDailyTaskGroup\(taskDraft\.dueDate, taskDraft\.dueTime\)/);

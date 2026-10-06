@@ -405,7 +405,7 @@ const ClientsPage = () => {
               {isExporting ? 'Dışa aktarılıyor...' : 'Dışa Aktar'}
             </Button>
             <Button variant="primary" leftIcon="user-plus" onClick={openAddModal}>Danışan Davet Et</Button>
-            <NotificationBell className="hidden md:inline-flex" />
+            <NotificationBell className="hidden md:inline-grid" />
           </>
         )}
       />

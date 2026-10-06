@@ -85,7 +85,7 @@ test('shell keeps every route, Panelim label, grouped navigation and admin entit
     assert.ok(index > cursor, `nav label out of order or missing: ${label}`);
     cursor = index;
   }
-  assert.match(sidebar, /title: 'Danışanlar'/);
+  assert.match(sidebar, /title: 'Danışan yönetimi'/);
   assert.match(sidebar, /title: 'Kaynaklar'/);
   assert.match(sidebar, /title: 'Hesap'/);
   assert.match(sidebar, /APP_LOGO_MARK/);

@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createClient } from '@supabase/supabase-js';
 import { assertCiSafeEnvironment } from './ciSafetyGuard.mjs';
-import { addCurrentIsolatedMigrations, addFaz2Migrations, FAZ2_MIGRATIONS } from './addCurrentIsolatedMigrations.mjs';
+import { addCurrentIsolatedMigrations, addFaz2Migrations, addAutomaticTaskDismissalMigration, AUTOMATIC_TASK_DISMISSAL_MIGRATION, FAZ2_MIGRATIONS } from './addCurrentIsolatedMigrations.mjs';
 import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalReplay.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -239,6 +239,19 @@ const runRestFlows = async () => {
   const dietitianAApi = await signIn(dietitianA);
   const dietitianBApi = await signIn(dietitianB);
 
+  const dismissal = { dietitian_id: dietitianA.id, client_id: clientA.id,
+    task_key: `measurement_due:${clientA.id}`, task_revision: 'first' };
+  for (const revision of ['first', 'second']) {
+    const saved = assertNoError(await dietitianAApi.from('automatic_task_dismissals')
+      .upsert({ ...dismissal, task_revision: revision }, { onConflict: 'dietitian_id,task_key' })
+      .select('dietitian_id,task_key,task_revision').maybeSingle(), 'automatic dismissal upsert');
+    assert(saved?.dietitian_id === dietitianA.id && saved.task_revision === revision, `REST_AUTOMATIC_DISMISSAL_${revision.toUpperCase()}`);
+  }
+  const foreignDismissals = assertNoError(await dietitianBApi.from('automatic_task_dismissals').select('task_key'), 'foreign preferences read');
+  assert(foreignDismissals.length === 0, 'REST_AUTOMATIC_DISMISSAL_OWNER_ISOLATION');
+  expectDenied(await clientApi.from('automatic_task_dismissals').upsert(dismissal,
+    { onConflict: 'dietitian_id,task_key' }), 'REST_AUTOMATIC_DISMISSAL_CLIENT_WRITE_DENIED');
+
   // Meal change request: the exact insert of the store mobile build.
   const request = assertNoError(await clientApi.from('meal_change_requests').insert({
     client_id: clientA.id,
@@ -326,11 +339,12 @@ const run = async () => {
   disposable = await runDisposableSupabaseLocalReplay({ materializeOnly: true, keepTemp: true });
   addCurrentIsolatedMigrations({ repoRoot, tempRoot: disposable.tempRoot });
   addFaz2Migrations({ repoRoot, tempRoot: disposable.tempRoot });
+  addAutomaticTaskDismissalMigration({ repoRoot, tempRoot: disposable.tempRoot });
   const migrationFiles = readdirSync(join(disposable.tempRoot, 'supabase', 'migrations'))
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(migrationFiles.at(-1) === FAZ2_MIGRATIONS.at(-1), 'FAZ2_MIGRATION_IS_DISPOSABLE_TAIL');
-  assert(migrationFiles.length === 62 + FAZ2_MIGRATIONS.length, `DISPOSABLE_MIGRATION_CHAIN_${62 + FAZ2_MIGRATIONS.length}`);
+  assert(migrationFiles.at(-1) === AUTOMATIC_TASK_DISMISSAL_MIGRATION, 'DASHBOARD_PREFERENCE_MIGRATION_IS_DISPOSABLE_TAIL');
+  assert(migrationFiles.length === 63 + FAZ2_MIGRATIONS.length, `DISPOSABLE_MIGRATION_CHAIN_${63 + FAZ2_MIGRATIONS.length}`);
   await configureDisposableProject(disposable.configPath);
   stackStartAttempted = true;
   runCli(disposable.tempRoot, ['start']);
@@ -341,7 +355,7 @@ const run = async () => {
   assertCiSafeEnvironment({ SUPABASE_URL: local.API_URL }, { requireLoopback: true });
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_ONLY');
   assert(Boolean(local.ANON_KEY && local.SERVICE_ROLE_KEY), 'DISPOSABLE_KEYS_PRESENT');
-  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === String(62 + FAZ2_MIGRATIONS.length), 'SCHEMA_MIGRATION_REPLAY_COMPLETE');
+  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === String(63 + FAZ2_MIGRATIONS.length), 'SCHEMA_MIGRATION_REPLAY_COMPLETE');
 
   const sqlOutput = runSqlFile(sqlContractPath);
   assert(sqlOutput.includes('FAZ2_BACKEND_CONTRACT_PASS'), 'SQL_CONTRACT_MATRIX_PASS');

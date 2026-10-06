@@ -35,6 +35,7 @@ import { NextAppointmentBanner } from '../components/NextAppointmentBanner';
 import { RecentMessagesCard, type RecentMessagesState } from '../components/RecentMessagesCard';
 import { TodayScheduleCard } from '../components/TodayScheduleCard';
 import { useAutomaticTasks } from '../hooks/useAutomaticTasks';
+import { AUTOMATIC_TASK_SUFFIX, type AutomaticTask } from '../utils/automaticTaskContract';
 import { useDailyTasks } from '../hooks/useDailyTasks';
 import type { DailyTask, DailyTaskDraft } from '../types/dailyTask';
 import { getIstanbulDateKey, getPendingDailyTaskGroup } from '../utils/dailyTaskContract';
@@ -115,7 +116,10 @@ const DashboardPage = () => {
     deleteTask,
     clearMutationError,
   } = useDailyTasks();
-  const { state: automaticState, refresh: refreshAutomatic } = useAutomaticTasks();
+  const { state: automaticState, refresh: refreshAutomatic, deleteTask: deleteAutomaticTask,
+    pendingAction: pendingAutomaticAction, mutationError: automaticMutationError,
+    clearMutationError: clearAutomaticMutationError } = useAutomaticTasks();
+  const [automaticTaskToDelete, setAutomaticTaskToDelete] = useState<AutomaticTask | null>(null);
   const [taskFilter, setTaskFilter] = useState<TaskTab>('today');
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
@@ -168,6 +172,9 @@ const DashboardPage = () => {
     if (!taskToDelete) return;
     const result = await deleteTask(taskToDelete.id);
     if (result.success) setTaskToDelete(null);
+  };
+  const confirmDeleteAutomaticTask = async () => {
+    if (automaticTaskToDelete && await deleteAutomaticTask(automaticTaskToDelete)) setAutomaticTaskToDelete(null);
   };
   const selectedTask = selectedTaskId ? dailyTasks.find((task) => task.id === selectedTaskId) ?? null : null;
   useEffect(() => {
@@ -257,10 +264,14 @@ const DashboardPage = () => {
     ? adherenceValues.reduce((total, value) => total + value, 0) / adherenceValues.length
     : null;
 
-  const dashboardSummary = summarizeDashboard({ todayAppointments: todaysAppointments, tasks: taskGroups });
-  const focusMessage = appointmentsError || taskViewState.status === 'error'
+  const dashboardSummary = summarizeDashboard({
+    todayAppointments: todaysAppointments,
+    tasks: taskGroups,
+    automaticTasks: automaticState.status === 'success' ? automaticState.tasks : [],
+  });
+  const focusMessage = appointmentsError || taskViewState.status === 'error' || automaticState.status === 'error'
     ? 'Bugünün özeti şu anda tamamlanamadı. Verileri tekrar deneyin.'
-    : appointmentsLoading || taskViewState.status !== 'success'
+    : appointmentsLoading || taskViewState.status !== 'success' || automaticState.status !== 'success'
       ? 'Bugünün özeti yükleniyor…'
       : getDashboardFocusMessage(dashboardSummary);
 
@@ -332,8 +343,10 @@ const DashboardPage = () => {
           taskViewState={taskViewState}
           groups={taskGroups}
           automaticState={automaticState}
-          mutationError={isAddTaskModalOpen ? null : taskMutationError}
+          mutationError={automaticMutationError || (isAddTaskModalOpen ? null : taskMutationError)}
           pendingAction={pendingTaskAction}
+          pendingAutomaticAction={pendingAutomaticAction}
+          onDeleteAutomatic={(task) => { clearAutomaticMutationError(); setAutomaticTaskToDelete(task); }}
           onCreate={openCreateTaskModal}
           onRetryTasks={() => void refreshDailyTasks()}
           onRetryAutomatic={() => void refreshAutomatic()}
@@ -394,6 +407,21 @@ const DashboardPage = () => {
         onConfirm={() => void confirmDeleteTask()}
         onCancel={() => setTaskToDelete(null)}
       />
+
+      <ConfirmDialog
+        open={automaticTaskToDelete !== null}
+        title="Otomatik görev silinsin mi?"
+        description={automaticTaskToDelete
+          ? `“${automaticTaskToDelete.clientName} ${AUTOMATIC_TASK_SUFFIX[automaticTaskToDelete.kind]}” görevi tüm cihazlarda panelinizden silinecek. Danışan kayıtları değişmez; yeni bir görev koşulu oluşursa tekrar görünür.`
+          : undefined}
+        confirmLabel="Sil"
+        tone="danger"
+        busy={pendingAutomaticAction !== null}
+        onConfirm={() => void confirmDeleteAutomaticTask()}
+        onCancel={() => { if (pendingAutomaticAction === null) setAutomaticTaskToDelete(null); }}
+      >
+        {automaticMutationError && <Callout tone="bad" role="alert">{automaticMutationError}</Callout>}
+      </ConfirmDialog>
 
       <MealChangeRequestReviewDialog
         request={reviewRequest}

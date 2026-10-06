@@ -7,9 +7,18 @@ import { BrowserRouter } from 'react-router-dom';
 import { NotificationCenterProvider } from '../../features/notifications/context/NotificationCenterContext';
 import RecipeImportDialog from '../../features/recipes/components/RecipeImportDialog';
 import '../../styles.css';
+import DashboardPage from '../../features/dashboard/pages/DashboardPage';
+import Sidebar from '../../shared/components/Sidebar';
+import { AuthProvider } from '../../features/auth/context/AuthContext';
+import { AppointmentProvider } from '../../features/appointments/context/AppointmentContext';
 function Fixture() {
   const [busy, setBusy] = useState(false);
   const [saved,setSaved]=useState(0);
+  if (new URLSearchParams(location.search).get('view') === 'dashboard') return (
+    <BrowserRouter><AuthProvider><AppointmentProvider><NotificationCenterProvider>
+      <Sidebar /><main className="md:ml-[260px]"><DashboardPage /></main>
+    </NotificationCenterProvider></AppointmentProvider></AuthProvider></BrowserRouter>
+  );
   if(new URLSearchParams(location.search).get('view')==='import')return saved?<p role="status">{saved} tarif kaydedildi.</p>:<RecipeImportDialog onClose={()=>{}} onSaved={setSaved} />;
   return new URLSearchParams(location.search).get('view') === 'legacy' ? <BrowserRouter><NotificationCenterProvider><ClientsPage /></NotificationCenterProvider></BrowserRouter>
     : <main className="max-w-md mx-auto"><p>{busy ? 'İşlem sürüyor' : 'Hazır'}</p><InviteCodePanel onBusyChange={setBusy} /></main>;

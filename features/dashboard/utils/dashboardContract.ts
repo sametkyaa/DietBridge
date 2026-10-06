@@ -1,9 +1,11 @@
 import type { Appointment } from '../../../shared/types';
 import type { DailyTaskGroups } from '../types/dailyTask';
+import type { AutomaticTask } from './automaticTaskContract';
 
 export interface DashboardSummaryInput {
   todayAppointments: readonly Appointment[];
   tasks: DailyTaskGroups;
+  automaticTasks?: readonly AutomaticTask[];
 }
 
 export interface DashboardSummary {
@@ -14,9 +16,10 @@ export interface DashboardSummary {
 export const summarizeDashboard = ({
   todayAppointments,
   tasks,
+  automaticTasks = [],
 }: DashboardSummaryInput): DashboardSummary => ({
   todayAppointmentCount: todayAppointments.filter((appointment) => appointment.status !== 'cancelled').length,
-  todayTaskCount: tasks.today.length,
+  todayTaskCount: tasks.today.length + tasks.overdue.length + automaticTasks.length,
 });
 
 export const getDashboardFocusMessage = (summary: DashboardSummary): string => {
