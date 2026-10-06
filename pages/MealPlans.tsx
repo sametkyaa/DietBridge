@@ -367,7 +367,6 @@ const MealPlans = () => {
 
   // Modal State
   const [isRecipeDrawerOpen, setIsRecipeDrawerOpen] = useState(false);
-  const [isClientInfoOpen, setIsClientInfoOpen] = useState(false);
   const [isManualMealOpen, setIsManualMealOpen] = useState(false);
   const [clearPlanOpen, setClearPlanOpen] = useState(false);
   const [noteDay, setNoteDay] = useState<string>(DAYS[0]);
@@ -485,7 +484,6 @@ const MealPlans = () => {
   useEffect(() => {
     setIsEditingNutritionTarget(false);
     setIsRecipeDrawerOpen(false);
-    setIsClientInfoOpen(false);
     setIsManualMealOpen(false);
   }, [selectedClient?.id]);
 
@@ -1591,37 +1589,40 @@ const MealPlans = () => {
               )}
 </div>
         </Card></>;
-  const clientDetailsContent = <>        {/* 1. Client Info Panel (Conditional) */}
-        {selectedClient ? (
-          <div className="p-6 border-b border-line bg-surface-alt/50">
-            <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink flex items-center gap-2">
-              <Info className="w-4 h-4 text-brand" /> Danışan Bilgileri
-            </h3>
-            {isLoadingClientDetails ? (
-              <p className="text-xs text-ink-2">Danışan ayrıntıları yükleniyor...</p>
-            ) : clientDetailsError ? (
-              <div className="text-xs text-rose-700" role="alert">
-                <p>{clientDetailsError}</p>
-                <button type="button" onClick={() => setClientDetailsLoadAttempt((attempt) => attempt + 1)} className="mt-2 min-h-11 rounded-lg border border-rose-200 bg-white px-3 font-semibold">Tekrar dene</button>
-              </div>
-            ) : clientDetails ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white p-3 rounded-xl border border-red-100 shadow-sm">
-                  <p className="text-xs font-bold text-red-500 mb-2 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Alerji / Kısıt</p>
-                  <div className="flex flex-wrap gap-1">
-                    {clientDetails.foodIntolerances.length > 0 ? clientDetails.foodIntolerances.map((item) => <span key={item} className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-medium">{item}</span>) : <span className="text-[10px] text-ink-3">Yok</span>}
-                  </div>
-                </div>
-                <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
-                  <p className="text-xs font-bold text-emerald-600 mb-2">Sevmedikleri</p>
-                  <div className="flex flex-wrap gap-1">
-                    {clientDetails.dislikedFoods.length > 0 ? clientDetails.dislikedFoods.map((item) => <span key={item} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-medium">{item}</span>) : <span className="text-[10px] text-ink-3">Yok</span>}
-                  </div>
-                </div>
-              </div>
-            ) : <p className="text-xs text-ink-3">{isClientDetailsEmpty ? 'Yok' : 'Danışan ayrıntısı bulunamadı.'}</p>}
+  const clientDetailsContent = selectedClient && (
+    <section className="meal-client-details" aria-labelledby="meal-client-details-title" aria-busy={isLoadingClientDetails}>
+      <h2 id="meal-client-details-title" className="meal-client-details-title">
+        <Info size={15} aria-hidden="true" /> Danışan bilgileri
+      </h2>
+      {isLoadingClientDetails ? (
+        <p className="meal-client-details-message" role="status">Danışan ayrıntıları yükleniyor...</p>
+      ) : clientDetailsError ? (
+        <div className="meal-client-details-error" role="alert">
+          <p>{clientDetailsError}</p>
+          <Button size="sm" variant="ghost" onClick={() => setClientDetailsLoadAttempt((attempt) => attempt + 1)}>Tekrar dene</Button>
+        </div>
+      ) : clientDetails ? (
+        <dl className="meal-client-facts">
+          <div className="meal-client-fact meal-client-restrictions">
+            <dt><AlertCircle size={14} aria-hidden="true" /> Alerji / Kısıt</dt>
+            <dd>
+              {clientDetails.foodIntolerances.length > 0
+                ? clientDetails.foodIntolerances.map((item) => <span className="meal-client-tag" key={item}>{item}</span>)
+                : <span className="meal-client-unspecified">Belirtilmemiş</span>}
+            </dd>
           </div>
-        ) : <p className="text-ink-3">Danışan seçin.</p>}</>;
+          <div className="meal-client-fact">
+            <dt>Sevmedikleri</dt>
+            <dd>
+              {clientDetails.dislikedFoods.length > 0
+                ? clientDetails.dislikedFoods.map((item) => <span className="meal-client-tag" key={item}>{item}</span>)
+                : <span className="meal-client-unspecified">Belirtilmemiş</span>}
+            </dd>
+          </div>
+        </dl>
+      ) : <p className="meal-client-details-message">{isClientDetailsEmpty ? 'Danışan ayrıntısı kayıtlı değil.' : 'Danışan ayrıntısı bulunamadı.'}</p>}
+    </section>
+  );
   const weekDates = getMealPlanWeekDates(weekStartDate);
   const todayDateKey = getDateKeyInTimeZone();
   const calorieMealCount = dailyCalorieTotals.reduce((sum, total) => sum + total.mealCount, 0);
@@ -1709,7 +1710,9 @@ const MealPlans = () => {
               )}
             </div>
             
-<div className="meal-client-goal">{selectedClient?.goal && <span>{selectedClient.goal}</span>}</div><Button size="sm" variant="ghost" rightIcon="caret-right" disabled={!selectedClient} onClick={() => setIsClientInfoOpen(true)}>Danışan bilgileri</Button></div>
+            {selectedClient?.goal && <div className="meal-client-goal"><span>{selectedClient.goal}</span></div>}
+            {clientDetailsContent}
+      </div>
       <div className="plan-summary-row"><div className="plan-kpis">
         <KpiTile label="Günlük ortalama kalori" icon="flame" loading={isLoadingPlan} value={planError || averageCalories === null ? '—' : averageCalories.toLocaleString('tr-TR')} unit={averageCalories !== null && !planError ? 'kcal' : undefined} hint={planError ? 'Plan yüklenemedi.' : averageCalories === null ? 'Kalori bilgisi olan öğün ekleyin.' : missingCalorieCount > 0 ? `7 günlük ortalama · ${missingCalorieCount} öğünde kalori yok` : 'Editördeki 7 günlük planın ortalaması'} />
         <Card padding="none" className="meal-target-card"><div className="meal-target-heading"><Icon name="flag-checkered-duotone" size={22} /><span>Günlük enerji hedefi</span>{nutritionTarget.state.status === 'success' && <Button size="sm" variant="ghost" onClick={() => setIsEditingNutritionTarget(true)}>{currentNutritionTarget ? 'Düzenle' : 'Belirle'}</Button>}</div>{!selectedClient ? <p className="meal-target-value">—</p> : nutritionTarget.state.status === 'loading' || nutritionTarget.state.status === 'idle' ? <p className="text-ink-3" role="status">Yükleniyor…</p> : nutritionTarget.state.status === 'error' ? <div className="text-bad text-12" role="alert">{nutritionTarget.state.message}<Button size="sm" variant="ghost" onClick={() => void nutritionTarget.reload()}>Tekrar dene</Button></div> : <><p className="meal-target-value">{nutritionTargetLabel ?? '—'}</p><p className="meal-target-hint">{currentNutritionTarget ? 'Seçili danışanın kayıtlı hedefi' : 'Henüz kalori hedefi belirlenmedi.'}</p></>}</Card>
@@ -2070,13 +2073,12 @@ const MealPlans = () => {
              </>
            )}
         </div>
-        {selectedClient && !isLoadingPlan && !planError && <Card className="meal-note-card"><CardHeader title="Danışana not" description="Seçtiğiniz günün planına eşlik edecek kısa bir not." actions={<Select label="Notun günü" hideLabel value={noteDay} onChange={event => setNoteDay(event.target.value)} options={DAYS.map(day => ({ value: day, label: day }))} />} /><Textarea label={`${noteDay} plan notu`} value={planNotes[noteDay] ?? ''} onChange={event => setPlanNotes(current => ({ ...current, [noteDay]: event.target.value || null }))} rows={2} disabled={isSaving} /></Card>}
+        {selectedClient && !isLoadingPlan && !planError && <Card className="meal-note-card"><CardHeader title="Danışana not" description="Seçtiğiniz günün planına eşlik edecek kısa bir not." actions={<Select label="Notun günü" hideLabel containerClassName="relative" value={noteDay} onChange={event => setNoteDay(event.target.value)} options={DAYS.map(day => ({ value: day, label: day }))} />} /><Textarea label={`${noteDay} plan notu`} value={planNotes[noteDay] ?? ''} onChange={event => setPlanNotes(current => ({ ...current, [noteDay]: event.target.value || null }))} rows={2} disabled={isSaving} /></Card>}
       </div>
 
       <aside className="meal-plan-rail">{recipePickerContent}</aside>
       </div>
       <Drawer open={isRecipeDrawerOpen} onClose={() => setIsRecipeDrawerOpen(false)} title="Öğüne tarif ekle" className="nutrition-drawer">{recipePickerContent}</Drawer>
-      <Modal open={isClientInfoOpen} onClose={() => setIsClientInfoOpen(false)} title="Danışan bilgileri" size="lg">{clientDetailsContent}</Modal>
       <Modal open={isEditingNutritionTarget} onClose={() => setIsEditingNutritionTarget(false)} title="Günlük enerji hedefi" dismissible={false}>{selectedClient && <div>                  <NutritionTargetEditor
                     clientId={selectedClient.id}
                     target={currentNutritionTarget}

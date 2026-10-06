@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import InviteCodePanel from '../../features/clients/components/InviteCodePanel';
 import ClientsPage from '../../features/clients/pages/ClientsPage';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { NotificationCenterProvider } from '../../features/notifications/context/NotificationCenterContext';
 import RecipeImportDialog from '../../features/recipes/components/RecipeImportDialog';
 import '../../styles.css';
@@ -13,10 +13,14 @@ import { AuthProvider } from '../../features/auth/context/AuthContext';
 import { AppointmentProvider } from '../../features/appointments/context/AppointmentContext';
 import MealPlans from '../../pages/MealPlans';
 import Recipes from '../../pages/Recipes';
+import DashboardLayout from '../../shared/components/DashboardLayout';
 function Fixture() {
   const [busy, setBusy] = useState(false);
   const [saved,setSaved]=useState(0);
   const nutritionView = new URLSearchParams(location.search).get('view');
+  if (nutritionView === 'meal-plans' && new URLSearchParams(location.search).has('shell')) return (
+    <MemoryRouter initialEntries={['/meal-plans']}><Routes><Route element={<DashboardLayout />}><Route path="/meal-plans" element={<MealPlans />} /></Route></Routes></MemoryRouter>
+  );
   if (nutritionView === 'meal-plans' || nutritionView === 'recipes') return (
     <BrowserRouter><div className="flex w-full max-w-full bg-canvas md:pl-sidebar">
       <main className="min-w-0 w-full max-w-full">{nutritionView === 'meal-plans' ? <MealPlans /> : <Recipes />}</main>

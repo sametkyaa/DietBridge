@@ -129,6 +129,36 @@ test('recipe library uses service data, cards only, search and canonical create/
   expect(state.unexpected).toEqual([]);
 });
 
+test('meal plan stays inside the dashboard scroll area after scrolling and viewport resizing', async ({ page }) => {
+  const { state, errors } = await fixture(page);
+  const first = (state.plans[0].meals as Row[])[0];
+  state.plans[0].meals = ['breakfast', 'lunch', 'dinner', 'snack'].map((type, index) => ({
+    ...first, type, id: `44444444-4444-4444-8444-${String(index + 1).padStart(12, '0')}`,
+    time: `${String(index * 4 + 8).padStart(2, '0')}:30`, sort_order: index,
+  }));
+  await page.goto('/tests/browser/feature-fixture.html?view=meal-plans&shell=1');
+  await expect(page.locator('.meal-entry-card')).toHaveCount(4);
+  await expect(page.getByRole('region', { name: 'Danışan bilgileri' })).toContainText('Süt');
+  for (const viewport of [{ width: 1536, height: 724 }, { width: 1920, height: 920 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    // A hidden day-selector label used to escape its scroll container and make
+    // the document itself taller than the viewport. Scrolling that second area
+    // moved the whole dashboard up, exposing a blank strip over the plan.
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(viewport.height);
+    const main = page.locator('#ana-icerik');
+    await main.evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await expect(page.getByLabel('Pazartesi plan notu', { exact: true })).toBeInViewport();
+    await page.evaluate(() => window.scrollTo(0, 230));
+    expect(await page.evaluate(() => scrollY)).toBe(0);
+    await main.evaluate(node => { node.scrollTop = 0; });
+    await expect(page.getByRole('heading', { level: 1, name: 'Beslenme planı', exact: true })).toBeInViewport();
+    expect(await main.evaluate(node => node.getBoundingClientRect().bottom)).toBe(viewport.height);
+  }
+  expect(state.writes).toEqual([]);
+  expect(state.unexpected).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('failed recipe edit keeps form and image; failed delete keeps the recipe', async ({ page }) => {
   const { state } = await fixture(page, { view: 'recipes' }); state.failRecipeWrite = true;
   await page.getByRole('button', { name: 'Düzenle' }).click();
