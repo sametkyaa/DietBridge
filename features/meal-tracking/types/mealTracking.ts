@@ -20,6 +20,10 @@ export interface MealTrackingMeal {
   isCompleted: boolean;
   completedAt: string | null;
   photoPath: string | null;
+  /** Dietitian-defined slot name (meals.slot_label); null falls back to the type label. */
+  slotLabel?: string | null;
+  /** Private completion photo the client attached (meals.completion_photo_url). */
+  completionPhotoPath?: string | null;
 }
 export interface MealTrackingDay {
   date: string;
@@ -37,6 +41,8 @@ export interface MealTrackingOverviewMealEntry {
   time: string | null;
   title: string;
   status: MealTrackingMealStatus;
+  completedAt?: string | null;
+  hasCompletionPhoto?: boolean;
 }
 
 export interface MealTrackingOverviewTypeEntry {
