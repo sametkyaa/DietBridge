@@ -24,6 +24,10 @@ export interface RegistrationData {
   password: string;
   firstName: string;
   lastName: string;
+  /** Kullanım Koşulları onayı; sunucu zaman damgasını kendisi yazar. */
+  termsAccepted: boolean;
+  /** KVKK aydınlatma metni onayı; sunucu zaman damgasını kendisi yazar. */
+  kvkkAccepted: boolean;
 }
 
 export interface DietitianCompletionData {
@@ -378,6 +382,9 @@ export const registerDietitian = async (data: RegistrationData): Promise<Registr
     .join(' ');
 
   if (!fullName) return { success: false, status: 'failed', error: 'Ad ve soyad boş bırakılamaz.' };
+  if (!data.termsAccepted || !data.kvkkAccepted) {
+    return { success: false, status: 'failed', error: 'Kullanım Koşulları ve KVKK Aydınlatma Metni onaylanmadan kayıt tamamlanamaz.' };
+  }
 
   try {
     const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -390,6 +397,9 @@ export const registerDietitian = async (data: RegistrationData): Promise<Registr
           full_name: fullName,
           account_type: 'dietitian',
           role: 'dietitian',
+          // Only flags travel in metadata; handle_new_user stamps server time.
+          terms_accepted: true,
+          kvkk_accepted: true,
         },
       },
     });

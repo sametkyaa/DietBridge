@@ -28,5 +28,13 @@ export const getNotificationNavigationTarget = (
     return '/clients';
   }
 
+  if (notification.category === 'client_activity' && isValidUuid(notification.actorId)) {
+    return `/clients/${encodeURIComponent(notification.actorId)}`;
+  }
+
+  if (notification.category === 'appointment' && notification.eventType === 'reminder_30m') {
+    return '/appointments';
+  }
+
   return null;
 };

@@ -3,6 +3,7 @@ import { APP_LOGO_MARK } from '../constants';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { usePlatformAdminAccess } from '../../features/admin/hooks/usePlatformAdminAccess';
 import { useDietitianAvatarUrl } from '../hooks/useDietitianAvatarUrl';
+import { useUnreadCounts } from '../../features/chat/context/UnreadCountsContext';
 import { Avatar, CountPill, Icon, cx, type IconName } from '../ui';
 
 interface NavItem {
@@ -62,11 +63,13 @@ const Sidebar = () => {
     enabled: accessState.status === 'allowed',
     userId: session?.user.id ?? null,
   });
+  const { state: unreadState } = useUnreadCounts();
+  const unreadMessageCount = unreadState.status === 'success' ? unreadState.total : undefined;
 
   const navItems: NavItem[] = [
     { icon: 'house', label: 'Panelim', path: '/' },
     { icon: 'calendar-blank', label: 'Randevular', path: '/appointments' },
-    { icon: 'chat-circle', label: 'Mesajlar', path: '/messages' },
+    { icon: 'chat-circle', label: 'Mesajlar', path: '/messages', count: unreadMessageCount },
     { icon: 'users', label: 'Danışanlar', path: '/clients' },
     { icon: 'fork-knife', label: 'Öğün takibi', path: '/meal-tracking' },
     { icon: 'chart-bar', label: 'Analizler', path: '/analytics' },
@@ -129,7 +132,7 @@ const Sidebar = () => {
                       <Icon name={item.icon} className={isActive ? 'text-brand' : 'text-ink-3'} />
                       <span className="truncate">{item.label}</span>
                       {typeof item.count === 'number' && item.count > 0 && (
-                        <CountPill count={item.count} tone="brand" className="ml-auto" label={`${item.count} yeni`} />
+                        <CountPill count={item.count} tone="brand" className="ml-auto" label={`${item.count} okunmamış`} />
                       )}
                     </>
                   )}

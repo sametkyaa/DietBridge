@@ -429,3 +429,7 @@ entrypoint = "./functions/process-recipe-import/index.ts"
 [functions.cleanup-recipe-imports]
 verify_jwt = false
 entrypoint = "./functions/cleanup-recipe-imports/index.ts"
+
+[functions.send-application-result-emails]
+verify_jwt = true
+entrypoint = "./functions/send-application-result-emails/index.ts"

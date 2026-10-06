@@ -34,6 +34,13 @@ const ISOLATED_PHASE2_MIGRATIONS = new Set([
   '20260901200413_client_account_deletion_scope_tightening.sql',
   '20261005120000_realtime_publication_core_tables.sql',
   '20261005120100_save_active_client_weight_canonical.sql',
+  '20261006090000_meal_change_request_security.sql',
+  '20261006090100_dietitian_unread_message_counts.sql',
+  '20261006090200_client_nutrition_targets.sql',
+  '20261006090300_profile_legal_acceptance.sql',
+  '20261006090400_dietitian_activity_notifications.sql',
+  '20261006090500_meal_slot_label.sql',
+  '20261006090600_application_result_email_outbox.sql',
 ]);
 export const LOCAL_PREREQUISITE_FILE = '20260728155959_disposable_avatar_bucket_prerequisite.sql';
 export const LOCAL_PREREQUISITE_SQL = `-- Local-only disposable prerequisite. Never add this file to repository migrations.
@@ -474,7 +481,7 @@ export const copyRequiredProjectFiles = ({ repoRoot, tempRoot }) => {
   return destinationConfig;
 };
 
-// Invite and recipe-import Edge functions are exercised through their handlers by
+// Invite, recipe-import and application e-mail Edge functions are exercised through their handlers by
 // dedicated harnesses and are not served by the disposable stack. Their config
 // sections are removed from the disposable copy only, because `supabase start`
 // requires every configured entrypoint to exist. Any other uncopied function
@@ -483,6 +490,7 @@ export const HANDLER_TESTED_FUNCTIONS = Object.freeze([
   'preview-dietitian-invite',
   'process-recipe-import',
   'cleanup-recipe-imports',
+  'send-application-result-emails',
 ]);
 export const withoutHandlerTestedFunctions = (configText) => {
   const sections = configText.split(/^(?=\[[^\r\n]+\]\s*$)/m);

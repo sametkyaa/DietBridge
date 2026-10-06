@@ -1,4 +1,4 @@
-export type NotificationCategory = 'chat_message' | 'appointment' | 'relationship';
+export type NotificationCategory = 'chat_message' | 'appointment' | 'relationship' | 'client_activity';
 
 export type NotificationEventType =
   | 'new_message'
@@ -9,10 +9,14 @@ export type NotificationEventType =
   | 'removed_from_client'
   | 'reminder_24h'
   | 'reminder_1h'
+  | 'reminder_30m'
   | 'request_pending'
   | 'accepted'
   | 'rejected'
-  | 'removed';
+  | 'removed'
+  | 'meal_photo_completed'
+  | 'meal_inactivity'
+  | 'meal_change_requested';
 
 export type NotificationSummaryKey =
   | 'chat_new_message'
@@ -23,10 +27,14 @@ export type NotificationSummaryKey =
   | 'appointment_removed_from_client'
   | 'appointment_reminder_24h'
   | 'appointment_reminder_1h'
+  | 'appointment_reminder_30m'
   | 'relationship_request_pending'
   | 'relationship_accepted'
   | 'relationship_rejected'
-  | 'relationship_removed';
+  | 'relationship_removed'
+  | 'client_meal_photo_completed'
+  | 'client_meal_inactivity'
+  | 'client_meal_change_requested';
 
 export type NotificationAppointmentStatus = 'upcoming' | 'completed' | 'cancelled';
 export type NotificationRelationshipStatus = 'pending' | 'active' | 'rejected' | 'removed';
