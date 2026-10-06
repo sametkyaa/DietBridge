@@ -84,8 +84,8 @@ const Sidebar = () => {
     : [byPath('/settings')];
   const navGroups: NavGroup[] = [
     { items: [byPath('/'), byPath('/appointments'), byPath('/messages')] },
-    { title: 'Danışanlar', items: [byPath('/clients'), byPath('/meal-tracking'), byPath('/analytics')] },
-    { title: 'Kaynaklar', items: [byPath('/meal-plans'), byPath('/recipes'), byPath('/notes')] },
+    { title: 'Danışan yönetimi', items: [byPath('/clients'), byPath('/meal-plans'), byPath('/meal-tracking'), byPath('/analytics')] },
+    { title: 'Kaynaklar', items: [byPath('/recipes'), byPath('/notes')] },
     { title: 'Hesap', items: accountItems },
   ];
 

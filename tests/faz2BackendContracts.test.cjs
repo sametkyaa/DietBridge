@@ -10,7 +10,7 @@ const { join } = require('node:path');
 
 const root = join(__dirname, '..');
 const migrations = join(root, 'supabase', 'migrations');
-const read = (name) => readFileSync(join(migrations, name), 'utf8');
+const read = (name) => readFileSync(join(migrations, name), 'utf8').replace(/\r\n/g, '\n');
 const FAZ2 = [
   '20261006090000_meal_change_request_security.sql',
   '20261006090100_dietitian_unread_message_counts.sql',
@@ -21,9 +21,11 @@ const FAZ2 = [
   '20261006090600_application_result_email_outbox.sql',
 ];
 
-test('Faz 2 migrations are the ordered tail of the canonical chain', () => {
+test('Faz 2 migrations remain an ordered segment of the canonical chain', () => {
   const all = readdirSync(migrations).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  assert.deepEqual(all.slice(-FAZ2.length), FAZ2);
+  const start = all.indexOf(FAZ2[0]);
+  assert.ok(start >= 0);
+  assert.deepEqual(all.slice(start, start + FAZ2.length), FAZ2);
   for (const name of FAZ2) {
     const sql = read(name);
     assert.match(sql, /^begin;$/m, `${name} is transactional`);

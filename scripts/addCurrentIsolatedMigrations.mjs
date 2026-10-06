@@ -37,6 +37,13 @@ export const addFaz2Migrations = ({ repoRoot, tempRoot }) => {
   return { total: count };
 };
 
+export const AUTOMATIC_TASK_DISMISSAL_MIGRATION = '20261006202442_automatic_task_dismissals.sql';
+
+export const addAutomaticTaskDismissalMigration = ({ repoRoot, tempRoot }) => {
+  const name = AUTOMATIC_TASK_DISMISSAL_MIGRATION;
+  copyFileSync(join(repoRoot, 'supabase', 'migrations', name), join(tempRoot, 'supabase', 'migrations', name), 1);
+};
+
 export const addCurrentIsolatedMigrations = ({ repoRoot, tempRoot }) => {
   const sourceDirectory = join(repoRoot, 'supabase', 'migrations');
   const destinationDirectory = join(tempRoot, 'supabase', 'migrations');

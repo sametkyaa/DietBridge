@@ -37,6 +37,22 @@ test('default legacy client invitation still renders email entry',async({page})=
   await page.getByRole('button',{name:'Danışan Davet Et'}).click();await expect(page.getByLabel('Danışanın kayıtlı e-posta adresi')).toBeVisible();
   expect(calls).not.toContain('get_my_invite_code');
 });
+
+test('client notification icon stays centered on desktop and hidden on mobile', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/tests/browser/feature-fixture.html?view=legacy');
+  const bell = page.getByTestId('notification-bell');
+  await expect(bell).toBeVisible();
+  const button = await bell.boundingBox();
+  const icon = await bell.locator('svg').boundingBox();
+  expect(button).not.toBeNull();
+  expect(icon).not.toBeNull();
+  expect(Math.abs((button!.x + button!.width / 2) - (icon!.x + icon!.width / 2))).toBeLessThan(1);
+  expect(Math.abs((button!.y + button!.height / 2) - (icon!.y + icon!.height / 2))).toBeLessThan(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(bell).toBeHidden();
+});
 test('invite_code flag switches the actual client modal to code sharing',async({page})=>{
   test.skip(process.env.DIETBRIDGE_TEST_INVITE_MODE!=='invite_code','Run with DIETBRIDGE_TEST_INVITE_MODE=invite_code.');
   const calls=await mockApi(page);await page.goto('/tests/browser/feature-fixture.html?view=legacy');

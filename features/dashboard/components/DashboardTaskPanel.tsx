@@ -79,7 +79,12 @@ const AutomaticTaskAction = ({ task, onReviewRequest }: { task: AutomaticTask; o
   }
 };
 
-const AutomaticTaskRow = ({ task, onReviewRequest }: { task: AutomaticTask; onReviewRequest: (requestId: string) => void }) => (
+const AutomaticTaskRow = ({ task, onReviewRequest, onDelete, busy }: {
+  task: AutomaticTask;
+  onReviewRequest: (requestId: string) => void;
+  onDelete: (task: AutomaticTask) => void;
+  busy: boolean;
+}) => (
   <li className="flex flex-wrap items-center gap-3.5 border-t border-line px-[22px] py-3.5 sm:flex-nowrap">
     <span
       aria-hidden="true"
@@ -98,6 +103,7 @@ const AutomaticTaskRow = ({ task, onReviewRequest }: { task: AutomaticTask; onRe
       <Badge tone="bad">{task.overdueDays} gün gecikti</Badge>
     )}
     <AutomaticTaskAction task={task} onReviewRequest={onReviewRequest} />
+    <IconButton icon="x" label={`${task.clientName} ${AUTOMATIC_TASK_SUFFIX[task.kind]} otomatik görevini sil`} variant="bare" size="sm" disabled={busy} onClick={() => onDelete(task)} />
   </li>
 );
 
@@ -160,6 +166,8 @@ export interface DashboardTaskPanelProps {
   automaticState: AutomaticTaskViewState;
   mutationError: string | null;
   pendingAction: string | null;
+  pendingAutomaticAction: string | null;
+  onDeleteAutomatic: (task: AutomaticTask) => void;
   onCreate: () => void;
   onRetryTasks: () => void;
   onRetryAutomatic: () => void;
@@ -182,6 +190,8 @@ export const DashboardTaskPanel = ({
   automaticState,
   mutationError,
   pendingAction,
+  pendingAutomaticAction,
+  onDeleteAutomatic,
   onCreate,
   onRetryTasks,
   onRetryAutomatic,
@@ -237,7 +247,7 @@ export const DashboardTaskPanel = ({
             </span>
           </Callout>
         )}
-        {taskViewState.status === 'loading' ? (
+        {taskViewState.status === 'loading' || (automaticState.status === 'loading' && manual.length === 0 && (activeTab === 'today' || activeTab === 'overdue')) ? (
           <LoadingState label="Görevler yükleniyor…" variant="skeleton" rows={3} className="px-[22px] py-4" />
         ) : taskViewState.status === 'error' ? (
           <ErrorState description={taskViewState.message} onRetry={onRetryTasks} compact className="py-8" />
@@ -252,7 +262,7 @@ export const DashboardTaskPanel = ({
           <ul className="m-0 list-none p-0 pb-1 [&>li:first-child]:border-t-0 [&>li:first-child]:mt-1">
             {automatic.map((task) => (
               <Fragment key={task.key}>
-                <AutomaticTaskRow task={task} onReviewRequest={onReviewRequest} />
+                <AutomaticTaskRow task={task} onReviewRequest={onReviewRequest} onDelete={onDeleteAutomatic} busy={pendingAutomaticAction !== null} />
               </Fragment>
             ))}
             {manual.map((task) => (

@@ -31,6 +31,24 @@ export interface AutomaticTask {
   detail: string;
 }
 
+export interface AutomaticTaskDismissal {
+  taskKey: string;
+  taskRevision: string;
+}
+
+/** Stable across elapsed days; a new plan, measurement or request is a new occurrence. */
+export const automaticTaskRevision = (task: AutomaticTask): string => (
+  JSON.stringify([task.kind, task.clientId, task.sinceDate, task.requestId])
+);
+
+export const filterDismissedAutomaticTasks = (
+  tasks: readonly AutomaticTask[],
+  dismissals: readonly AutomaticTaskDismissal[],
+): AutomaticTask[] => {
+  const hidden = new Map(dismissals.map((item) => [item.taskKey, item.taskRevision]));
+  return tasks.filter((task) => hidden.get(task.key) !== automaticTaskRevision(task));
+};
+
 export interface AutomaticTaskClient {
   id: string;
   name: string;

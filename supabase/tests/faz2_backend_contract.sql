@@ -679,6 +679,65 @@ begin
 end
 $$;
 
+-- Dashboard deletion preferences: uses the same disposable fixtures and rolls back.
+do $$
+declare
+  c faz2_test.ctx;
+  v_key text;
+  v_count integer;
+begin
+  select * into c from faz2_test.ctx;
+  v_key := 'measurement_due:' || c.client_a::text;
+  perform faz2_test.act_as(c.dietitian_a);
+  insert into public.automatic_task_dismissals (dietitian_id, client_id, task_key, task_revision)
+    values (c.dietitian_a, c.client_a, v_key, 'first');
+  -- Same column set as PostgREST merge-duplicates upsert.
+  insert into public.automatic_task_dismissals (dietitian_id, client_id, task_key, task_revision)
+    values (c.dietitian_a, c.client_a, v_key, 'second')
+    on conflict (dietitian_id, task_key) do update set
+      dietitian_id = excluded.dietitian_id, client_id = excluded.client_id,
+      task_key = excluded.task_key, task_revision = excluded.task_revision;
+  if (select task_revision from public.automatic_task_dismissals where task_key = v_key) <> 'second' then
+    raise exception 'FAIL: AUTOMATIC_DISMISSAL_OWNER_UPSERT';
+  end if;
+  perform faz2_test.expect_error(format(
+    'insert into public.automatic_task_dismissals (dietitian_id, client_id, task_key, task_revision) values (%L,%L,%L,%L)',
+    c.dietitian_b, c.client_a, v_key, 'foreign'), array['42501'], 'AUTOMATIC_DISMISSAL_FOREIGN_OWNER_DENIED');
+  perform faz2_test.expect_error(format(
+    'insert into public.automatic_task_dismissals (dietitian_id, client_id, task_key, task_revision) values (%L,%L,%L,%L)',
+    c.dietitian_a, c.client_x, 'no_plan:' || c.client_x::text, 'unlinked'), array['42501'], 'AUTOMATIC_DISMISSAL_UNLINKED_CLIENT_DENIED');
+  perform faz2_test.reset_actor();
+
+  perform faz2_test.act_as(c.dietitian_b);
+  select count(*) into v_count from public.automatic_task_dismissals;
+  if v_count <> 0 then raise exception 'FAIL: AUTOMATIC_DISMISSAL_FOREIGN_READ'; end if;
+  update public.automatic_task_dismissals set task_revision = 'foreign' where task_key = v_key;
+  get diagnostics v_count = row_count;
+  if v_count <> 0 then raise exception 'FAIL: AUTOMATIC_DISMISSAL_FOREIGN_UPDATE'; end if;
+  perform faz2_test.reset_actor();
+
+  perform faz2_test.act_as(c.client_a);
+  select count(*) into v_count from public.automatic_task_dismissals;
+  if v_count <> 0 then raise exception 'FAIL: AUTOMATIC_DISMISSAL_CLIENT_READ'; end if;
+  perform faz2_test.expect_error(format(
+    'insert into public.automatic_task_dismissals (dietitian_id, client_id, task_key, task_revision) values (%L,%L,%L,%L)',
+    c.client_a, c.client_a, v_key, 'client'), array['42501'], 'AUTOMATIC_DISMISSAL_CLIENT_WRITE_DENIED');
+  perform faz2_test.reset_actor();
+
+  perform faz2_test.act_as(c.dietitian_pending);
+  select count(*) into v_count from public.automatic_task_dismissals;
+  if v_count <> 0 then raise exception 'FAIL: AUTOMATIC_DISMISSAL_PENDING_READ'; end if;
+  perform faz2_test.expect_error(format(
+    'insert into public.automatic_task_dismissals (dietitian_id, client_id, task_key, task_revision) values (%L,%L,%L,%L)',
+    c.dietitian_pending, c.client_a, v_key, 'pending'), array['42501'], 'AUTOMATIC_DISMISSAL_PENDING_WRITE_DENIED');
+  perform faz2_test.reset_actor();
+  perform faz2_test.act_as_role('anon');
+  perform faz2_test.expect_error('select * from public.automatic_task_dismissals', array['42501'], 'AUTOMATIC_DISMISSAL_ANON_DENIED');
+  perform faz2_test.reset_actor();
+  raise notice 'PASS: AUTOMATIC_DISMISSAL_SECURITY_MATRIX';
+end
+$$;
+
 \echo FAZ2_BACKEND_CONTRACT_PASS
 
 rollback;

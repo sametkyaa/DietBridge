@@ -214,7 +214,7 @@ test('bell is exposed only in the approved Dashboard, Messages, and Clients head
   const clients = source('features/clients/pages/ClientsPage.tsx');
   assert.match(dashboard, /<DashboardClientSearch clients=\{clients\} \/>\s*<NotificationBell \/>/);
   assert.match(messages, /<NotificationBell \/>/);
-  assert.match(clients, /<NotificationBell className="hidden md:inline-flex" \/>/);
+  assert.match(clients, /<NotificationBell className="hidden md:inline-grid" \/>/);
   assert.doesNotMatch(messages, /import \{[^}]*\bBell\b/);
   assert.doesNotMatch(clients, /import \{[^}]*\bBell\b/);
 });

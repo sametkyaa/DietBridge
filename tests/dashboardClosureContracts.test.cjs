@@ -53,15 +53,16 @@ test('dashboard focus formats every task and appointment count state naturally',
   }
 });
 
-test('dashboard summary counts only today tasks and valid today appointments from supplied slices', () => {
+test('dashboard summary counts actionable manual and automatic tasks, excluding completed and upcoming', () => {
   const summary = contract.summarizeDashboard({
     todayAppointments: [appointment('upcoming'), appointment('completed'), appointment('cancelled')],
-    tasks: emptyTasks({ overdue: [{}], today: [{}, {}] }),
+    tasks: emptyTasks({ overdue: [{}], today: [{}, {}], completed: [{}], upcoming: [{}] }),
+    automaticTasks: [{ group: 'overdue' }, { group: 'today' }],
   });
 
   assert.deepEqual(summary, {
     todayAppointmentCount: 2,
-    todayTaskCount: 2,
+    todayTaskCount: 5,
   });
 });
 
@@ -91,7 +92,7 @@ test('dashboard focus task count reuses the canonical Bugün task grouping seman
   assert.equal(contract.summarizeDashboard({
     todayAppointments: [],
     tasks: groups,
-  }).todayTaskCount, groups.today.length);
+  }).todayTaskCount, groups.today.length + groups.overdue.length);
 });
 
 test('dashboard page is real-data-only for the operational summary and has distinct recovery states', () => {
