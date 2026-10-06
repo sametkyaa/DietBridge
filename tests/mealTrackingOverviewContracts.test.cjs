@@ -368,7 +368,7 @@ test('overview and sidebar source chains preserve authorization, detail navigati
   assert.match(overviewPage, /Aramanızla eşleşen aktif danışan bulunamadı/);
   assert.match(overviewPage, /\/clients\/\$\{client\.clientId\}\/meal-tracking/);
   assert.match(app, /<Route path="\/meal-tracking" element={<MealTrackingOverviewPage \/>} \/>/);
-  assert.match(sidebar, /label: 'Öğün Takibi', path: '\/meal-tracking'/);
+  assert.match(sidebar, /label: 'Öğün takibi', path: '\/meal-tracking'/);
   assert.match(sidebar, /const mobileNavPaths = \['\/', '\/appointments', '\/clients', '\/meal-plans', '\/messages'\]/);
   assert.doesNotMatch(sidebar, /navItems\[4\]|navItems\[6\]/);
 });

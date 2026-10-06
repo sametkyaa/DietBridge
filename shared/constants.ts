@@ -1,2 +1,4 @@
 export const USER_AVATAR = "https://lh3.googleusercontent.com/aida-public/AB6AXuDJuNjjfzaHq6NdFUv7jYsVuX3L7rLIckzyfPCcskncWkxLkGejTlQ8qRV2mjvZeyGVOB683LNQeqZgNpaMvluFxL9Lg9IRhnMN0ptlAoypCJBHtSefS-Gb5HT74rDgqWj4fIxHJ1SQY01CKvh5CN-p8yXUJxegnys2lE1VV4uj2fgGH58f0n8jvlJjLOXNlF7-ozGrpqQbQCTfuhmjkukqW_VOkrUc7PGOnvazLmGpnU4_YnH7_EIJVmJe0rhF4SdUm0aFMElUypE";
 export const APP_LOGO = "/images/dietbridge-logo.svg";
+/** Şeffaf arka planlı marka logosu (Faz 1 kenar menüsü). */
+export const APP_LOGO_MARK = "/images/dietbridge-logo-seffaf.png";
