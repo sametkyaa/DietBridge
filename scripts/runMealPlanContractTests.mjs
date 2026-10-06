@@ -68,6 +68,7 @@ const SOURCES = [
   'features/meal-plans/services/mealPlanReadModel.ts',
   'features/meal-plans/utils/mealPlanMove.ts',
   'features/meal-plans/utils/mealPlanPayload.ts',
+  'features/meal-plans/utils/mealPlanInsights.ts',
   'features/meal-plans/utils/mealPlanSnapshotEdit.ts',
   'features/auth/services/authLifecycle.ts',
   'features/recipes/services/recipeService.ts',
@@ -128,6 +129,7 @@ const EXPECTED_OUTPUTS = [
   'features/meal-plans/services/mealPlanReadModel.js',
   'features/meal-plans/utils/mealPlanMove.js',
   'features/meal-plans/utils/mealPlanPayload.js',
+  'features/meal-plans/utils/mealPlanInsights.js',
   'features/meal-plans/utils/mealPlanSnapshotEdit.js',
   'features/auth/services/authLifecycle.js',
   'features/recipes/services/recipeService.js',
@@ -309,6 +311,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'nullMealTimeContracts.test.cjs'),
   join(repoRoot, 'tests', 'dietitianProfilePresentation.test.cjs'),
   join(repoRoot, 'tests', 'noteContracts.test.cjs'),
+  join(repoRoot, 'tests', 'mealPlanEditorFaz1Contracts.test.cjs'),
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
