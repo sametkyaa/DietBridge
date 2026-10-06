@@ -79,12 +79,20 @@ const CATEGORY_EVENTS: Record<NotificationCategory, Partial<Record<NotificationE
     removed_from_client: 'appointment_removed_from_client',
     reminder_24h: 'appointment_reminder_24h',
     reminder_1h: 'appointment_reminder_1h',
+    reminder_30m: 'appointment_reminder_30m',
   },
   relationship: {
     request_pending: 'relationship_request_pending',
     accepted: 'relationship_accepted',
     rejected: 'relationship_rejected',
     removed: 'relationship_removed',
+  },
+  // Dietitian-facing activity (Faz 2). The client-facing meal_plan category is
+  // intentionally unknown here: the Web panel never receives it.
+  client_activity: {
+    meal_photo_completed: 'client_meal_photo_completed',
+    meal_inactivity: 'client_meal_inactivity',
+    meal_change_requested: 'client_meal_change_requested',
   },
 };
 
@@ -265,6 +273,17 @@ const validateSourceContract = (
 
   if (category === 'appointment') {
     if (notification.conversationId !== null || !notification.appointmentId || !notification.appointmentDate || !notification.appointmentTime || !notification.appointmentStatus || !allRelationshipFieldsAreNull) malformed('source');
+    return;
+  }
+
+  if (category === 'client_activity') {
+    if (
+      notification.conversationId !== null
+      || !allAppointmentFieldsAreNull
+      || !notification.dietitianClientId
+      || notification.relationshipFromStatus !== null
+      || notification.relationshipToStatus !== null
+    ) malformed('source');
     return;
   }
 

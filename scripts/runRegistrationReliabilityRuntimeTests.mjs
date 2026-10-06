@@ -216,6 +216,8 @@ try {
     password: 'strong-password',
     firstName: 'Ada',
     lastName: 'Diyetisyen',
+    termsAccepted: true,
+    kvkkAccepted: true,
   };
   const completionData = {
     phone: '+90 555 000 00 00',
@@ -228,8 +230,16 @@ try {
   };
   const canonicalPath = 'diplomas/11111111-1111-4111-8111-111111111111/diploma.pdf';
 
+  resetState();
+  let result = await registerDietitian({ ...registrationData, kvkkAccepted: false });
+  assert.equal(result.status, 'failed');
+  assert.equal(state.signUpPayload ?? null, null, 'no Auth account without KVKK acceptance');
+  result = await registerDietitian({ ...registrationData, termsAccepted: false });
+  assert.equal(result.status, 'failed');
+  assert.equal(state.signUpPayload ?? null, null, 'no Auth account without terms acceptance');
+
   resetState({ signUpError: { message: 'signup failed' } });
-  let result = await registerDietitian(registrationData);
+  result = await registerDietitian(registrationData);
   assert.equal(result.status, 'failed');
   assert.deepEqual(state.mutations, []);
   assert.equal(state.uploadCalls, 0);
@@ -246,6 +256,8 @@ try {
     full_name: 'Ada Diyetisyen',
     account_type: 'dietitian',
     role: 'dietitian',
+    terms_accepted: true,
+    kvkk_accepted: true,
   });
   assert.equal('phone' in state.signUpPayload.options.data, false);
 

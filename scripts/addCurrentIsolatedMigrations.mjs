@@ -12,6 +12,31 @@ const isolatedMigrations = [
   '20261005120100_save_active_client_weight_canonical.sql',
 ];
 
+// Faz 2 migrations: applied after the 62-file current chain by the Faz 2
+// runtime harness and the critical E2E gate.
+export const FAZ2_MIGRATIONS = Object.freeze([
+  '20261006090000_meal_change_request_security.sql',
+  '20261006090100_dietitian_unread_message_counts.sql',
+  '20261006090200_client_nutrition_targets.sql',
+  '20261006090300_profile_legal_acceptance.sql',
+  '20261006090400_dietitian_activity_notifications.sql',
+  '20261006090500_meal_slot_label.sql',
+  '20261006090600_application_result_email_outbox.sql',
+]);
+
+export const addFaz2Migrations = ({ repoRoot, tempRoot }) => {
+  const sourceDirectory = join(repoRoot, 'supabase', 'migrations');
+  const destinationDirectory = join(tempRoot, 'supabase', 'migrations');
+  for (const migration of FAZ2_MIGRATIONS) {
+    const destination = join(destinationDirectory, migration);
+    if (existsSync(destination)) throw new Error(`Disposable migration already exists: ${migration}`);
+    copyFileSync(join(sourceDirectory, migration), destination, 1);
+  }
+  const count = readdirSync(destinationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length;
+  if (count !== 62 + FAZ2_MIGRATIONS.length) throw new Error(`Faz 2 disposable migration count must be ${62 + FAZ2_MIGRATIONS.length}, received ${count}.`);
+  return { total: count };
+};
+
 export const addCurrentIsolatedMigrations = ({ repoRoot, tempRoot }) => {
   const sourceDirectory = join(repoRoot, 'supabase', 'migrations');
   const destinationDirectory = join(tempRoot, 'supabase', 'migrations');

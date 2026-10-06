@@ -63,9 +63,27 @@ export const formatNotificationSummary = (notification: NotificationItem): strin
           return 'Randevuya 24 saat kaldı';
         case 'reminder_1h':
           return 'Randevuya 1 saat kaldı';
+        case 'reminder_30m':
+          return notification.appointmentTime
+            ? `Randevunuz 30 dakika sonra başlıyor (${notification.appointmentTime}).`
+            : 'Randevunuz 30 dakika sonra başlıyor.';
         default:
           return 'Randevu bildiriminiz var.';
       }
+
+    case 'client_activity': {
+      const clientName = safeActorName(notification) ?? 'Danışanınız';
+      switch (notification.eventType) {
+        case 'meal_photo_completed':
+          return `${clientName} bir öğünü fotoğrafla tamamladı.`;
+        case 'meal_inactivity':
+          return `${clientName} 3 gündür öğün işaretlemedi.`;
+        case 'meal_change_requested':
+          return `${clientName} öğün değişikliği istedi.`;
+        default:
+          return FALLBACK_SUMMARY;
+      }
+    }
 
     default:
       return FALLBACK_SUMMARY;

@@ -18,7 +18,8 @@ const RegisterPage = () => {
     email: '',
     password: '',
     passwordConfirm: '',
-    isConfirmed: false
+    isConfirmed: false,
+    kvkkAccepted: false,
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -28,6 +29,10 @@ const RegisterPage = () => {
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({ ...prev, isConfirmed: e.target.checked }));
+  };
+
+  const handleKvkkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, kvkkAccepted: e.target.checked }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,6 +55,11 @@ const RegisterPage = () => {
       setError("Lütfen lisanslı diyetisyen olduğunuzu onaylayın.");
       return;
     }
+
+    if (!formData.kvkkAccepted) {
+      setError("Lütfen KVKK Aydınlatma Metni'ni okuduğunuzu onaylayın.");
+      return;
+    }
     setLoading(true);
 
     const payload: RegistrationData = {
@@ -57,6 +67,8 @@ const RegisterPage = () => {
       password: formData.password,
       firstName: normalizedFirstName,
       lastName: normalizedLastName,
+      termsAccepted: formData.isConfirmed,
+      kvkkAccepted: formData.kvkkAccepted,
     };
 
     const result = await registerDietitian(payload);
@@ -245,6 +257,13 @@ const RegisterPage = () => {
                 <input type="checkbox" id="confirm-license" checked={formData.isConfirmed} onChange={handleCheckboxChange} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-emerald-500/30" />
                 <label htmlFor="confirm-license" className="text-sm leading-6 text-slate-600">
                   Lisanslı bir diyetisyen olduğumu ve <a href="https://dietbridge.com.tr/kullanim-kosullari" target="_blank" rel="noopener noreferrer" className="font-semibold text-emerald-700 hover:underline">Kullanım Koşulları</a>'nı kabul ediyorum.
+                </label>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                <input type="checkbox" id="confirm-kvkk" checked={formData.kvkkAccepted} onChange={handleKvkkChange} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-emerald-500/30" />
+                <label htmlFor="confirm-kvkk" className="text-sm leading-6 text-slate-600">
+                  <a href="https://dietbridge.com.tr/kvkk" target="_blank" rel="noopener noreferrer" className="font-semibold text-emerald-700 hover:underline">KVKK Aydınlatma Metni</a>'ni okudum ve kişisel verilerimin işlenmesini kabul ediyorum.
                 </label>
               </div>
 

@@ -8,6 +8,7 @@ import {
   MessageCircle,
   RefreshCw,
   Users,
+  Utensils,
   X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -32,6 +33,7 @@ const FOCUSABLE_SELECTOR = [
 const NotificationCategoryIcon: React.FC<{ category: NotificationItem['category'] }> = ({ category }) => {
   if (category === 'chat_message') return <MessageCircle className="h-5 w-5" aria-hidden="true" />;
   if (category === 'relationship') return <Users className="h-5 w-5" aria-hidden="true" />;
+  if (category === 'client_activity') return <Utensils className="h-5 w-5" aria-hidden="true" />;
   return <CalendarDays className="h-5 w-5" aria-hidden="true" />;
 };
 

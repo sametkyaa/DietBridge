@@ -11,6 +11,7 @@ import {
 import {
   ADMIN_COMPLETENESS_LABELS,
   approveDietitian,
+  dispatchApplicationResultEmails,
   createAdminDiplomaSignedUrl,
   fetchDietitianApplication,
   fetchDietitianVerificationHistory,
@@ -140,6 +141,7 @@ const DietitianApplicationDetailPage = () => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
   const [diplomaLoading, setDiplomaLoading] = useState(false);
   const [diplomaError, setDiplomaError] = useState<string | null>(null);
 
@@ -187,6 +189,14 @@ const DietitianApplicationDetailPage = () => {
       setDecisionType(null);
       setRejectionReason('');
       await loadDetail();
+      const dispatch = await dispatchApplicationResultEmails();
+      setEmailNotice(
+        dispatch === 'sent'
+          ? 'Sonuç e-postası diyetisyene gönderildi.'
+          : dispatch === 'not_configured'
+            ? 'Karar kaydedildi. E-posta sağlayıcısı henüz yapılandırılmadığı için sonuç e-postası kuyrukta bekliyor.'
+            : 'Karar kaydedildi. Sonuç e-postası kuyruğa alındı; gönderim daha sonra tekrar denenecek.',
+      );
     } catch (error: unknown) {
       setDecisionError(getAdminUserMessage(error));
     } finally {
@@ -226,6 +236,12 @@ const DietitianApplicationDetailPage = () => {
           backLabel="Başvuru listesine dön"
           actions={<AdminStatusBadge status={detail.verificationStatus} />}
         />
+
+        {emailNotice && (
+          <p className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700" role="status">
+            {emailNotice}
+          </p>
+        )}
 
         {detail.rejectionReason && (
           <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-5 text-red-800" role="status">

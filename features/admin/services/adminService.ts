@@ -352,6 +352,27 @@ export const rejectDietitian = async (userId: string, reason: string): Promise<A
   });
 };
 
+export type ApplicationEmailDispatchResult = 'sent' | 'queued' | 'not_configured';
+
+/**
+ * Asks the send-application-result-emails Edge Function to drain the queue
+ * right after a decision. The decision itself is already committed: a failure
+ * here only means the e-mail waits in the server queue.
+ */
+export const dispatchApplicationResultEmails = async (): Promise<ApplicationEmailDispatchResult> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('send-application-result-emails', { body: {} });
+    if (error) {
+      const status = (error as { context?: { status?: number } }).context?.status;
+      return status === 503 ? 'not_configured' : 'queued';
+    }
+    const result = data as { result?: string; sent?: number; failed?: number } | null;
+    return result?.result === 'ok' && (result.sent ?? 0) > 0 && (result.failed ?? 0) === 0 ? 'sent' : 'queued';
+  } catch {
+    return 'queued';
+  }
+};
+
 export const createAdminDiplomaSignedUrl = async (userId: string, objectPath: string): Promise<string> => {
   if (!isDiplomaPathForUser(userId, objectPath)) {
     throw new AdminServiceError('INVALID_REQUEST', getAdminErrorMessage({ code: 'INVALID_REQUEST' }));

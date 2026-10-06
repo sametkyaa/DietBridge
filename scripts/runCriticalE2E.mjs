@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { assertCiSafeEnvironment } from './ciSafetyGuard.mjs';
 import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalReplay.mjs';
+import { addFaz2Migrations } from './addCurrentIsolatedMigrations.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const supabaseVersion = '2.110.0';
@@ -185,6 +186,8 @@ try {
   const migrationDirectory = join(disposable.tempRoot, 'supabase', 'migrations');
   for (const migration of isolatedMigrations) copyFileSync(join(repoRoot, 'supabase', 'migrations', migration), join(migrationDirectory, migration), 1);
   assert(readdirSync(migrationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length === 62, 'E2E_DISPOSABLE_MIGRATION_COUNT_62');
+  addFaz2Migrations({ repoRoot, tempRoot: disposable.tempRoot });
+  pass('E2E_FAZ2_MIGRATIONS_ADDED');
   await configurePorts(disposable.configPath);
   cli(['start']);
   stackStarted = true;
