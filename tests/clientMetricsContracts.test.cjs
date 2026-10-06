@@ -238,9 +238,11 @@ test('active source chain uses real metrics, actions, export and functional sett
   assert.match(clientsPage, /formatPercentageDisplay\(value\)/);
   assert.doesNotMatch(clientsPage, /maximumFractionDigits: 1/);
   assert.match(clientsPage, /disabled=\{filteredClients\.length === 0 \|\| isExporting\}/);
-  assert.match(clientsPage, /clientMessagesPath/);
-  assert.match(clientsPage, /role="menu"/);
-  assert.match(clientsPage, /Escape/);
+  const clientActionsMenu = read('features/clients/components/ClientActionsMenu.tsx');
+  assert.match(clientsPage, /<ClientActionsMenu client=\{client\} \/>/);
+  assert.match(clientActionsMenu, /clientMessagesPath/);
+  assert.match(clientActionsMenu, /role="menu"/);
+  assert.match(clientActionsMenu, /Escape/);
   assert.match(exportServiceSource, /write-excel-file\/browser/);
   assert.match(exportServiceSource, /sheet: 'Danışanlar'/);
   assert.match(exportServiceSource, /\.toFile\(getClientExportFileName\(now\)\)/);

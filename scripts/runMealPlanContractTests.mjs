@@ -74,6 +74,8 @@ const SOURCES = [
   'supabase/functions/_shared/recipeContract.ts',
   'features/recipes/utils/filterRecipes.ts',
   'features/clients/utils/measurementContract.ts',
+  'features/clients/utils/clientListContract.ts',
+  'features/clients/utils/clientProfileContract.ts',
   'features/appointments/utils/appointmentContract.ts',
   'features/appointments/services/appointmentService.ts',
   'features/dashboard/types/dailyTask.ts',
@@ -134,6 +136,8 @@ const EXPECTED_OUTPUTS = [
   'features/recipes/services/recipeService.js',
   'features/recipes/utils/filterRecipes.js',
   'features/clients/utils/measurementContract.js',
+  'features/clients/utils/clientListContract.js',
+  'features/clients/utils/clientProfileContract.js',
   'features/appointments/utils/appointmentContract.js',
   'features/appointments/services/appointmentService.js',
   'features/dashboard/types/dailyTask.js',
@@ -311,6 +315,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'nullMealTimeContracts.test.cjs'),
   join(repoRoot, 'tests', 'dietitianProfilePresentation.test.cjs'),
   join(repoRoot, 'tests', 'noteContracts.test.cjs'),
+  join(repoRoot, 'tests', 'clientListContracts.test.cjs'),
 ];
 const selectedTestFiles = process.argv.includes('--appointments-only')
   ? [join(repoRoot, 'tests', 'appointmentContracts.test.cjs')]
