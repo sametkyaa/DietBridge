@@ -28,3 +28,17 @@ export const getChatConversationPreview = (
 
   return caption || CHAT_EMPTY_CONVERSATION_LABEL;
 };
+
+/**
+ * List preview with the dietitian's own last message marked "Siz: …" so the
+ * dietitian can tell at a glance who wrote last. Read receipts and last-seen
+ * presence are intentionally not shown here.
+ */
+export const getChatConversationPreviewLine = (
+  conversation: ChatConversationPreviewSource & Pick<ChatConversationListItem, 'lastMessageSenderId'>,
+  currentUserId: string | null | undefined,
+): string => {
+  const preview = getChatConversationPreview(conversation);
+  if (!conversation.lastMessageId || !currentUserId || conversation.lastMessageSenderId !== currentUserId) return preview;
+  return `Siz: ${preview}`;
+};

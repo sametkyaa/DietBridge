@@ -86,6 +86,7 @@ const SOURCES = [
   'features/dashboard/services/dailyTaskService.ts',
   'features/notes/types/note.ts',
   'features/notes/utils/noteContract.ts',
+  'features/notes/utils/noteFormat.ts',
   'features/notes/services/noteService.ts',
   'features/analytics/types/analytics.ts',
   'features/analytics/utils/waterContract.ts',
@@ -152,6 +153,7 @@ const EXPECTED_OUTPUTS = [
   'features/dashboard/services/dailyTaskService.js',
   'features/notes/types/note.js',
   'features/notes/utils/noteContract.js',
+  'features/notes/utils/noteFormat.js',
   'features/notes/services/noteService.js',
   'features/analytics/types/analytics.js',
   'features/analytics/utils/waterContract.js',
@@ -325,6 +327,7 @@ const testFiles = [
   join(repoRoot, 'tests', 'nullMealTimeContracts.test.cjs'),
   join(repoRoot, 'tests', 'dietitianProfilePresentation.test.cjs'),
   join(repoRoot, 'tests', 'noteContracts.test.cjs'),
+  join(repoRoot, 'tests', 'messagesNotesFaz1Contracts.test.cjs'),
   join(repoRoot, 'tests', 'clientListContracts.test.cjs'),
   join(repoRoot, 'tests', 'mealPlanEditorFaz1Contracts.test.cjs'),
 ];

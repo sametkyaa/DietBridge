@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search } from 'lucide-react';
 import ChatComposer from '../features/chat/components/ChatComposer';
 import ChatConversationList from '../features/chat/components/ChatConversationList';
 import ChatMessagePanel from '../features/chat/components/ChatMessagePanel';
@@ -18,6 +17,11 @@ import DietitianAvatar from '../shared/components/DietitianAvatar';
 import { resolveConversationSelection } from '../features/chat/utils/messageDeepLink';
 import { env } from '../lib/env';
 import NotificationBell from '../features/notifications/components/NotificationBell';
+import { useUnreadCounts } from '../features/chat/context/UnreadCountsContext';
+import { ChatClientSummaryPanel } from '../features/chat/components/ChatClientSummaryPanel';
+import { EmptyState, ErrorState, SearchInput, SegmentedControl } from '../shared/ui';
+
+type ConversationFilter = 'all' | 'unread';
 
 const Messages = () => {
   const navigate = useNavigate();
@@ -35,17 +39,29 @@ const Messages = () => {
   } = useChatConversations(user?.id);
   const [activeRelationId, setActiveRelationId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [conversationFilter, setConversationFilter] = useState<ConversationFilter>('all');
+  const unreadCounts = useUnreadCounts();
+  const { countForConversation, refresh: refreshUnreadCounts } = unreadCounts;
+  const hasUnreadMessages = useCallback((conversation: ChatConversationListItem): boolean => {
+    const count = countForConversation(conversation.conversationId);
+    return count !== null ? count > 0 : conversation.hasUnread;
+  }, [countForConversation]);
   const [isMessagePanelVisible, setIsMessagePanelVisible] = useState(false);
   const [latestVisibleIncomingMessage, setLatestVisibleIncomingMessage] = useState<ChatMessage | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
 
+  const unreadConversationCount = useMemo(
+    () => conversations.filter(hasUnreadMessages).length,
+    [conversations, hasUnreadMessages],
+  );
+
   const filteredConversations = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase('tr-TR');
-    if (!normalizedQuery) return conversations;
     return conversations.filter((conversation) => (
-      conversation.clientName.toLocaleLowerCase('tr-TR').includes(normalizedQuery)
+      (!normalizedQuery || conversation.clientName.toLocaleLowerCase('tr-TR').includes(normalizedQuery))
+      && (conversationFilter === 'all' || hasUnreadMessages(conversation) || conversation.relationId === activeRelationId)
     ));
-  }, [conversations, searchQuery]);
+  }, [activeRelationId, conversationFilter, conversations, hasUnreadMessages, searchQuery]);
 
   const activeConversation = useMemo(() => (
     conversations.find((conversation) => conversation.relationId === activeRelationId) ?? null
@@ -150,7 +166,9 @@ const Messages = () => {
       return;
     }
     commitConversationReceipt(result.relationId, result);
-  }, [activeConversation?.conversationId, activeRelationId, commitConversationReceipt]);
+    // The sidebar and list counters follow the committed read cursor.
+    void refreshUnreadCounts();
+  }, [activeConversation?.conversationId, activeRelationId, commitConversationReceipt, refreshUnreadCounts]);
 
   const handleReceiptError = useCallback((message: string) => {
     setReceiptError(message);
@@ -249,26 +267,22 @@ const Messages = () => {
   const composerDisabled = !activeConversation || !user;
 
   return (
-    <div className="mx-auto flex h-dvh max-h-dvh max-w-7xl flex-col p-4 sm:p-6">
-      <header className="mb-6 flex shrink-0 flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold text-slate-800">Mesajlar</h1>
-        <div className="flex w-full items-center gap-3 sm:w-auto sm:gap-6">
-          <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
-            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Danışan ara..."
-              aria-label="Danışan ara"
-              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
+    <div className="mx-auto flex h-dvh max-h-dvh w-full max-w-[1500px] flex-col px-4 pb-4 pt-5 sm:px-6 lg:px-8 lg:pt-7">
+      <header className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <h1 className="m-0 text-26 font-bold tracking-[-0.3px] text-ink">Mesajlar</h1>
+        <div className="flex w-full items-center gap-3 sm:w-auto">
+          <SearchInput
+            label="Danışan ara"
+            placeholder="Danışan ara..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            containerClassName="min-w-0 flex-1 sm:w-64 sm:flex-none"
+          />
           <NotificationBell />
           <button
             type="button"
             onClick={() => navigate('/profile')}
-            className="cursor-pointer rounded-full border-0 bg-transparent p-0 transition-opacity hover:opacity-80 focus:outline-none"
+            className="cursor-pointer rounded-full border-0 bg-transparent p-0 transition-opacity hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
             aria-label="Profil sayfasına git"
           >
             <DietitianAvatar
@@ -279,51 +293,55 @@ const Messages = () => {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden sm:gap-6">
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
         <section
-          className={`${isMessagePanelVisible ? 'hidden' : 'flex'} min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:flex md:w-1/3 md:min-w-[18rem]`}
+          className={`${isMessagePanelVisible ? 'hidden' : 'flex'} min-h-0 w-full flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card md:flex md:w-[320px] md:shrink-0`}
           aria-label="Konuşma listesi"
         >
-          <div className="border-b border-slate-100 bg-slate-50/50 p-4">
-            <h2 className="font-bold text-slate-700">Son Görüşmeler</h2>
+          <div className="border-b border-line px-4 py-3">
+            <SegmentedControl<ConversationFilter>
+              ariaLabel="Konuşma filtresi"
+              value={conversationFilter}
+              onChange={setConversationFilter}
+              options={[
+                { value: 'all', label: 'Tümü' },
+                { value: 'unread', label: 'Okunmamış', count: unreadConversationCount },
+              ]}
+            />
           </div>
           {isAuthPreparing || isLoading ? (
             <div className="space-y-4 p-4" aria-label="Mesajlaşma listesi yükleniyor">
               {[0, 1, 2].map((index) => (
-                <div key={index} className="flex animate-pulse items-center gap-4">
-                  <div className="h-12 w-12 rounded-full bg-slate-100" />
+                <div key={index} className="flex animate-pulse items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-sunk" />
                   <div className="min-w-0 flex-1 space-y-2">
-                    <div className="h-3 w-2/3 rounded bg-slate-100" />
-                    <div className="h-3 w-full rounded bg-slate-100" />
+                    <div className="h-3 w-2/3 rounded bg-sunk" />
+                    <div className="h-3 w-full rounded bg-sunk" />
                   </div>
                 </div>
               ))}
             </div>
           ) : error ? (
-            <div className="p-6 text-center" role="alert">
-              <h3 className="font-bold text-slate-800">Mesajlaşma listeniz yüklenemedi.</h3>
-              <p className="mt-2 text-sm text-slate-500">Lütfen tekrar deneyin.</p>
-              <button
-                type="button"
-                onClick={() => void refetch()}
-                className="mt-4 min-h-11 rounded-lg border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-700 hover:bg-rose-50"
-              >
-                Tekrar dene
-              </button>
-            </div>
+            <ErrorState compact title="Mesajlaşma listeniz yüklenemedi." description="Lütfen tekrar deneyin." onRetry={() => void refetch()} retryLabel="Tekrar dene" />
           ) : conversations.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500" role="status">
-              {user ? 'Mesajlaşabileceğiniz aktif bir danışan bulunmuyor.' : 'Oturum bilgileri hazırlanıyor.'}
+            <div role="status">
+              <EmptyState compact icon="chat-circle" title={user ? 'Mesajlaşabileceğiniz aktif bir danışan bulunmuyor.' : 'Oturum bilgileri hazırlanıyor.'} />
             </div>
           ) : isSearchEmpty ? (
-            <div className="p-8 text-center text-sm text-slate-500" role="status">
-              Aramanızla eşleşen danışan bulunamadı.
+            <div role="status">
+              <EmptyState
+                compact
+                icon={conversationFilter === 'unread' && !searchQuery.trim() ? 'check-circle' : 'magnifying-glass'}
+                title={conversationFilter === 'unread' && !searchQuery.trim() ? 'Okunmamış mesaj yok.' : 'Aramanızla eşleşen danışan bulunamadı.'}
+              />
             </div>
           ) : (
             <ChatConversationList
               conversations={filteredConversations}
               activeRelationId={activeRelationId}
               onSelect={handleSelectConversation}
+              currentUserId={user?.id ?? null}
+              unreadCountFor={countForConversation}
             />
           )}
         </section>
@@ -362,6 +380,17 @@ const Messages = () => {
             )}
           />
         </div>
+
+        {activeConversation && (
+          <div key={activeConversation.clientId} className="hidden min-h-0 xl:flex">
+            <ChatClientSummaryPanel
+              clientId={activeConversation.clientId}
+              clientName={activeConversation.clientName}
+              avatarUrl={activeConversation.clientAvatarUrl}
+              refreshToken={mealActivities.length}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
