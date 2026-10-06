@@ -130,7 +130,7 @@ type ClientLifestyleKeys =
   | 'alcoholUse';
 
 export type ActiveClientDetails = Omit<Client, ClientLifestyleKeys | 'duration'> &
-  ClientLifestyleReadModel & { relationId: string };
+  ClientLifestyleReadModel & { relationId: string; dietStartDate?: string | null };
 
 interface ClientLifestyleReadSource {
   profile: Partial<ClientDetailsProfileRow>;
@@ -772,6 +772,7 @@ export const fetchClientDetails = async (clientId: string): Promise<ClientDetail
         status: 'Aktif',
         ...lifestyle,
         startDate: profile.diet_start_date ? new Date(profile.diet_start_date).toLocaleDateString('tr-TR') : '-',
+        dietStartDate: profile.diet_start_date ?? null,
         currentWeight: profile.current_weight ? `${profile.current_weight}` : '-',
         startWeight: profile.start_weight ? `${profile.start_weight}` : undefined,
         targetWeight: profile.target_weight ? `${profile.target_weight}` : undefined,

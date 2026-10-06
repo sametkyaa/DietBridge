@@ -50,14 +50,14 @@ test('approved dietitian restores session, reads a persisted client profile, and
 
   await login(page, 'approved');
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByText(/Danışanlarım/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Görevler', level: 2 })).toBeVisible();
 
   await page.reload();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByText(/Danışanlarım/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Görevler', level: 2 })).toBeVisible();
 
   await page.goto('/clients');
-  await expect(page.getByRole('heading', { name: 'Danışan Listesi' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Danışanlar', exact: true })).toBeVisible();
   const clientName = process.env.E2E_LINKED_CLIENT_NAME ?? '';
   await expect(page.getByText(clientName).first()).toBeVisible();
   await page.getByText(clientName).first().click();
