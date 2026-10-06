@@ -109,6 +109,17 @@ Secret'lar yokken fonksiyon `503 provider_not_configured` döner ve kuyruktaki
 satırları **talep etmez**; admin ekranında "kuyrukta bekliyor" bilgisi gösterilir.
 Kuyruk düzenli boşaltılmak istenirse service-role anahtarıyla zamanlanmış bir çağrı
 (ör. pg_cron + pg_net, Vault'ta saklanan URL/anahtar) ayrıca kurulmalıdır.
+Adımlar: iki Vault kaydı (`application_result_email_function_url`,
+`application_result_email_service_role_key`) Dashboard → Vault üzerinden elle
+eklenir, ardından `supabase/rollout/enable_application_result_email_dispatch.sql`
+çalıştırılır (10 dakikada bir, `application-result-email-dispatch`).
+
+## Production notu: ertelenmiş push kaydı
+
+`20260817120000_push_registry_outbox_backend` production'da bilinçli olarak
+uygulanmamıştır. `20261006090400` bu durumda push fonksiyonunu aramaz; bunun
+yerine hiçbir push nesnesinin (push tabloları, yakalama fonksiyonu, bildirim
+trigger'ı) bulunmadığını ön ve son kontrolde doğrular.
 
 ## Geri dönüş
 
