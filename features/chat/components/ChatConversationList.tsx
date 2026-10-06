@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { UserRound } from 'lucide-react';
 import { ChatConversationListItem } from '../types/chat';
-import { getChatConversationPreview } from '../utils/conversationPreview';
+import { getChatConversationPreviewLine } from '../utils/conversationPreview';
+import { Avatar, CountPill, cx } from '../../../shared/ui';
 
 interface ChatConversationListProps {
   conversations: ChatConversationListItem[];
   activeRelationId: string | null;
   onSelect: (conversation: ChatConversationListItem) => void;
+  /** Signed-in dietitian; the own last message is shown as "Siz: …". */
+  currentUserId?: string | null;
+  /** Unread messages from the client after the read cursor; null while unknown. */
+  unreadCountFor?: (conversationId: string | null) => number | null;
 }
 
 interface ChatClientAvatarProps {
@@ -34,13 +38,9 @@ export const ChatClientAvatar: React.FC<ChatClientAvatarProps> = ({ name, url, c
   }
 
   return (
-    <div
-      className={`${className} flex items-center justify-center bg-emerald-50 text-emerald-700`}
-      aria-label={`${name} için profil fotoğrafı yok`}
-      role="img"
-    >
-      <UserRound className="h-5 w-5" aria-hidden="true" />
-    </div>
+    <span role="img" aria-label={`${name} için profil fotoğrafı yok`} className={cx(className, 'inline-flex')}>
+      <Avatar name={name} decorative className="!h-full !w-full" />
+    </span>
   );
 };
 
@@ -62,6 +62,13 @@ const formatChatConversationTime = (value: string | null): string => {
     }).format(timestamp);
   }
 
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (timestamp.getFullYear() === yesterday.getFullYear()
+    && timestamp.getMonth() === yesterday.getMonth()
+    && timestamp.getDate() === yesterday.getDate()) {
+    return 'Dün';
+  }
+
   if (timestamp.getFullYear() === now.getFullYear()) {
     return new Intl.DateTimeFormat('tr-TR', {
       day: '2-digit',
@@ -80,11 +87,15 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
   conversations,
   activeRelationId,
   onSelect,
+  currentUserId = null,
+  unreadCountFor,
 }) => (
   <div className="min-h-0 flex-1 overflow-y-auto">
     {conversations.map((conversation) => {
       const isActive = conversation.relationId === activeRelationId;
       const lastMessageTime = formatChatConversationTime(conversation.lastMessageAt);
+      const unreadCount = unreadCountFor?.(conversation.conversationId) ?? null;
+      const showUnread = unreadCount !== null ? unreadCount > 0 : conversation.hasUnread;
 
       return (
         <button
@@ -92,38 +103,38 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
           type="button"
           onClick={() => onSelect(conversation)}
           aria-current={isActive ? 'true' : undefined}
-          className={`flex w-full items-center gap-4 border-b border-slate-50 p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
-            isActive ? 'bg-emerald-50/60' : 'hover:bg-slate-50'
-          }`}
+          className={cx(
+            'flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand',
+            isActive ? 'bg-brand-tint' : 'hover:bg-surface-hover',
+          )}
         >
-          <div className="relative shrink-0">
-            <ChatClientAvatar
-              name={conversation.clientName}
-              url={conversation.clientAvatarUrl}
-              className="h-12 w-12 rounded-full"
-            />
-            {conversation.hasUnread && (
-              <span
-                className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500"
-                aria-hidden="true"
-              />
-            )}
-          </div>
+          <ChatClientAvatar
+            name={conversation.clientName}
+            url={conversation.clientAvatarUrl}
+            className="h-10 w-10 shrink-0 rounded-full"
+          />
           <div className="min-w-0 flex-1">
-            <div className="mb-1 flex items-baseline gap-2">
-              <h3 className={`min-w-0 flex-1 truncate text-sm font-semibold ${isActive ? 'text-primary' : 'text-slate-800'}`}>
+            <div className="flex items-baseline gap-2">
+              <h3 className={cx('m-0 min-w-0 flex-1 truncate text-14', showUnread ? 'font-bold text-ink' : 'font-semibold', isActive && 'text-brand')}>
                 {conversation.clientName}
               </h3>
               {lastMessageTime && (
-                <time className="shrink-0 text-xs text-slate-400" dateTime={conversation.lastMessageAt ?? undefined}>
+                <time className="shrink-0 text-12 text-ink-3" dateTime={conversation.lastMessageAt ?? undefined}>
                   {lastMessageTime}
                 </time>
               )}
             </div>
-            <p className="truncate text-sm text-slate-500">
-              {getChatConversationPreview(conversation)}
-            </p>
-            {conversation.hasUnread && <span className="sr-only">Okunmamış mesaj</span>}
+            <div className="mt-0.5 flex items-center gap-2">
+              <p className={cx('m-0 min-w-0 flex-1 truncate text-13', showUnread ? 'font-medium text-ink' : 'text-ink-2')}>
+                {getChatConversationPreviewLine(conversation, currentUserId)}
+              </p>
+              {showUnread && (
+                unreadCount !== null && unreadCount > 0
+                  ? <CountPill count={unreadCount} tone="brand" label={`${unreadCount} okunmamış mesaj`} />
+                  : <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-brand" aria-hidden="true" />
+              )}
+            </div>
+            {showUnread && unreadCount === null && <span className="sr-only">Okunmamış mesaj</span>}
           </div>
         </button>
       );

@@ -86,7 +86,12 @@ test('Notes page covers loading, empty, error retry, CRUD, confirmation and pers
   assert.match(source, /filtered\.length === 0/);
   assert.match(source, /await createNote\(validation\.value\)/);
   assert.match(source, /await updateNote\(selected\.id, validation\.value\)/);
-  assert.match(source, /window\.confirm/);
+  // Deletion needs an explicit in-app confirmation step.
+  assert.match(source, /<ConfirmDialog[\s\S]*onConfirm=\{\(\) => \{ if \(noteToDelete\) void remove\(noteToDelete\); \}\}/);
+  assert.match(source, /setNoteToDelete\(selected\)/);
+  // Note content is rendered as text nodes; HTML is never injected.
+  assert.doesNotMatch(source, /dangerouslySetInnerHTML/);
+  assert.doesNotMatch(read('features/notes/components/NoteContent.tsx'), /dangerouslySetInnerHTML|innerHTML/);
   assert.match(source, /await deleteNote\(note\.id\)/);
   assert.match(source, /formatNoteDate\(note\.updatedAt\)/);
   assert.doesNotMatch(source, /INITIAL_NOTES|\bCLIENTS\b|Date\.now|localStorage|sessionStorage|mock/u);
