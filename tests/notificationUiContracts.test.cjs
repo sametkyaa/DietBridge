@@ -212,7 +212,7 @@ test('bell is exposed only in the approved Dashboard, Messages, and Clients head
   const dashboard = source('features/dashboard/pages/DashboardPage.tsx');
   const messages = source('pages/Messages.tsx');
   const clients = source('features/clients/pages/ClientsPage.tsx');
-  assert.match(dashboard, /Danışan ara\.\.\.[\s\S]*<\/div>[\s\S]*<NotificationBell \/>[\s\S]*Profil sayfasına git/);
+  assert.match(dashboard, /<DashboardClientSearch clients=\{clients\} \/>\s*<NotificationBell \/>/);
   assert.match(messages, /<NotificationBell \/>/);
   assert.match(clients, /<NotificationBell className="hidden md:inline-flex" \/>/);
   assert.doesNotMatch(messages, /import \{[^}]*\bBell\b/);

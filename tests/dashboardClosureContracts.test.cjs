@@ -101,35 +101,46 @@ test('dashboard page is real-data-only for the operational summary and has disti
   assert.match(source, /fetchDietitianClients\(\)/);
   assert.match(source, /useAppointments\(\)/);
   assert.match(source, /useDailyTasks\(\)/);
-  assert.match(source, /appointmentsLoading[\s\S]*appointmentsError[\s\S]*todaysAppointments\.length/);
-  assert.match(source, /taskViewState\.status === 'loading'[\s\S]*taskViewState\.status === 'error'/);
+  assert.match(source, /useAutomaticTasks\(\)/);
+  assert.match(source, /useUnreadCounts\(\)/);
+  assert.match(source, /appointmentsError \|\| taskViewState\.status === 'error'/);
   assert.match(source, /clientLoadError/);
-  assert.doesNotMatch(source, /%82|2\.1 Lt|1850|Protein alımı hedefin üzerinde/iu);
+  // Every KPI is computed from loaded rows; unavailable data renders "—", never a sample number.
+  assert.match(source, /value=\{clientLoadError \? '—' : activeClients\.length\}/);
+  assert.match(source, /value=\{appointmentsError \? '—' : weekAppointments\.length\}/);
+  assert.match(source, /value=\{averageAdherence === null \? '—' : formatPercentageDisplay\(averageAdherence\)\}/);
+  assert.match(source, /value=\{unreadState\.status === 'success' \? unreadState\.total : '—'\}/);
+  assert.doesNotMatch(source, /%82|2\.1 Lt|1850|Protein alımı hedefin üzerinde|Kota|kontenjan|Katıl/iu);
 });
 
-test('dashboard removes duplicate summary cards while keeping the real appointments section', () => {
+test('dashboard keeps one KPI row and the real today schedule section', () => {
   const source = read('features/dashboard/pages/DashboardPage.tsx');
-  assert.doesNotMatch(source, /<p className="text-xs font-bold uppercase tracking-wide text-slate-400">Aktif danışan<\/p>/u);
-  assert.doesNotMatch(source, /<p className="text-xs font-bold uppercase tracking-wide text-slate-400">Bugünkü randevu<\/p>/u);
-  assert.doesNotMatch(source, /<p className="text-xs font-bold uppercase tracking-wide text-slate-400">Geciken görev<\/p>/u);
-  assert.doesNotMatch(source, /<p className="text-xs font-bold uppercase tracking-wide text-slate-400">Bugünün görevi<\/p>/u);
-  assert.doesNotMatch(source, /grid grid-cols-2 gap-3 lg:grid-cols-4/u);
-  assert.match(source, />Bugünkü Randevular<\/h3>/u);
+  const schedule = read('features/dashboard/components/TodayScheduleCard.tsx');
+  assert.equal((source.match(/<KpiTile/g) ?? []).length, 4);
+  assert.equal((source.match(/<KpiGrid[ >]/g) ?? []).length, 1);
+  assert.match(schedule, /title="Bugünün programı"/);
+  assert.match(source, /<TodayScheduleCard/);
 });
 
 test('dashboard exposes one direct canonical task-create action in Daily Tasks', () => {
   const source = read('features/dashboard/pages/DashboardPage.tsx');
+  const panel = read('features/dashboard/components/DashboardTaskPanel.tsx');
   assert.doesNotMatch(source, /MoreHorizontal|isTaskMenuOpen|taskMenuButtonRef|Görev menüsünü aç/u);
-  assert.doesNotMatch(source, />Görev ekle<\/button>/u);
-  assert.match(source, /onClick=\{openCreateTaskModal\}[\s\S]*Yeni Görev Ekle/u);
-  assert.match(source, /onSubmit=\{handleTaskSubmit\}/u);
+  assert.equal((panel.match(/onClick=\{onCreate\}>Görev ekle</g) ?? []).length, 1);
+  assert.match(source, /onCreate=\{openCreateTaskModal\}/u);
+  assert.match(source, /onSubmit=\{\(event\) => void handleTaskSubmit\(event\)\}/u);
   assert.match(source, /: await createTask\(taskDraft\)/u);
-  assert.match(source, /onClick=\{\(\) => setIsAddTaskModalOpen\(false\)\}/u);
+  assert.match(source, /setIsAddTaskModalOpen\(false\)/u);
 });
 
-test('dashboard quick actions target existing operational routes', () => {
-  const source = read('features/dashboard/pages/DashboardPage.tsx');
-  for (const route of ['/appointments', '/clients', '/meal-plans', '/messages']) {
-    assert.match(source, new RegExp(`navigate\\('${route.replace('/', '\\\/')}'\\)`));
-  }
+test('dashboard actions target existing operational routes', () => {
+  const page = read('features/dashboard/pages/DashboardPage.tsx');
+  const panel = read('features/dashboard/components/DashboardTaskPanel.tsx');
+  const next = read('features/dashboard/components/NextAppointmentBanner.tsx');
+  assert.match(page, /to="\/appointments\?new=1"/);
+  assert.match(panel, /to=\{`\/meal-plans\?clientId=\$\{client\}`\}/);
+  assert.match(panel, /to=\{`\/messages\?clientId=\$\{client\}`\}/);
+  assert.match(panel, /to=\{`\/clients\/\$\{client\}`\}/);
+  assert.match(next, /to=\{`\/clients\/\$\{encodeURIComponent\(appointment\.clientId\)\}`\}/);
+  assert.doesNotMatch(next, /Katıl|video|meet\./i);
 });
