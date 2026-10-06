@@ -41,7 +41,7 @@ const ISOLATED_PHASE2_MIGRATIONS = new Set([
   '20261006090400_dietitian_activity_notifications.sql',
   '20261006090500_meal_slot_label.sql',
   '20261006090600_application_result_email_outbox.sql',
-  '20261006193739_automatic_task_dismissals.sql',
+  '20261006202442_automatic_task_dismissals.sql',
 ]);
 export const LOCAL_PREREQUISITE_FILE = '20260728155959_disposable_avatar_bucket_prerequisite.sql';
 export const LOCAL_PREREQUISITE_SQL = `-- Local-only disposable prerequisite. Never add this file to repository migrations.

@@ -39,7 +39,7 @@ Tüm yollar yukarıdaki ayrı worktree köküne göredir.
 - `features/dashboard/utils/automaticTaskContract.ts`
 - `features/dashboard/utils/dashboardContract.ts`
 - `shared/components/Sidebar.tsx`
-- `supabase/migrations/20261006193739_automatic_task_dismissals.sql` (yeni)
+- `supabase/migrations/20261006202442_automatic_task_dismissals.sql` (yeni; production history ile eşleşen son sürüm)
 - `scripts/addCurrentIsolatedMigrations.mjs`
 - `scripts/runCriticalE2E.mjs`
 - `scripts/runDisposableFaz2RuntimeHarness.mjs`
@@ -57,3 +57,12 @@ Tüm yollar yukarıdaki ayrı worktree köküne göredir.
 - `tests/faz2BackendContracts.test.cjs`
 - `tests/notificationUiContracts.test.cjs`
 - `docs/DASHBOARD_TASK_NAVIGATION_CHANGE_REPORT.md` (bu rapor)
+
+## Production hazırlık kaydı — kullanıcı onayından sonra
+
+- PR #57 açıldı. İlk commit: 47e76ce101b1f840992bd5bd8a7e79e10a14a5f2. Web Quality Gate geçti. Kritik koşudaki dört gerçek erişim testi geçti; dört mock dashboard testi yanlışlıkla bu sette de çalıştığı için kapı başarısız oldu. playwright.config.ts testIgnore listesine dashboard-tasks.spec.ts eklendi. Mock dashboard seti doğru yapılandırmayla yeniden 4/4 geçti; gerçek kritik setin listesi 4 erişim testi olarak doğrulandı. Korumalı kapı atlanmadı.
+- Kullanıcının production yayın talimatı kapsamında, izole ortamda doğrulanan tek additive tercih migration'ı Supabase apply_migration ile kagvxhyvxxypspdxcuxz projesine uygulandı. Production migration servisi 20261006202442 sürümünü verdi. SQL değişmeden dosya adı ve üç test/helper referansı bu sürüme taşındı; migration history onarımı veya eski migration uygulaması yapılmadı. İlk yerel oluşturma sürümü 20261006193739 tarihsel geliştirme kaydıdır.
+- Production postflight PASS: RLS etkin, üç approved-owner policy, beş constraint (iki profile FK, PK ve iki check), iki index; anon SELECT ve authenticated DELETE yok; authenticated INSERT/UPDATE yalnız dört payload kolonunda. Mevcut klinik kayıtlar ve Storage değişmedi; production test kullanıcısı veya fixture oluşturulmadı.
+- Vercel projesi diet-bridge / prj_sZayHPl8Ww6dqX7ftKU4aXvdWAy5, scope team_cXgPpNvrowL8un8Y2WdbagaS, production branch main ve app.dietbridge.com.tr domain doğrulandı. MCP listeleme erişimi vermediği için aynı scope ile Vercel CLI okuma kullanıldı. Önceki READY production dağıtımı dpl_iFMzoS48o6PSVpzuxz5rc3XRiwes, SHA 1c2cf1a2a5b5537128f7239cbb2b43b486671474 geri dönüş referansı olarak kaydedildi.
+- Mevcut production sürümünde 1280px ve 390px oturumsuz tarayıcı kontrolü geçti: HTTP 200, /clients -> /login, yatay taşma yok, sayfa hatası ve başarısız uygulama isteği yok. Yeni sürüm yayından sonra ayrıca kontrol edilecek. Gerçek görev silme veya sağlık verisi yazması production smoke testine dahil değildir.
+- Migration sürüm eşleştirmesi sonrası 32 görev sözleşmesi ve git diff --check geçti. Son commit için Web Quality Gate, Backend Integration Gate ve Critical E2E Gate tamamlanmadan merge yapılmayacak. Ayrıntılı kapanış kanıtı C:/Users/drsam/.codex/pr-reviews/DietBridge-pr57-20261006 altında tutulacak.

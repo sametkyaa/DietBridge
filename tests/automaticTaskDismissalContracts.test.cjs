@@ -86,7 +86,7 @@ test('preference loading paginates beyond the Supabase default row limit', async
 
 test('dismissal migration is additive and wired into isolated CI databases', () => {
   const root = join(__dirname, '..');
-  const name = '20261006193739_automatic_task_dismissals.sql';
+  const name = '20261006202442_automatic_task_dismissals.sql';
   const sql = readFileSync(join(root, 'supabase/migrations', name), 'utf8');
   assert.match(sql, /enable row level security/);
   assert.match(sql, /is_current_user_dietitian/);

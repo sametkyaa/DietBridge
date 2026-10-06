@@ -37,7 +37,7 @@ export const addFaz2Migrations = ({ repoRoot, tempRoot }) => {
   return { total: count };
 };
 
-export const AUTOMATIC_TASK_DISMISSAL_MIGRATION = '20261006193739_automatic_task_dismissals.sql';
+export const AUTOMATIC_TASK_DISMISSAL_MIGRATION = '20261006202442_automatic_task_dismissals.sql';
 
 export const addAutomaticTaskDismissalMigration = ({ repoRoot, tempRoot }) => {
   const name = AUTOMATIC_TASK_DISMISSAL_MIGRATION;
