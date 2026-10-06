@@ -12,6 +12,9 @@ import type {
   BodyMeasurementField,
   BodyMeasurementTrend,
   ClientAnalyticsReport,
+  MealDayCellState,
+  MealDayMatrix,
+  MealDayMatrixRow,
   PlannedNutritionMetric,
 } from '../types/analytics';
 import { ANALYTICS_DATE_RANGE_KEYS, BODY_MEASUREMENT_FIELDS } from '../types/analytics';
@@ -229,6 +232,59 @@ const waterSummary = (
   };
 };
 
+export const MEAL_DAY_MATRIX_DAYS = 14;
+
+/**
+ * Builds the meal type × day grid for the last MEAL_DAY_MATRIX_DAYS days of
+ * the range (fewer when the range is shorter). Only meal types that were ever
+ * planned in that window get a row. The range end day is still "open".
+ */
+export const buildMealDayMatrix = (
+  mealPlans: readonly AnalyticsMealPlan[],
+  range: AnalyticsDateRange,
+): MealDayMatrix => {
+  const firstDate = addAnalyticsDays(range.endDate, -(MEAL_DAY_MATRIX_DAYS - 1));
+  const startDate = range.startDate !== null && range.startDate > firstDate ? range.startDate : firstDate;
+  const dates: string[] = [];
+  for (let date = startDate; date <= range.endDate; date = addAnalyticsDays(date, 1)) dates.push(date);
+  const counts = new Map<string, { planned: number; completed: number }>();
+  for (const plan of mealPlans) {
+    if (plan.date < startDate || plan.date > range.endDate) continue;
+    for (const meal of plan.meals) {
+      const key = `${meal.type}|${plan.date}`;
+      const bucket = counts.get(key) ?? { planned: 0, completed: 0 };
+      bucket.planned += 1;
+      if (meal.isCompleted) bucket.completed += 1;
+      counts.set(key, bucket);
+    }
+  }
+  const stateFor = (date: string, planned: number, completed: number): MealDayCellState => {
+    if (planned === 0) return 'none';
+    if (completed === planned) return 'done';
+    if (date === range.endDate) return 'open';
+    return completed > 0 ? 'partial' : 'missed';
+  };
+  const rows: MealDayMatrixRow[] = MEAL_TYPES
+    .map((type) => {
+      const cells = dates.map((date) => {
+        const bucket = counts.get(`${type}|${date}`) ?? { planned: 0, completed: 0 };
+        return { date, ...bucket, state: stateFor(date, bucket.planned, bucket.completed) };
+      });
+      const planned = cells.reduce((sum, cell) => sum + cell.planned, 0);
+      const completed = cells.reduce((sum, cell) => sum + cell.completed, 0);
+      return { type, cells, planned, completed, percentage: percentage(completed, planned) };
+    })
+    .filter((row) => row.planned > 0);
+  const dayTotals = dates.map((date, index) => {
+    const planned = rows.reduce((sum, row) => sum + row.cells[index].planned, 0);
+    const completed = rows.reduce((sum, row) => sum + row.cells[index].completed, 0);
+    return { date, planned, completed, percentage: percentage(completed, planned) };
+  });
+  const planned = rows.reduce((sum, row) => sum + row.planned, 0);
+  const completed = rows.reduce((sum, row) => sum + row.completed, 0);
+  return { dates, rows, dayTotals, planned, completed, percentage: percentage(completed, planned) };
+};
+
 export const aggregateClientAnalytics = (source: AnalyticsSourceData): ClientAnalyticsReport => {
   const measurements = [...source.measurements].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const logs = [...source.dailyLogs].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
@@ -290,6 +346,7 @@ export const aggregateClientAnalytics = (source: AnalyticsSourceData): ClientAna
     ),
     mealTypeAdherence: aggregateMealTypeAdherence(plans),
     plannedNutrition: nutrition,
+    mealDayMatrix: buildMealDayMatrix(plans, source.range),
     dataQuality: {
       invalidWaterRows: logs.filter((log) => (
         log.hasInvalidWaterValue
