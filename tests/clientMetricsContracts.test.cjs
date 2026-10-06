@@ -249,8 +249,8 @@ test('active source chain uses real metrics, actions, export and functional sett
   assert.doesNotMatch(clientDetails, /maximumFractionDigits: 1/);
   assert.match(dashboard, /formatPercentageDisplay\(client\.compliance\)/);
   assert.doesNotMatch(dashboard, /%\{client\.compliance\}/);
-  assert.match(sidebar, /<NavLink[\s\S]*to="\/"[\s\S]*aria-label="Kontrol Paneline git"[\s\S]*APP_LOGO[\s\S]*DietBridge/);
-  assert.match(sidebar, /label: 'Kontrol Paneli', path: '\/'/);
+  assert.match(sidebar, /<NavLink[\s\S]*to="\/"[\s\S]*aria-label="Panelim'e git"[\s\S]*APP_LOGO[\s\S]*DietBridge/);
+  assert.match(sidebar, /label: 'Panelim', path: '\/'/);
   assert.match(clientDetails, /Son 7 gündeki planlanan öğünlerin tamamlanma oranı\./);
   assert.match(clientDetails, /client\.compliance === null/);
   assert.match(analyticsContract, /calculateAdherencePercentage/);

@@ -2,6 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * DietBridge tasarım sistemi belirteçleri (Faz 1).
+ * Kaynak: dietbridge-web-tasarim-son.html prototipindeki :root değişkenleri.
+ * Renkler "R G B" kanalları olarak tutulur; Tailwind teması bunları
+ * rgb(var(--db-…) / <alpha-value>) biçiminde okur. Düz CSS içinde
+ * rgb(var(--db-brand)) şeklinde kullanılabilir.
+ */
+@layer base {
+  :root {
+    --db-canvas: 245 247 244;        /* #F5F7F4  --bg */
+    --db-surface: 255 255 255;       /* #FFFFFF  --card */
+    --db-surface-alt: 250 251 249;   /* #FAFBF9  tablo başlığı, plan ızgarası */
+    --db-surface-hover: 241 244 240; /* #F1F4F0  --hover */
+    --db-sunk: 243 245 242;          /* #F3F5F2  --sunk */
+    --db-line: 228 232 227;          /* #E4E8E3  --line */
+    --db-line-strong: 213 219 212;   /* #D5DBD4  --line-2 */
+    --db-ink: 24 34 29;              /* #18221D  --text */
+    --db-ink-2: 86 98 91;            /* #56625B  --text-2 */
+    --db-ink-3: 138 149 143;         /* #8A958F  --text-3 */
+    --db-brand: 28 122 74;           /* #1C7A4A  --brand */
+    --db-brand-hi: 21 95 57;         /* #155F39  --brand-hi */
+    --db-brand-tint: 230 242 234;    /* #E6F2EA  --brand-tint */
+    --db-brand-soft: 196 226 207;    /* #C4E2CF  --brand-soft */
+    --db-brand-lime: 220 233 160;    /* #DCE9A0  --lime */
+    --db-brand-lime-ink: 31 59 47;   /* #1F3B2F  lime düğme metni */
+    --db-ok: 46 138 90;              /* #2E8A5A  --ok */
+    --db-ok-bg: 227 243 233;         /* #E3F3E9  --ok-bg */
+    --db-ok-ink: 23 103 62;          /* #17673E  tamamlanan çip metni */
+    --db-warn: 183 114 26;           /* #B7721A  --warn */
+    --db-warn-bg: 252 240 219;       /* #FCF0DB  --warn-bg */
+    --db-warn-ink: 142 90 20;        /* #8E5A14  uyarı kutusu metni */
+    --db-bad: 194 69 60;             /* #C2453C  --bad */
+    --db-bad-bg: 251 230 227;        /* #FBE6E3  --bad-bg */
+    --db-bad-line: 235 195 190;      /* #EBC3BE  tehlikeli düğme kenarı */
+    --db-info: 58 108 154;           /* #3A6C9A  --info */
+    --db-info-bg: 229 238 247;       /* #E5EEF7  --info-bg */
+    --db-vio: 107 91 166;            /* #6B5BA6  --vio */
+    --db-vio-bg: 238 235 248;        /* #EEEBF8  --vio-bg */
+    --db-water: 156 202 232;         /* #9CCAE8  --water */
+
+    --db-radius-control: 9px;        /* düğme, girdi, menü öğesi */
+    --db-radius: 10px;               /* --r */
+    --db-radius-card: 14px;          /* --r-lg */
+    --db-radius-modal: 16px;
+    --db-shadow-card: 0 1px 2px rgba(24, 34, 29, 0.04); /* --sh */
+    --db-sidebar-width: 248px;
+    --db-font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+
+  body {
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
 /* Custom Scrollbar for cleaner look */
 ::-webkit-scrollbar {
   width: 6px;

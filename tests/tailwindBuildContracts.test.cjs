@@ -32,8 +32,9 @@ test('Tailwind content scanning covers active source directories only', () => {
   assert.equal(tailwindConfig.content.some((entry) => /node_modules|dist/.test(entry)), false);
 });
 
-test('CDN theme colors are preserved in the build-time config', () => {
-  assert.deepEqual(tailwindConfig.theme.extend.colors, {
+test('legacy CDN theme colors stay available while pages move to the design system', () => {
+  const colors = tailwindConfig.theme.extend.colors;
+  for (const [name, value] of Object.entries({
     primary: '#10B981',
     'primary-dark': '#059669',
     'diet-green': '#509F42',
@@ -41,14 +42,42 @@ test('CDN theme colors are preserved in the build-time config', () => {
     'card-light': '#FFFFFF',
     'text-main': '#334155',
     'text-muted': '#64748B',
-  });
+  })) {
+    assert.equal(colors[name], value, `legacy color changed: ${name}`);
+  }
 });
 
-test('CDN font families are preserved in the build-time config', () => {
-  assert.deepEqual(tailwindConfig.theme.extend.fontFamily, {
-    sans: ['Poppins', 'sans-serif'],
-    inter: ['Inter', 'sans-serif'],
-  });
+test('design-system color tokens read the --db-* CSS variables declared in styles.css', () => {
+  const colors = tailwindConfig.theme.extend.colors;
+  assert.equal(colors.canvas, 'rgb(var(--db-canvas) / <alpha-value>)');
+  assert.equal(colors.brand.DEFAULT, 'rgb(var(--db-brand) / <alpha-value>)');
+  assert.equal(colors.ink.DEFAULT, 'rgb(var(--db-ink) / <alpha-value>)');
+  const referenced = new Set();
+  const collect = (value) => {
+    if (typeof value === 'string') {
+      for (const match of value.matchAll(/var\(--db-([a-z0-9-]+)\)/g)) referenced.add(match[1]);
+    } else if (value && typeof value === 'object') {
+      Object.values(value).forEach(collect);
+    }
+  };
+  collect(colors);
+  collect(tailwindConfig.theme.extend.boxShadow);
+  assert.ok(referenced.size >= 25);
+  for (const name of referenced) {
+    assert.match(globalCss, new RegExp(`--db-${name}:\\s*\\d+ \\d+ \\d+;`), `missing CSS token --db-${name}`);
+  }
+  assert.match(globalCss, /--db-brand: 28 122 74;/);
+  assert.match(globalCss, /--db-canvas: 245 247 244;/);
+});
+
+test('design-system font family is Inter with system fallbacks', () => {
+  const { sans, inter } = tailwindConfig.theme.extend.fontFamily;
+  assert.equal(sans[0], 'Inter');
+  assert.deepEqual(inter, sans);
+  assert.ok(sans.includes('system-ui'));
+  assert.ok(sans.includes('sans-serif'));
+  assert.match(indexHtml, /fonts\.googleapis\.com\/css2\?family=Inter:wght@400;500;600;700/);
+  assert.doesNotMatch(indexHtml, /Poppins/);
 });
 
 test('global CSS is the Tailwind build entrypoint and retains the scrollbar rules', () => {

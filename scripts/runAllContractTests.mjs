@@ -16,6 +16,7 @@ const commands = [
   ['scripts/runClientMetricsContractTests.mjs'],
   ['--test', 'tests/ciSafetyGuard.test.cjs'],
   ['--test', 'tests/tailwindBuildContracts.test.cjs'],
+  ['--test', 'tests/designSystemContracts.test.cjs'],
   ['--test', 'tests/vercelSecurityHeaders.test.cjs'],
   ['--test', 'tests/registerTermsLinkContracts.test.cjs'],
   ['--test', 'tests/registrationReliabilityContracts.test.cjs'],
