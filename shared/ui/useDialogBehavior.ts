@@ -19,6 +19,8 @@ const getFocusable = (container: HTMLElement) =>
 
 let openDialogCount = 0;
 let previousBodyOverflow = '';
+/** Open dialog containers, innermost last; only the innermost one reacts to keys. */
+const dialogStack: HTMLElement[] = [];
 
 interface DialogBehaviorOptions {
   open: boolean;
@@ -54,7 +56,14 @@ export const useDialogBehavior = ({ open, containerRef, onEscape, initialFocusRe
     const focusTarget = initialFocusRef?.current ?? getFocusable(container)[0] ?? container;
     focusTarget.focus({ preventScroll: true });
 
+    dialogStack.push(container);
+
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (dialogStack[dialogStack.length - 1] !== container) return;
+      const activeElement = document.activeElement;
+      // Focus can fall back to <body> when the focused button becomes disabled
+      // (e.g. while saving); keys must still reach the open dialog then.
+      if (activeElement && activeElement !== document.body && !container.contains(activeElement)) return;
       if (event.key === 'Escape') {
         if (onEscapeRef.current) {
           event.stopPropagation();
@@ -81,9 +90,12 @@ export const useDialogBehavior = ({ open, containerRef, onEscape, initialFocusRe
       }
     };
 
-    container.addEventListener('keydown', handleKeyDown);
+    // Capture phase so an open dialog handles Escape before page-level listeners.
+    document.addEventListener('keydown', handleKeyDown, true);
     return () => {
-      container.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
+      const stackIndex = dialogStack.lastIndexOf(container);
+      if (stackIndex !== -1) dialogStack.splice(stackIndex, 1);
       openDialogCount = Math.max(0, openDialogCount - 1);
       if (openDialogCount === 0) document.body.style.overflow = previousBodyOverflow;
       if (previouslyFocused && document.contains(previouslyFocused)) previouslyFocused.focus({ preventScroll: true });

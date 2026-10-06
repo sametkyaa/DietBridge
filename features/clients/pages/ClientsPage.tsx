@@ -1,30 +1,62 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Plus, MessageSquare, Eye, MoreVertical, Calendar, TrendingUp, TrendingDown, Minus, RefreshCw, X, AlertCircle, CheckCircle2, Info, Download, Utensils, Pencil } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import DietitianAvatar from '../../../shared/components/DietitianAvatar';
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Client } from '../../../shared/types';
 import { fetchDietitianClientList, addClientByEmail, resolveClientIdByRelationId } from '../services/clientService';
 import { exportClientsToXlsx } from '../services/clientExportService';
+import { fetchClientListInsights } from '../services/clientListInsightsService';
 import NotificationBell from '../../notifications/components/NotificationBell';
 import InviteCodePanel from '../components/InviteCodePanel';
+import { ClientActionsMenu } from '../components/ClientActionsMenu';
 import { resolveClientInviteMode } from '../utils/inviteCode';
+import {
+  CLIENT_ATTENTION_LABELS,
+  formatMeasurementAge,
+  formatNextAppointment,
+  getClientAttentionReasons,
+  paginate,
+  type ClientAttentionReason,
+  type ClientListInsight,
+} from '../utils/clientListContract';
+import { getDateKeyInTimeZone } from '../../../shared/utils/dateContract';
 import { formatPercentageDisplay } from '../../../shared/utils/percentageDisplay';
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  EmptyState,
+  ErrorState,
+  Input,
+  LoadingState,
+  Modal,
+  PageContainer,
+  PageHeader,
+  Pagination,
+  PersonCell,
+  ProgressBar,
+  SearchInput,
+  SegmentedControl,
+  TBody,
+  THead,
+  Table,
+  TableCard,
+  TableFooter,
+  Td,
+  Th,
+  Tr,
+} from '../../../shared/ui';
 
 type ClientListViewState =
   | { status: 'loading' }
   | { status: 'success'; clients: Client[] }
   | { status: 'error'; message: string };
 
-type ClientStatusFilter = 'all' | 'active' | 'pending';
+type InsightState =
+  | { status: 'idle' | 'loading' }
+  | { status: 'ready'; insights: Map<string, ClientListInsight> }
+  | { status: 'error' };
 
-const MODAL_FOCUSABLE_SELECTOR = [
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  'a[href]',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
+type ClientStatusFilter = 'all' | 'active' | 'attention' | 'pending';
 
 const inviteMode = resolveClientInviteMode(import.meta.env.VITE_CLIENT_INVITE_MODE);
 
@@ -41,370 +73,43 @@ const compareClients = (left: Client, right: Client) => {
   return left.id.localeCompare(right.id);
 };
 
-const getClientInitials = (name: string) => {
-  const initials = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toLocaleUpperCase('tr-TR'))
-    .join('');
-
-  return initials || '?';
-};
-
-const clientMessagesPath = (clientId: string): string => (
-  `/messages?clientId=${encodeURIComponent(clientId)}`
-);
-
-const ClientAvatar: React.FC<{
-  name: string;
-  src: string | null | undefined;
-  sizeClassName: string;
-}> = ({ name, src, sizeClassName }) => {
-  const [imageFailed, setImageFailed] = useState(false);
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [src]);
-
-  if (!src || imageFailed) {
-    return (
-      <div
-        role="img"
-        aria-label={`${name} profil fotoğrafı yok`}
-        className={`${sizeClassName} flex shrink-0 items-center justify-center rounded-full bg-emerald-100 font-bold text-emerald-700`}
-      >
-        {getClientInitials(name)}
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={name}
-      onError={() => setImageFailed(true)}
-      className={`${sizeClassName} shrink-0 rounded-full object-cover`}
-    />
-  );
-};
-
 const ClientCompliance: React.FC<{ client: Client }> = ({ client }) => {
   const value = client.compliance;
   if (value === null || !Number.isFinite(value)) {
-    return <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-xs font-medium text-slate-400">Veri yok</span>;
+    return <span className="text-13 text-ink-3">Veri yok</span>;
   }
-
-  const progress = Math.min(100, Math.max(0, value));
-  const tone = value > 80
-    ? { bar: 'bg-primary', text: 'text-primary' }
-    : value > 70
-      ? { bar: 'bg-yellow-400', text: 'text-yellow-500' }
-      : { bar: 'bg-red-500', text: 'text-red-500' };
-
   return (
-    <div className="flex items-center gap-3" aria-label={`Son 7 gün uyumu: ${formatPercentageDisplay(value)}`}>
-      <div className="flex-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label="Son 7 gün uyumu">
-        <div className={`h-full rounded-full transition-all duration-500 ${tone.bar}`} style={{ width: `${progress}%` }} />
-      </div>
-      <span className={`w-12 text-right text-xs font-bold ${tone.text}`}>{formatPercentageDisplay(value)}</span>
-    </div>
+    <span className="flex min-w-[120px] items-center gap-2.5" aria-label={`Son 7 gün uyumu: ${formatPercentageDisplay(value)}`}>
+      <ProgressBar value={value} tone={value < 50 ? 'bad' : value < 70 ? 'warn' : 'brand'} label="Son 7 gün uyumu" valueText={formatPercentageDisplay(value)} />
+      <span className="w-11 text-right text-13 font-semibold tabular-nums">{formatPercentageDisplay(value)}</span>
+    </span>
   );
 };
 
-const ClientMessageButton: React.FC<{ client: Client }> = ({ client }) => {
-  const navigate = useNavigate();
-  const isActive = client.status === 'Aktif';
-  return (
-    <button
-      type="button"
-      disabled={!isActive}
-      onClick={() => navigate(clientMessagesPath(client.id))}
-      aria-label={isActive ? `${client.name} danışanına mesaj gönder` : `${client.name} için mesajlaşma kullanılamıyor`}
-      title={isActive ? 'Mesaj Gönder' : 'Onay bekleyen danışanlar için mesajlaşma kullanılamaz.'}
-      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-slate-50 text-slate-400 transition-colors hover:bg-emerald-50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-50 disabled:hover:text-slate-400"
-    >
-      <MessageSquare className="h-4 w-4" aria-hidden="true" />
-    </button>
-  );
-};
-
-const ClientActionsMenu: React.FC<{ client: Client }> = ({ client }) => {
-  const navigate = useNavigate();
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const moreButtonRef = useRef<HTMLButtonElement>(null);
-  const firstMenuItemRef = useRef<HTMLButtonElement>(null);
-  const isActive = client.status === 'Aktif';
-
-  const closeMenu = useCallback((restoreFocus = false) => {
-    setIsOpen(false);
-    if (restoreFocus) {
-      window.requestAnimationFrame(() => moreButtonRef.current?.focus());
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) return undefined;
-
-    const handleOutsidePointer = (event: PointerEvent) => {
-      if (event.target instanceof Node && !containerRef.current?.contains(event.target)) {
-        closeMenu();
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeMenu(true);
-      }
-    };
-    const focusFrame = window.requestAnimationFrame(() => firstMenuItemRef.current?.focus());
-    document.addEventListener('pointerdown', handleOutsidePointer);
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-      document.removeEventListener('pointerdown', handleOutsidePointer);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [closeMenu, isOpen]);
-
-  if (!isActive) {
+const ClientStatusBadge: React.FC<{ client: Client; reasons: ClientAttentionReason[] }> = ({ client, reasons }) => {
+  if (client.status === 'Onay Bekliyor') return <Badge tone="warn" dot>Onay bekliyor</Badge>;
+  if (reasons.length > 0) {
     return (
-      <button
-        type="button"
-        disabled
-        aria-label={`${client.name} için işlemler kullanılamıyor`}
-        title="Onay bekleyen danışanlar için aktif ilişki gerektiren işlemler kullanılamaz."
-        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed"
-      >
-        <MoreVertical className="h-4 w-4" aria-hidden="true" />
-      </button>
+      <span title={reasons.map((reason) => CLIENT_ATTENTION_LABELS[reason]).join(' · ')}>
+        <Badge tone="bad" dot>Dikkat</Badge>
+        <span className="sr-only">: {reasons.map((reason) => CLIENT_ATTENTION_LABELS[reason]).join(', ')}</span>
+      </span>
     );
   }
+  return <Badge tone="ok" dot>Aktif</Badge>;
+};
 
-  const menuItemClassName = 'flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary';
-
+const WeightCell: React.FC<{ client: Client }> = ({ client }) => {
+  const change = client.weeklyChange;
   return (
-    <div ref={containerRef} className="relative" onClick={(event) => event.stopPropagation()}>
-      <button
-        ref={moreButtonRef}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        aria-label={`${client.name} için daha fazla işlem`}
-        onClick={() => setIsOpen((current) => !current)}
-        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-      >
-        <MoreVertical className="h-4 w-4" aria-hidden="true" />
-      </button>
-      {isOpen && (
-        <div role="menu" aria-label={`${client.name} işlemleri`} className="absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-          <button ref={firstMenuItemRef} type="button" role="menuitem" className={menuItemClassName} onClick={() => { closeMenu(); navigate(`/clients/${client.id}`); }}>
-            <Eye className="h-4 w-4 text-slate-400" aria-hidden="true" /> Profili Görüntüle
-          </button>
-          <button type="button" role="menuitem" className={menuItemClassName} onClick={() => { closeMenu(); navigate(clientMessagesPath(client.id)); }}>
-            <MessageSquare className="h-4 w-4 text-slate-400" aria-hidden="true" /> Mesaj Gönder
-          </button>
-          <button type="button" role="menuitem" className={menuItemClassName} onClick={() => { closeMenu(); navigate(`/clients/${client.id}/meal-tracking`); }}>
-            <Utensils className="h-4 w-4 text-slate-400" aria-hidden="true" /> Öğün Takibi
-          </button>
-          <button type="button" role="menuitem" className={menuItemClassName} onClick={() => { closeMenu(); navigate('/meal-plans', { state: { clientId: client.id } }); }}>
-            <Pencil className="h-4 w-4 text-slate-400" aria-hidden="true" /> Planı Düzenle
-          </button>
-        </div>
+    <span className="block">
+      <b className="block font-semibold tabular-nums">{client.currentWeight === '-' ? '—' : client.currentWeight}</b>
+      {change !== null && (
+        <span className={`block text-12 tabular-nums ${change < 0 ? 'text-ok' : change > 0 ? 'text-warn' : 'text-ink-3'}`}>
+          {change > 0 ? '+' : change < 0 ? '−' : '±'}{Math.abs(change)} kg / hafta
+        </span>
       )}
-    </div>
-  );
-};
-
-// Desktop/Tablet Table Row Component
-const ClientRow: React.FC<{ client: Client }> = ({ client }) => {
-  const navigate = useNavigate();
-  return (
-    <tr 
-      onClick={() => navigate(`/clients/${client.id}`)}
-      className="hover:bg-slate-50 cursor-pointer transition-colors group bg-white"
-    >
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-4">
-          <ClientAvatar
-            name={client.name}
-            src={client.profilePhotoUrl}
-            sizeClassName="h-10 w-10 ring-2 ring-transparent transition-all group-hover:ring-primary/20"
-          />
-          <div>
-            <p className="font-semibold text-slate-800">{client.name}</p>
-            <p className="text-xs text-slate-500">{client.email}</p>
-          </div>
-        </div>
-      </td>
-      <td className="px-6 py-4">
-        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-          client.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 
-          client.status === 'Onay Bekliyor' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-        }`}>
-          {client.status}
-        </span>
-      </td>
-      <td className="px-6 py-4">
-        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-          client.goal === 'Kilo Verme' ? 'bg-orange-100 text-orange-700' : 
-          client.goal === 'Kas Kazanımı' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-        }`}>
-          {client.goal}
-        </span>
-      </td>
-      <td className="px-6 py-4 text-slate-600 font-medium">
-        <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-slate-400" />
-            {client.duration ?? 'Veri yok'}
-        </div>
-      </td>
-      <td className="px-6 py-4 text-slate-800 font-semibold">{client.currentWeight}</td>
-      <td className="px-6 py-4">
-        {client.weeklyChange === null ? (
-          <span className="inline-flex items-center gap-1 text-slate-400 bg-slate-50 px-2 py-1 rounded-md text-xs font-medium">
-             Veri yok
-          </span>
-        ) : client.weeklyChange < 0 ? (
-          <span className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md text-xs font-bold">
-            <TrendingDown className="w-3 h-3" />
-            {Math.abs(client.weeklyChange)} kg
-          </span>
-        ) : client.weeklyChange > 0 ? (
-          <span className="inline-flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-1 rounded-md text-xs font-bold">
-            <TrendingUp className="w-3 h-3" />
-            {client.weeklyChange} kg
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-slate-400 bg-slate-50 px-2 py-1 rounded-md text-xs font-bold">
-             <Minus className="w-3 h-3" />
-             0 kg
-          </span>
-        )}
-      </td>
-      <td className="px-6 py-4">
-        <ClientCompliance client={client} />
-      </td>
-      <td className="px-6 py-4">
-        <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
-            <ClientMessageButton client={client} />
-            <button
-              type="button"
-              onClick={() => navigate(`/clients/${client.id}`)}
-              aria-label={`${client.name} danışan detayını görüntüle`}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-            >
-              <Eye className="w-4 h-4" />
-            </button>
-            <ClientActionsMenu client={client} />
-        </div>
-      </td>
-    </tr>
-  );
-};
-
-// Mobile Card Component
-const ClientCard: React.FC<{ client: Client }> = ({ client }) => {
-  const navigate = useNavigate();
-  return (
-    <div 
-      onClick={() => navigate(`/clients/${client.id}`)}
-      className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-[0.99] group"
-    >
-      {/* Card Header */}
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-3">
-          <ClientAvatar
-            name={client.name}
-            src={client.profilePhotoUrl}
-            sizeClassName="h-12 w-12 ring-2 ring-white shadow-sm"
-          />
-          <div>
-            <h3 className="font-bold text-slate-800">{client.name}</h3>
-            <p className="text-xs text-slate-500">{client.email}</p>
-          </div>
-        </div>
-        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-          client.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 
-          client.status === 'Onay Bekliyor' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-        }`}>
-          {client.status}
-        </span>
-      </div>
-
-      {/* Info Grid */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="bg-slate-50 p-3 rounded-lg">
-           <p className="text-[10px] uppercase tracking-wide text-slate-400 font-bold mb-1">Hedef</p>
-           <span className={`text-xs font-bold ${
-             client.goal === 'Kilo Verme' ? 'text-orange-600' : 
-             client.goal === 'Kas Kazanımı' ? 'text-blue-600' : 'text-purple-600'
-           }`}>
-             {client.goal}
-           </span>
-        </div>
-        <div className="bg-slate-50 p-3 rounded-lg">
-           <p className="text-[10px] uppercase tracking-wide text-slate-400 font-bold mb-1">Diyet Süresi</p>
-           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
-             <Calendar className="w-3 h-3 text-slate-400" />
-             {client.duration ?? 'Veri yok'}
-           </div>
-        </div>
-        <div className="bg-slate-50 p-3 rounded-lg">
-           <p className="text-[10px] uppercase tracking-wide text-slate-400 font-bold mb-1">Güncel Kilo</p>
-           <p className="text-sm font-bold text-slate-800">{client.currentWeight}</p>
-        </div>
-        <div className="bg-slate-50 p-3 rounded-lg">
-           <p className="text-[10px] uppercase tracking-wide text-slate-400 font-bold mb-1">Haftalık Değişim</p>
-           {client.weeklyChange === null ? (
-            <span className="text-xs font-medium text-slate-400">
-                Veri yok
-            </span>
-            ) : client.weeklyChange < 0 ? (
-            <span className="flex items-center gap-1 text-emerald-600 text-xs font-bold">
-                <TrendingDown className="w-3 h-3" />
-                {Math.abs(client.weeklyChange)} kg
-            </span>
-            ) : client.weeklyChange > 0 ? (
-            <span className="flex items-center gap-1 text-orange-600 text-xs font-bold">
-                <TrendingUp className="w-3 h-3" />
-                {client.weeklyChange} kg
-            </span>
-            ) : (
-            <span className="flex items-center gap-1 text-slate-400 text-xs font-bold">
-                <Minus className="w-3 h-3" />
-                0 kg
-            </span>
-            )}
-        </div>
-      </div>
-
-      {/* Compliance */}
-      <div className="flex items-center gap-3 mb-4">
-        <p className="w-10 text-xs font-medium text-slate-400" title="Son 7 gündeki planlanan öğünlerin tamamlanma oranı">Uyum</p>
-        <div className="min-w-0 flex-1"><ClientCompliance client={client} /></div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
-         <p className="text-xs text-slate-400 font-medium">Hızlı İşlemler</p>
-         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-            <ClientMessageButton client={client} />
-            <button
-              type="button"
-              onClick={() => navigate(`/clients/${client.id}`)}
-              aria-label={`${client.name} danışan detayını görüntüle`}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center bg-slate-50 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-            >
-              <Eye className="w-4 h-4" />
-            </button>
-            <ClientActionsMenu client={client} />
-         </div>
-      </div>
-    </div>
+    </span>
   );
 };
 
@@ -414,15 +119,15 @@ const ClientsPage = () => {
   const notificationRelationshipId = searchParams.get('notificationRelationshipId');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('all');
+  const [page, setPage] = useState(1);
   const [viewState, setViewState] = useState<ClientListViewState>({ status: 'loading' });
+  const [insightState, setInsightState] = useState<InsightState>({ status: 'idle' });
   const requestSequence = useRef(0);
   const requestInFlight = useRef(false);
+  const insightSequence = useRef(0);
   const addRequestInFlight = useRef(false);
   const isMounted = useRef(true);
-  const inviteButtonRef = useRef<HTMLButtonElement>(null);
-  const inviteDialogRef = useRef<HTMLDivElement>(null);
   const inviteEmailInputRef = useRef<HTMLInputElement>(null);
-  const wasAddModalOpen = useRef(false);
   const handledNotificationRelationshipRef = useRef<string | null>(null);
   const exportInFlight = useRef(false);
 
@@ -433,6 +138,19 @@ const ClientsPage = () => {
   const [addFeedback, setAddFeedback] = useState<{ type: 'success' | 'info' | 'error', message: string } | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  const loadInsights = useCallback(async (clients: Client[]) => {
+    const requestId = ++insightSequence.current;
+    const activeIds = clients.filter((client) => client.status === 'Aktif').map((client) => client.id);
+    setInsightState({ status: 'loading' });
+    try {
+      const insights = await fetchClientListInsights(activeIds);
+      if (isMounted.current && requestId === insightSequence.current) setInsightState({ status: 'ready', insights });
+    } catch {
+      console.error('Client list insights failed.');
+      if (isMounted.current && requestId === insightSequence.current) setInsightState({ status: 'error' });
+    }
+  }, []);
 
   const loadClients = useCallback(async (
     options: { showLoading?: boolean; preserveOnError?: boolean } = {}
@@ -456,13 +174,14 @@ const ClientsPage = () => {
       }
 
       setViewState({ status: 'success', clients: result.clients });
+      void loadInsights(result.clients);
       return true;
     } finally {
       if (requestId === requestSequence.current) {
         requestInFlight.current = false;
       }
     }
-  }, []);
+  }, [loadInsights]);
 
   // Load clients from Supabase on mount
   useEffect(() => {
@@ -472,6 +191,7 @@ const ClientsPage = () => {
     return () => {
       isMounted.current = false;
       requestSequence.current += 1;
+      insightSequence.current += 1;
       requestInFlight.current = false;
     };
   }, [loadClients]);
@@ -521,87 +241,6 @@ const ClientsPage = () => {
     setAddFeedback(null);
   }, [isAdding]);
 
-  useEffect(() => {
-    if (isAddModalOpen) {
-      wasAddModalOpen.current = true;
-      const focusFrame = window.requestAnimationFrame(() => {
-        const focusTarget = inviteEmailInputRef.current?.disabled
-          ? inviteDialogRef.current
-          : inviteEmailInputRef.current || inviteDialogRef.current;
-
-        if (focusTarget && document.activeElement !== focusTarget) {
-          focusTarget.focus();
-        }
-      });
-
-      return () => window.cancelAnimationFrame(focusFrame);
-    }
-
-    if (!wasAddModalOpen.current) return;
-    wasAddModalOpen.current = false;
-
-    const returnFocusFrame = window.requestAnimationFrame(() => {
-      if (isMounted.current) inviteButtonRef.current?.focus();
-    });
-
-    return () => window.cancelAnimationFrame(returnFocusFrame);
-  }, [isAddModalOpen]);
-
-  useEffect(() => {
-    if (!isAddModalOpen) return;
-
-    const handleModalKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        closeAddModal();
-        return;
-      }
-
-      if (event.key !== 'Tab') return;
-
-      const dialog = inviteDialogRef.current;
-      if (!dialog) return;
-
-      const focusableElements = [
-        ...dialog.querySelectorAll<HTMLElement>(MODAL_FOCUSABLE_SELECTOR),
-      ].filter((element) => (
-        element.getAttribute('aria-hidden') !== 'true'
-        && element.getClientRects().length > 0
-      ));
-
-      if (focusableElements.length === 0) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-
-      const activeElement = document.activeElement;
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-      const activeIndex = activeElement instanceof HTMLElement
-        ? focusableElements.indexOf(activeElement)
-        : -1;
-
-      if (!dialog.contains(activeElement) || activeIndex === -1) {
-        event.preventDefault();
-        firstElement.focus();
-        return;
-      }
-
-      if (event.shiftKey && activeElement === firstElement) {
-        event.preventDefault();
-        lastElement.focus();
-      } else if (!event.shiftKey && activeElement === lastElement) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleModalKeyDown);
-    return () => document.removeEventListener('keydown', handleModalKeyDown);
-  }, [closeAddModal, isAddModalOpen]);
-
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (addRequestInFlight.current) return;
@@ -618,7 +257,7 @@ const ClientsPage = () => {
     try {
       const result = await addClientByEmail(newClientEmail.trim());
       if (!isMounted.current) return;
-      
+
       switch (result.status) {
         case 'requested': {
           setNewClientEmail('');
@@ -658,14 +297,27 @@ const ClientsPage = () => {
     }
   };
 
+  const todayKey = getDateKeyInTimeZone();
+  const insights = insightState.status === 'ready' ? insightState.insights : null;
   const clientSource = viewState.status === 'success' ? viewState.clients : null;
   const normalizedSearchTerm = normalizeClientSearchValue(searchTerm);
-  const { supportedClients, statusFilteredClients, filteredClients } = useMemo(() => {
+
+  const attentionByClientId = useMemo(() => {
+    const map = new Map<string, ClientAttentionReason[]>();
+    for (const client of clientSource ?? []) {
+      map.set(client.id, getClientAttentionReasons(client, insights?.get(client.id), todayKey));
+    }
+    return map;
+  }, [clientSource, insights, todayKey]);
+
+  const { supportedClients, statusFilteredClients, filteredClients, counts } = useMemo(() => {
     const supported = (clientSource ?? []).filter(
       client => client.status === 'Aktif' || client.status === 'Onay Bekliyor'
     );
+    const needsAttention = (client: Client) => (attentionByClientId.get(client.id)?.length ?? 0) > 0;
     const statusFiltered = supported.filter(client => {
       if (statusFilter === 'active') return client.status === 'Aktif';
+      if (statusFilter === 'attention') return needsAttention(client);
       if (statusFilter === 'pending') return client.status === 'Onay Bekliyor';
       return true;
     });
@@ -682,11 +334,20 @@ const ClientsPage = () => {
       supportedClients: supported,
       statusFilteredClients: statusFiltered,
       filteredClients: [...searched].sort(compareClients),
+      counts: {
+        all: supported.length,
+        active: supported.filter((client) => client.status === 'Aktif').length,
+        attention: supported.filter(needsAttention).length,
+        pending: supported.filter((client) => client.status === 'Onay Bekliyor').length,
+      },
     };
-  }, [clientSource, normalizedSearchTerm, statusFilter]);
+  }, [attentionByClientId, clientSource, normalizedSearchTerm, statusFilter]);
 
-  const activeClients = filteredClients.filter(c => c.status === 'Aktif');
-  const pendingClients = filteredClients.filter(c => c.status === 'Onay Bekliyor');
+  useEffect(() => {
+    setPage(1);
+  }, [normalizedSearchTerm, statusFilter]);
+
+  const pageResult = paginate<Client>(filteredClients, page);
 
   const handleExport = useCallback(async () => {
     if (filteredClients.length === 0 || exportInFlight.current) return;
@@ -707,328 +368,244 @@ const ClientsPage = () => {
     }
   }, [filteredClients]);
 
+  const measurementLabel = (client: Client): string => {
+    if (client.status !== 'Aktif') return '—';
+    if (insightState.status !== 'ready') return insightState.status === 'error' ? '—' : '…';
+    return formatMeasurementAge(insights?.get(client.id)?.lastMeasuredAt ?? null, todayKey) ?? 'Ölçüm yok';
+  };
+
+  const appointmentLabel = (client: Client): string => {
+    if (client.status !== 'Aktif') return '—';
+    if (insightState.status !== 'ready') return insightState.status === 'error' ? '—' : '…';
+    return formatNextAppointment(insights?.get(client.id)?.nextAppointment ?? null, todayKey) ?? '—';
+  };
+
+  const filterEmptyTitle: Record<Exclude<ClientStatusFilter, 'all'>, string> = {
+    active: 'Aktif danışan bulunmuyor.',
+    attention: 'Dikkat gerektiren danışan yok.',
+    pending: 'Bekleyen danışan bulunmuyor.',
+  };
+
   return (
-    <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-hidden p-4 md:h-screen md:max-w-7xl md:p-8 mx-auto flex flex-col">
-       {/* Responsive Header */}
-       <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-4 flex-shrink-0">
-        <div className="w-full md:w-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-800">Danışan Listesi</h1>
-            <p className="text-slate-500 mt-1 text-sm md:text-base">Danışan ilerlemesini yönetin.</p>
-          </div>
-          {/* Mobile Profile Pic (visible only on small screens) */}
-          <div className="md:hidden">
-             <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-             <DietitianAvatar alt="Profil" className="w-10 h-10 rounded-full border border-slate-200 object-cover" />
-          </button>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <button 
-            ref={inviteButtonRef}
-            onClick={openAddModal}
-            className="flex-1 md:flex-none justify-center items-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-medium shadow-sm transition-all active:scale-95 text-sm md:text-base flex"
-          >
-             <Plus className="w-5 h-5" />
-             <span className="md:inline">Danışan Davet Et</span>
-          </button>
-          
-          <div className="hidden md:block w-px h-8 bg-slate-200 mx-2"></div>
-          
-          <NotificationBell className="hidden md:inline-flex" />
-          
-          <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <DietitianAvatar
-              alt="Profil"
-              className="hidden md:block w-10 h-10 rounded-full border border-slate-200 object-cover"
-            />
-          </button>
-        </div>
-      </header>
+    <PageContainer>
+      <PageHeader
+        title="Danışanlar"
+        description={viewState.status === 'success'
+          ? `${counts.active} aktif · ${counts.pending} onay bekleyen`
+          : 'Danışan ilerlemesini yönetin.'}
+        actions={(
+          <>
+            <Button
+              variant="secondary"
+              leftIcon="download-simple"
+              onClick={() => void handleExport()}
+              disabled={filteredClients.length === 0 || isExporting}
+              loading={isExporting}
+            >
+              {isExporting ? 'Dışa aktarılıyor...' : 'Dışa Aktar'}
+            </Button>
+            <Button variant="primary" leftIcon="user-plus" onClick={openAddModal}>Danışan Davet Et</Button>
+            <NotificationBell className="hidden md:inline-flex" />
+          </>
+        )}
+      />
 
-      {/* Table/Card Container */}
-      <div className="bg-transparent md:bg-white rounded-none md:rounded-2xl shadow-none md:shadow-sm border-0 md:border border-slate-200 overflow-hidden flex-1 flex flex-col">
-        {/* Toolbar */}
-        <div className="p-0 md:p-4 mb-4 md:mb-0 md:border-b border-slate-200 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 bg-transparent md:bg-white rounded-xl md:rounded-none">
-             <div className="relative w-full md:w-auto">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                 <input
-                   type="text"
-                   placeholder="İsim veya e-postaya göre ara..."
-                   aria-label="Danışan adı veya e-postasıyla ara"
-                   value={searchTerm}
-                   onChange={(e) => setSearchTerm(e.target.value)}
-                   className="w-full md:w-64 pl-9 pr-4 py-3 md:py-2 rounded-xl md:rounded-lg border border-slate-200 bg-white md:bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition-all shadow-sm md:shadow-none"
-                 />
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                 <button
-                   type="button"
-                   onClick={() => void handleExport()}
-                   disabled={filteredClients.length === 0 || isExporting}
-                   className="flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:rounded-lg md:bg-slate-50 md:py-2 md:shadow-none"
-                 >
-                   {isExporting ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="h-4 w-4" aria-hidden="true" />}
-                   {isExporting ? 'Dışa aktarılıyor...' : 'Dışa Aktar'}
-                 </button>
-                 <div
-                   className="flex w-full sm:w-auto gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white md:bg-slate-50 p-1 shadow-sm md:shadow-none"
-                   role="group"
-                   aria-label="Danışan durum filtresi"
-                 >
-                   {([
-                     ['all', 'Tümü'],
-                     ['active', 'Aktif'],
-                     ['pending', 'Bekleyen'],
-                   ] as const).map(([value, label]) => (
-                     <button
-                       key={value}
-                       type="button"
-                       aria-pressed={statusFilter === value}
-                       onClick={() => setStatusFilter(value)}
-                       className={`flex-1 sm:flex-none whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                         statusFilter === value
-                           ? 'bg-primary text-white shadow-sm'
-                           : 'text-slate-600 hover:bg-slate-100'
-                       }`}
-                     >
-                       {label}
-                     </button>
-                   ))}
-                 </div>
-                 {exportError && <p className="text-sm font-medium text-red-600" role="alert">{exportError}</p>}
-              </div>
-        </div>
-        
-        {/* Scrollable Content Area */}
-        <div className="overflow-visible md:overflow-auto flex-1">
-          {viewState.status === 'loading' ? (
-             <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
-                <RefreshCw className="w-8 h-8 animate-spin text-primary" />
-                <p className="text-sm font-medium">Danışanlar yükleniyor...</p>
-             </div>
-          ) : viewState.status === 'error' ? (
-             <div className="flex flex-col items-center justify-center py-16 px-4 text-center" role="alert">
-                <div className="bg-red-50 p-4 rounded-full mb-4">
-                  <AlertCircle className="w-8 h-8 text-red-500" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">Danışanlar yüklenemedi</h3>
-                <p className="text-sm text-slate-500 max-w-md">{viewState.message}</p>
-                <button
-                  type="button"
-                  onClick={() => void loadClients()}
-                  className="mt-5 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white font-medium hover:bg-primary-dark transition-colors"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Tekrar Dene
-                </button>
-             </div>
-          ) : supportedClients.length === 0 ? (
-             <div className="flex flex-col items-center justify-center py-16 text-slate-500">
-                <div className="bg-slate-50 p-4 rounded-full mb-4">
-                  <Search className="w-8 h-8 text-slate-400" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">Henüz danışanınız bulunmuyor.</h3>
-                 <p className="text-sm text-slate-500">İlk bağlantı isteğinizi gönderdiğinizde burada görünecek.</p>
-             </div>
-          ) : statusFilteredClients.length === 0 ? (
-             <div className="flex flex-col items-center justify-center py-16 px-4 text-center text-slate-500">
-                <div className="bg-slate-50 p-4 rounded-full mb-4">
-                  <Search className="w-8 h-8 text-slate-400" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">
-                  {statusFilter === 'active'
-                    ? 'Aktif danışan bulunmuyor.'
-                    : 'Bekleyen danışan bulunmuyor.'}
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setStatusFilter('all')}
-                  className="mt-4 text-primary font-medium hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
-                >
-                  Tümünü Göster
-                </button>
-             </div>
-          ) : filteredClients.length === 0 ? (
-             <div className="flex flex-col items-center justify-center py-16 px-4 text-center text-slate-500">
-                <div className="bg-slate-50 p-4 rounded-full mb-4">
-                  <Search className="w-8 h-8 text-slate-400" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">Uygun danışan bulunamadı</h3>
-                <p className="text-sm text-slate-500">Aramanızla eşleşen danışan bulunamadı.</p>
-                {normalizedSearchTerm && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchTerm('')}
-                    className="mt-4 text-primary font-medium hover:underline"
-                  >
-                    Aramayı Temizle
-                  </button>
-                )}
-             </div>
-          ) : (
-            <>
-              {/* Desktop Table */}
-              <table className="w-full text-left text-sm hidden md:table">
-                <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
-                  <tr>
-                    <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">İsim</th>
-                    <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Durum</th>
-                    <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Hedef</th>
-                    <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Diyet Süresi</th>
-                    <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Güncel Kilo</th>
-                    <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Haftalık Değişim</th>
-                    <th className="w-48 px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Uyum (7 Gün)</th>
-                    <th className="px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs text-center">İşlemler</th>
-                  </tr>
-                </thead>
-                
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {activeClients.map((client) => (
-                    <ClientRow key={client.id} client={client} />
-                  ))}
-                </tbody>
+      {exportError && <Callout tone="bad" role="alert" className="mb-4">{exportError}</Callout>}
 
-                {pendingClients.length > 0 && (
-                  <tbody className="divide-y divide-slate-100 bg-amber-50/30 border-t-2 border-slate-200">
-                    <tr>
-                      <td colSpan={8} className="px-6 py-3 bg-amber-50/50 border-b border-slate-200">
-                        <p className="text-xs font-bold text-amber-600 uppercase tracking-wider flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                          Onay Bekleyenler
-                        </p>
-                      </td>
-                    </tr>
-                    {pendingClients.map((client) => (
-                      <ClientRow key={client.id} client={client} />
-                    ))}
-                  </tbody>
-                )}
-
-              </table>
-
-              {/* Mobile Card View */}
-              <div className="md:hidden space-y-4 pb-4">
-                {activeClients.map((client) => (
-                  <ClientCard key={client.id} client={client} />
-                ))}
-                
-                {pendingClients.length > 0 && (
-                    <div className="pt-4">
-                      <div className="flex items-center gap-2 mb-3 px-1">
-                          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                          <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">Onay Bekleyenler</p>
-                      </div>
-                      <div className="space-y-4">
-                          {pendingClients.map((client) => (
-                            <ClientCard key={client.id} client={client} />
-                          ))}
-                      </div>
-                    </div>
-                )}
-
-              </div>
-            </>
-          )}
-        </div>
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+        <SegmentedControl<ClientStatusFilter>
+          ariaLabel="Danışan durum filtresi"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          className="max-w-full self-start overflow-x-auto"
+          options={[
+            { value: 'all', label: 'Tümü', count: viewState.status === 'success' ? counts.all : undefined },
+            { value: 'active', label: 'Aktif', count: viewState.status === 'success' ? counts.active : undefined },
+            { value: 'attention', label: 'Dikkat', count: viewState.status === 'success' && insightState.status !== 'loading' ? counts.attention : undefined },
+            { value: 'pending', label: 'Bekleyen', count: viewState.status === 'success' ? counts.pending : undefined },
+          ]}
+        />
+        <SearchInput
+          label="Danışan adı veya e-postasıyla ara"
+          placeholder="İsim veya e-postaya göre ara..."
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          containerClassName="md:ml-auto md:w-[280px]"
+        />
       </div>
 
-      {/* Add Client Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div
-            ref={inviteDialogRef}
-            className="bg-white rounded-2xl w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto shadow-2xl animate-in fade-in zoom-in duration-200"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="client-invitation-title"
-            aria-describedby="client-invitation-description"
-            tabIndex={-1}
-          >
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-               <h2 id="client-invitation-title" className="text-xl font-bold text-slate-800">{inviteMode === 'invite_code' ? 'Danışan Davet Et' : 'Danışana Bağlantı İsteği Gönder'}</h2>
-               <button 
-                 type="button"
-                 onClick={closeAddModal}
-                 aria-label="Bağlantı isteği penceresini kapat"
-                 className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                 disabled={isAdding}
-               >
-                  <X className="w-5 h-5" />
-               </button>
-            </div>
-            
-            {inviteMode === 'invite_code' ? <InviteCodePanel onBusyChange={setIsAdding} /> : <form onSubmit={handleAddClient} className="p-6 space-y-5">
-               <div className="space-y-1.5">
-                  <label htmlFor="client-invitation-email" className="text-sm font-bold text-slate-700">Danışanın kayıtlı e-posta adresi</label>
-                  <p id="client-invitation-description" className="text-xs text-slate-500 mb-2">Yalnız DietBridge mobil uygulamasında kayıtlı danışanlara bağlantı isteği gönderebilirsiniz. Danışan isteği mobil uygulamadan kabul ettiğinde bağlantı aktif olur.</p>
-                  <input 
-                    ref={inviteEmailInputRef}
-                    id="client-invitation-email"
-                    type="email"
-                    required
-                    placeholder="ornek@email.com"
-                    value={newClientEmail}
-                    onChange={(e) => setNewClientEmail(e.target.value)}
-                    disabled={isAdding}
-                    autoFocus
-                    aria-describedby="client-invitation-description"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
-                  />
-               </div>
-
-               {addFeedback && (
-                 <div
-                   role={addFeedback.type === 'error' ? 'alert' : 'status'}
-                   className={`p-4 rounded-xl flex items-start gap-3 text-sm ${
-                     addFeedback.type === 'success'
-                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                       : addFeedback.type === 'info'
-                         ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                         : 'bg-red-50 text-red-700 border border-red-100'
-                   }`}
-                 >
-                   {addFeedback.type === 'success' ? (
-                     <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
-                   ) : addFeedback.type === 'info' ? (
-                     <Info className="w-5 h-5 shrink-0 mt-0.5" />
-                   ) : (
-                     <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                   )}
-                   <p className="min-w-0 break-words font-medium leading-relaxed">{addFeedback.message}</p>
-                 </div>
-               )}
-
-               <div className="pt-2 flex flex-col sm:flex-row gap-3">
-                  <button 
-                    type="button" 
-                    onClick={closeAddModal}
-                    disabled={isAdding}
-                    className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors text-sm disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                  >
-                     İptal
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={isAdding || !newClientEmail.trim()}
-                    className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors text-sm disabled:opacity-50 flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
-                  >
-                     {isAdding ? (
-                       <>
-                         <RefreshCw className="w-4 h-4 animate-spin" />
-                         Gönderiliyor...
-                       </>
-                     ) : (
-                       'Bağlantı İsteği Gönder'
-                     )}
-                  </button>
-               </div>
-            </form>}
-          </div>
-        </div>
+      {insightState.status === 'error' && viewState.status === 'success' && (
+        <Callout tone="warn" className="mb-4">
+          Son ölçüm ve randevu bilgileri yüklenemedi; Dikkat filtresi yalnızca öğün uyumuna göre çalışıyor.{' '}
+          <button type="button" className="font-semibold underline" onClick={() => void loadInsights(viewState.clients)}>Tekrar dene</button>
+        </Callout>
       )}
-    </div>
+
+      {viewState.status === 'loading' ? (
+        <Card><LoadingState label="Danışanlar yükleniyor..." variant="skeleton" rows={5} /></Card>
+      ) : viewState.status === 'error' ? (
+        <Card>
+          <ErrorState title="Danışanlar yüklenemedi" description={viewState.message} onRetry={() => void loadClients()} retryLabel="Tekrar Dene" />
+        </Card>
+      ) : supportedClients.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon="users"
+            title="Henüz danışanınız bulunmuyor."
+            description={inviteMode === 'invite_code' ? 'Davet kodunuzu paylaştığınızda bağlanan danışanlar burada görünecek.' : 'İlk bağlantı isteğinizi gönderdiğinizde burada görünecek.'}
+            action={<Button variant="primary" leftIcon="user-plus" onClick={openAddModal}>İlk danışanınızı davet edin</Button>}
+          />
+        </Card>
+      ) : statusFilteredClients.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon="users"
+            title={statusFilter === 'all' ? 'Danışan bulunmuyor.' : filterEmptyTitle[statusFilter]}
+            action={<Button variant="ghost" onClick={() => setStatusFilter('all')}>Tümünü Göster</Button>}
+          />
+        </Card>
+      ) : filteredClients.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon="magnifying-glass"
+            title="Uygun danışan bulunamadı"
+            description="Aramanızla eşleşen danışan bulunamadı."
+            action={normalizedSearchTerm ? <Button variant="ghost" onClick={() => setSearchTerm('')}>Aramayı Temizle</Button> : undefined}
+          />
+        </Card>
+      ) : (
+        <>
+          {/* Desktop Table */}
+          <TableCard className="hidden md:block">
+            <Table caption="Danışan listesi">
+              <THead>
+                <Tr>
+                  <Th>Danışan</Th>
+                  <Th>Durum</Th>
+                  <Th>Son ölçüm</Th>
+                  <Th>Güncel kilo</Th>
+                  <Th>Hedef</Th>
+                  <Th>Uyum (7 Gün)</Th>
+                  <Th>Sıradaki görüşme</Th>
+                  <Th align="right"><span className="sr-only">İşlemler</span></Th>
+                </Tr>
+              </THead>
+              <TBody>
+                {pageResult.items.map((client) => (
+                  <Fragment key={client.id}>
+                    <Tr className="cursor-pointer" onClick={() => navigate(`/clients/${client.id}`)}>
+                      <Td>
+                        <Link
+                          to={`/clients/${client.id}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="block rounded-tag focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                        >
+                          <PersonCell name={client.name} subtitle={client.email} avatarSrc={client.profilePhotoUrl} />
+                        </Link>
+                      </Td>
+                      <Td><ClientStatusBadge client={client} reasons={attentionByClientId.get(client.id) ?? []} /></Td>
+                      <Td className="text-ink-2">{measurementLabel(client)}</Td>
+                      <Td><WeightCell client={client} /></Td>
+                      <Td numeric>{client.targetWeight ?? '—'}</Td>
+                      <Td><ClientCompliance client={client} /></Td>
+                      <Td className="text-ink-2">{appointmentLabel(client)}</Td>
+                      <Td align="right" onClick={(event) => event.stopPropagation()}>
+                        <ClientActionsMenu client={client} />
+                      </Td>
+                    </Tr>
+                  </Fragment>
+                ))}
+              </TBody>
+            </Table>
+            <TableFooter summary={`${filteredClients.length} danışandan ${pageResult.start}–${pageResult.end} gösteriliyor`}>
+              <Pagination page={pageResult.page} pageCount={pageResult.pageCount} onPageChange={setPage} />
+            </TableFooter>
+          </TableCard>
+
+          {/* Mobile Card View */}
+          <ul className="m-0 flex list-none flex-col gap-3 p-0 md:hidden">
+            {pageResult.items.map((client) => (
+              <Fragment key={client.id}>
+                <li>
+                  <Card padding="sm">
+                    <div className="flex items-start gap-3">
+                      <Link to={`/clients/${client.id}`} className="min-w-0 flex-1 rounded-tag focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+                        <PersonCell name={client.name} subtitle={client.email} avatarSrc={client.profilePhotoUrl} />
+                      </Link>
+                      <ClientStatusBadge client={client} reasons={attentionByClientId.get(client.id) ?? []} />
+                      <ClientActionsMenu client={client} />
+                    </div>
+                    <dl className="m-0 mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-13">
+                      <div><dt className="text-12 text-ink-3">Güncel kilo</dt><dd className="m-0"><WeightCell client={client} /></dd></div>
+                      <div><dt className="text-12 text-ink-3">Hedef</dt><dd className="m-0 font-semibold tabular-nums">{client.targetWeight ?? '—'}</dd></div>
+                      <div><dt className="text-12 text-ink-3">Son ölçüm</dt><dd className="m-0">{measurementLabel(client)}</dd></div>
+                      <div><dt className="text-12 text-ink-3">Sıradaki görüşme</dt><dd className="m-0">{appointmentLabel(client)}</dd></div>
+                      <div className="col-span-2"><dt className="text-12 text-ink-3" title="Son 7 gündeki planlanan öğünlerin tamamlanma oranı">Uyum (7 gün)</dt><dd className="m-0 mt-1"><ClientCompliance client={client} /></dd></div>
+                    </dl>
+                  </Card>
+                </li>
+              </Fragment>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-13 text-ink-2 md:hidden">
+            <span>{filteredClients.length} danışandan {pageResult.start}–{pageResult.end}</span>
+            <Pagination page={pageResult.page} pageCount={pageResult.pageCount} onPageChange={setPage} maxButtons={3} />
+          </div>
+        </>
+      )}
+
+      {/* Add Client Modal */}
+      <Modal
+        open={isAddModalOpen}
+        onClose={closeAddModal}
+        dismissible={!isAdding}
+        title={inviteMode === 'invite_code' ? 'Danışan davet et' : 'Danışana bağlantı isteği gönder'}
+        initialFocusRef={inviteMode === 'invite_code' ? undefined : inviteEmailInputRef}
+        footer={inviteMode === 'invite_code' ? (
+          <Button variant="secondary" onClick={closeAddModal} disabled={isAdding}>Kapat</Button>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={closeAddModal} disabled={isAdding}>İptal</Button>
+            <Button
+              variant="primary"
+              type="submit"
+              form="client-invitation-form"
+              leftIcon="paper-plane-tilt"
+              loading={isAdding}
+              disabled={isAdding || !newClientEmail.trim()}
+            >
+              {isAdding ? 'Gönderiliyor...' : 'Bağlantı İsteği Gönder'}
+            </Button>
+          </>
+        )}
+      >
+        {inviteMode === 'invite_code' ? <InviteCodePanel onBusyChange={setIsAdding} /> : (
+          <form id="client-invitation-form" onSubmit={handleAddClient} className="flex flex-col gap-4" noValidate>
+            <Input
+              ref={inviteEmailInputRef}
+              id="client-invitation-email"
+              type="email"
+              required
+              label="Danışanın kayıtlı e-posta adresi"
+              hint="Yalnız DietBridge mobil uygulamasında kayıtlı danışanlara bağlantı isteği gönderebilirsiniz. Danışan isteği mobil uygulamadan kabul ettiğinde bağlantı aktif olur."
+              leadingIcon="envelope"
+              placeholder="ornek@email.com"
+              value={newClientEmail}
+              onChange={(event) => setNewClientEmail(event.target.value)}
+              disabled={isAdding}
+            />
+            {addFeedback && (
+              <Callout
+                tone={addFeedback.type === 'success' ? 'ok' : addFeedback.type === 'info' ? 'info' : 'bad'}
+                role={addFeedback.type === 'error' ? 'alert' : 'status'}
+              >
+                {addFeedback.message}
+              </Callout>
+            )}
+          </form>
+        )}
+      </Modal>
+    </PageContainer>
   );
 };
 
