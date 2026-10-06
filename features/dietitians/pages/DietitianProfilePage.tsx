@@ -1,27 +1,48 @@
-
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Phone, BookOpen, Award, Clock, Edit, LogOut, Camera, Trash2, Loader2 } from 'lucide-react';
 import { getCurrentDietitianProfile, removeDietitianAvatar, uploadDietitianAvatar } from '../services/dietitianService';
 import { DietitianProfile } from '../../../shared/types';
-import { USER_AVATAR } from '../../../shared/constants';
 import { useAuth } from '../../auth/context/AuthContext';
 import { useDietitianAvatarUrl } from '../../../shared/hooks/useDietitianAvatarUrl';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Callout,
+  Card,
+  CardHeader,
+  ConfirmDialog,
+  EmptyState,
+  Icon,
+  LoadingState,
+  PageContainer,
+  PageHeader,
+  type IconName,
+} from '../../../shared/ui';
+
+const NOT_PROVIDED = 'Belirtilmemiş';
+
+const hasText = (value: unknown): value is string => typeof value === 'string' && value.trim() !== '';
+const hasNumber = (value: unknown): boolean => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+
+const ContactLine = ({ icon, label, value }: { icon: IconName; label: string; value: string | null }) => (
+  <div className="flex items-center gap-2.5 text-13.5">
+    <Icon name={icon} size={15} className="shrink-0 text-ink-3" />
+    <span className="sr-only">{label}: </span>
+    <span className={value ? 'min-w-0 break-words text-ink-2' : 'text-ink-3'}>{value ?? NOT_PROVIDED}</span>
+  </div>
+);
 
 const DietitianProfilePage = () => {
   const [profile, setProfile] = useState<DietitianProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [avatarAction, setAvatarAction] = useState<'upload' | 'remove' | null>(null);
   const [avatarMessage, setAvatarMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [avatarImageFailed, setAvatarImageFailed] = useState(false);
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
   const { signOut, refreshAccess } = useAuth();
   const resolvedAvatarUrl = useDietitianAvatarUrl();
-
-  useEffect(() => {
-    setAvatarImageFailed(false);
-  }, [resolvedAvatarUrl]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -57,9 +78,6 @@ const DietitianProfilePage = () => {
 
   const handleAvatarRemove = async () => {
     if (avatarAction) return;
-    const confirmed = window.confirm('Profil fotoğrafınızı kaldırmak istediğinize emin misiniz?');
-    if (!confirmed) return;
-
     setAvatarAction('remove');
     setAvatarMessage(null);
     const result = await removeDietitianAvatar();
@@ -71,189 +89,148 @@ const DietitianProfilePage = () => {
       setAvatarMessage({ type: 'error', text: result.error || 'Profil fotoğrafı kaldırılamadı. Lütfen tekrar deneyin.' });
     }
     setAvatarAction(null);
+    setConfirmRemoveOpen(false);
   };
 
   if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-slate-500 text-sm font-medium">Profil yükleniyor...</p>
-        </div>
-      </div>
-    );
+    return <PageContainer><LoadingState label="Profil yükleniyor..." className="min-h-[60vh]" /></PageContainer>;
   }
 
   if (!profile) {
     return (
-      <div className="p-8 text-center">
-        <h2 className="text-xl font-bold text-slate-800">Profil bulunamadı.</h2>
-        <p className="text-slate-500 mb-4">Lütfen tekrar giriş yapmayı deneyin.</p>
-        <button onClick={handleSignOut} className="text-primary hover:underline">Çıkış Yap</button>
-      </div>
+      <PageContainer>
+        <EmptyState
+          icon="user"
+          title="Profil bulunamadı."
+          description="Lütfen tekrar giriş yapmayı deneyin."
+          action={<Button variant="secondary" leftIcon="sign-out" onClick={handleSignOut}>Çıkış Yap</Button>}
+        />
+      </PageContainer>
     );
   }
 
+  const fullName = [profile.first_name, profile.last_name].filter(hasText).join(' ') || 'Diyetisyen';
+  const specializations = hasText(profile.specialization)
+    ? profile.specialization.split(',').map((spec) => spec.trim()).filter(Boolean)
+    : [];
+
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto min-h-screen">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <div>
-           <h1 className="text-3xl font-bold text-slate-800">Profilim</h1>
-           <p className="text-slate-500 mt-1">Kişisel bilgilerinizi ve uzmanlık detaylarınızı görüntüleyin.</p>
-        </div>
-        <div className="flex gap-3">
-          <button 
-             onClick={() => navigate('/profile/edit')}
-             className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors shadow-sm"
-          >
-             <Edit className="w-4 h-4" /> Profili Düzenle
-          </button>
-          <button 
-             onClick={handleSignOut}
-             className="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-colors"
-          >
-             <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Profilim"
+        description="Kişisel bilgilerinizi ve uzmanlık detaylarınızı görüntüleyin."
+        actions={(
+          <>
+            <Button variant="secondary" leftIcon="pencil-simple" onClick={() => navigate('/profile/edit')}>Profili Düzenle</Button>
+            <Button variant="danger" leftIcon="sign-out" onClick={handleSignOut}>Çıkış Yap</Button>
+          </>
+        )}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        
-        {/* Left Column: Avatar & Quick Stats */}
-        <div className="md:col-span-1 space-y-6">
-           <div className="bg-white rounded-2xl p-8 border border-slate-100 shadow-sm text-center">
-              <div className="relative inline-block mb-4">
-                  <img
-                    src={resolvedAvatarUrl && !avatarImageFailed ? resolvedAvatarUrl : USER_AVATAR}
-                    onError={() => setAvatarImageFailed(true)}
-                    alt="Profil"
-                    className="w-32 h-32 rounded-full object-cover border-4 border-slate-50 mx-auto"
-                  />
-                  <span className="absolute bottom-1 right-1 w-6 h-6 bg-emerald-500 border-4 border-white rounded-full"></span>
-               </div>
-               <h2 className="text-xl font-bold text-slate-800">{profile.first_name} {profile.last_name}</h2>
-               <p className="text-emerald-600 font-medium text-sm mt-1">{profile.specialization}</p>
+      <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div className="flex flex-col gap-5">
+          <Card padding="none" className="p-6 text-center">
+            <Avatar name={fullName} src={resolvedAvatarUrl} size="xl" className="mx-auto" />
+            <h2 className="m-0 mt-4 text-20 font-bold">{profile.first_name} {profile.last_name}</h2>
+            {profile.verification_status === 'approved' && <Badge tone="ok" dot className="mt-2">Onaylı diyetisyen</Badge>}
 
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                aria-hidden="true"
-                tabIndex={-1}
-                onChange={handleAvatarFileChange}
-              />
-              <div className="mt-4 flex flex-col gap-2">
-                 <button
-                   type="button"
-                   onClick={() => avatarInputRef.current?.click()}
-                   disabled={avatarAction !== null}
-                   className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                 >
-                   {avatarAction === 'upload' ? (
-                     <><Loader2 className="w-4 h-4 animate-spin" /> Yükleniyor...</>
-                   ) : (
-                     <><Camera className="w-4 h-4" /> {profile.avatar_url ? 'Fotoğrafı Değiştir' : 'Fotoğraf Ekle'}</>
-                   )}
-                 </button>
-                 {profile.avatar_url && (
-                   <button
-                     type="button"
-                     onClick={handleAvatarRemove}
-                     disabled={avatarAction !== null}
-                     className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                   >
-                     {avatarAction === 'remove' ? (
-                       <><Loader2 className="w-4 h-4 animate-spin" /> Kaldırılıyor...</>
-                     ) : (
-                       <><Trash2 className="w-4 h-4" /> Fotoğrafı Kaldır</>
-                     )}
-                   </button>
-                 )}
-              </div>
-              {avatarMessage && (
-                <p
-                  role={avatarMessage.type === 'error' ? 'alert' : 'status'}
-                  className={`mt-3 text-xs font-medium ${avatarMessage.type === 'error' ? 'text-red-600' : 'text-emerald-600'}`}
-                >
-                  {avatarMessage.text}
-                </p>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              aria-hidden="true"
+              tabIndex={-1}
+              onChange={handleAvatarFileChange}
+            />
+            <div className="mt-5 flex flex-col gap-2">
+              <Button
+                variant="secondary"
+                leftIcon="camera"
+                fullWidth
+                loading={avatarAction === 'upload'}
+                disabled={avatarAction !== null}
+                onClick={() => avatarInputRef.current?.click()}
+              >
+                {avatarAction === 'upload' ? 'Yükleniyor...' : profile.avatar_url ? 'Fotoğrafı Değiştir' : 'Fotoğraf Ekle'}
+              </Button>
+              {profile.avatar_url && (
+                <Button variant="ghost" leftIcon="x" fullWidth disabled={avatarAction !== null} onClick={() => setConfirmRemoveOpen(true)}>
+                  Fotoğrafı Kaldır
+                </Button>
               )}
+            </div>
+            <p className="m-0 mt-2 text-12 text-ink-3">JPEG, PNG veya WEBP</p>
+            {avatarMessage && (
+              <Callout tone={avatarMessage.type === 'error' ? 'bad' : 'ok'} role={avatarMessage.type === 'error' ? 'alert' : 'status'} className="mt-3 text-left">
+                {avatarMessage.text}
+              </Callout>
+            )}
 
-               <div className="mt-6 flex flex-col gap-2">
-                 <div className="flex items-center justify-center gap-2 text-slate-600 text-sm">
-                    <Mail className="w-4 h-4 text-slate-400" /> {profile.email}
-                 </div>
-                 <div className="flex items-center justify-center gap-2 text-slate-600 text-sm">
-                    <Phone className="w-4 h-4 text-slate-400" /> {profile.phone}
-                 </div>
-              </div>
-           </div>
+            <div className="mt-5 flex flex-col gap-2 border-t border-line pt-5 text-left">
+              <ContactLine icon="envelope" label="E-posta" value={hasText(profile.email) ? profile.email : null} />
+              <ContactLine icon="phone" label="Telefon" value={hasText(profile.phone) ? profile.phone : null} />
+            </div>
+          </Card>
 
-           {/* Stats Card */}
-           <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-              <h3 className="font-bold text-slate-800 mb-4">Deneyim</h3>
-              <div className="flex items-center gap-4 mb-4">
-                 <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                    <Clock className="w-6 h-6" />
-                 </div>
-                 <div>
-                    <p className="text-2xl font-bold text-slate-800">{profile.experience_years} Yıl</p>
-                    <p className="text-xs text-slate-500 font-medium uppercase">Tecrübe</p>
-                 </div>
+          <Card>
+            <CardHeader title="Deneyim" />
+            <dl className="m-0 mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-db bg-canvas p-3.5">
+                <dt className="text-12 font-semibold text-ink-3">Tecrübe</dt>
+                <dd className="m-0 mt-1 text-22 font-bold tabular-nums">
+                  {hasNumber(profile.experience_years) ? `${profile.experience_years} Yıl` : <span className="text-14 font-medium text-ink-3">{NOT_PROVIDED}</span>}
+                </dd>
               </div>
-              <div className="flex items-center gap-4">
-                 <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
-                    <Award className="w-6 h-6" />
-                 </div>
-                 <div>
-                    <p className="text-2xl font-bold text-slate-800">{profile.graduation_year}</p>
-                    <p className="text-xs text-slate-500 font-medium uppercase">Mezuniyet</p>
-                 </div>
+              <div className="rounded-db bg-canvas p-3.5">
+                <dt className="text-12 font-semibold text-ink-3">Mezuniyet</dt>
+                <dd className="m-0 mt-1 text-22 font-bold tabular-nums">
+                  {hasNumber(profile.graduation_year) ? profile.graduation_year : <span className="text-14 font-medium text-ink-3">{NOT_PROVIDED}</span>}
+                </dd>
               </div>
-           </div>
+            </dl>
+          </Card>
         </div>
 
-        {/* Right Column: Details */}
-        <div className="md:col-span-2 space-y-6">
-           
-           {/* Education */}
-           <div className="bg-white rounded-2xl p-8 border border-slate-100 shadow-sm">
-              <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                 <BookOpen className="w-5 h-5 text-emerald-600" /> Eğitim & Uzmanlık
-              </h3>
-              
-              <div className="space-y-6">
-                 <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Üniversite / Bölüm</p>
-                    <p className="text-slate-800 font-medium text-lg">{profile.university}</p>
-                 </div>
-                 <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Uzmanlık Alanı</p>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                       {profile.specialization.split(',').map((spec, i) => (
-                          <span key={i} className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 font-medium">
-                             {spec.trim()}
-                          </span>
-                       ))}
-                    </div>
-                 </div>
+        <div className="flex flex-col gap-5 lg:col-span-2">
+          <Card>
+            <CardHeader title="Eğitim & Uzmanlık" />
+            <dl className="m-0 mt-4 flex flex-col gap-5">
+              <div>
+                <dt className="text-12 font-semibold uppercase tracking-[0.06em] text-ink-3">Üniversite / Bölüm</dt>
+                <dd className="m-0 mt-1 text-16 font-semibold">{hasText(profile.university) ? profile.university : <span className="font-medium text-ink-3">{NOT_PROVIDED}</span>}</dd>
               </div>
-           </div>
+              <div>
+                <dt className="text-12 font-semibold uppercase tracking-[0.06em] text-ink-3">Uzmanlık Alanı</dt>
+                <dd className="m-0 mt-2 flex flex-wrap gap-2">
+                  {specializations.length > 0
+                    ? specializations.map((spec, index) => <Fragment key={`${spec}-${index}`}><Badge tone="neutral">{spec}</Badge></Fragment>)
+                    : <span className="text-14 text-ink-3">{NOT_PROVIDED}</span>}
+                </dd>
+              </div>
+            </dl>
+          </Card>
 
-           {/* Bio */}
-           <div className="bg-white rounded-2xl p-8 border border-slate-100 shadow-sm">
-              <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                 <User className="w-5 h-5 text-emerald-600" /> Hakkında
-              </h3>
-              <p className="text-slate-600 leading-relaxed whitespace-pre-line">
-                 {profile.bio || 'Henüz bir biyografi eklenmemiş.'}
-              </p>
-           </div>
-
+          <Card>
+            <CardHeader title="Hakkında" />
+            <p className="m-0 mt-4 whitespace-pre-line text-14.5 leading-7 text-ink-2">
+              {hasText(profile.bio) ? profile.bio : 'Henüz bir biyografi eklenmemiş.'}
+            </p>
+          </Card>
         </div>
       </div>
-    </div>
+
+      <ConfirmDialog
+        open={confirmRemoveOpen}
+        title="Profil fotoğrafı kaldırılsın mı?"
+        description="Profil fotoğrafınız kaldırılır; yerine baş harfleriniz gösterilir."
+        confirmLabel="Fotoğrafı Kaldır"
+        tone="danger"
+        busy={avatarAction === 'remove'}
+        onConfirm={() => void handleAvatarRemove()}
+        onCancel={() => setConfirmRemoveOpen(false)}
+      />
+    </PageContainer>
   );
 };
 

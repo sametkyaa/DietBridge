@@ -1,9 +1,17 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentDietitianProfile, updateDietitianProfile } from '../services/dietitianService';
 import { DietitianProfile } from '../../../shared/types';
-import { Save, X, AlertCircle } from 'lucide-react';
+import { Button, Callout, Card, EmptyState, Input, LoadingState, PageContainer, PageHeader, Textarea } from '../../../shared/ui';
+
+const MIN_GRADUATION_YEAR = 1950;
+const MAX_EXPERIENCE_YEARS = 70;
+
+const parseWholeNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const numeric = Number(value);
+  return Number.isInteger(numeric) ? numeric : null;
+};
 
 const EditProfilePage = () => {
   const navigate = useNavigate();
@@ -29,8 +37,7 @@ const EditProfilePage = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile) return;
-    setSaving(true);
+    if (!profile || saving) return;
     setError(null);
 
     const normalizedFirstName = profile.first_name?.trim() || '';
@@ -38,17 +45,30 @@ const EditProfilePage = () => {
 
     if (!normalizedFirstName || !normalizedLastName) {
       setError("Lütfen adınızı ve soyadınızı eksiksiz girin.");
-      setSaving(false);
       return;
     }
 
+    const currentYear = new Date().getFullYear();
+    const graduationYear = parseWholeNumber(profile.graduation_year);
+    if (graduationYear === null || graduationYear < MIN_GRADUATION_YEAR || graduationYear > currentYear) {
+      setError(`Mezuniyet yılı ${MIN_GRADUATION_YEAR} ile ${currentYear} arasında olmalıdır.`);
+      return;
+    }
+
+    const experienceYears = parseWholeNumber(profile.experience_years);
+    if (experienceYears === null || experienceYears < 0 || experienceYears > MAX_EXPERIENCE_YEARS) {
+      setError(`Deneyim 0 ile ${MAX_EXPERIENCE_YEARS} yıl arasında olmalıdır.`);
+      return;
+    }
+
+    setSaving(true);
     const result = await updateDietitianProfile({
       first_name: normalizedFirstName,
       last_name: normalizedLastName,
       phone: profile.phone,
       university: profile.university,
-      graduation_year: profile.graduation_year,
-      experience_years: profile.experience_years,
+      graduation_year: graduationYear,
+      experience_years: experienceYears,
       specialization: profile.specialization,
       bio: profile.bio,
     });
@@ -61,91 +81,55 @@ const EditProfilePage = () => {
     setSaving(false);
   };
 
-  if (loading) return <div className="p-8 text-center text-slate-500">Yükleniyor...</div>;
-  if (!profile) return <div className="p-8 text-center text-red-500">Profil bulunamadı.</div>;
+  if (loading) return <PageContainer><LoadingState label="Yükleniyor..." className="min-h-[60vh]" /></PageContainer>;
+  if (!profile) {
+    return (
+      <PageContainer>
+        <EmptyState icon="user" title="Profil bulunamadı." action={<Button variant="secondary" onClick={() => navigate('/profile')}>Profile Dön</Button>} />
+      </PageContainer>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-         <div className="p-6 md:p-8 border-b border-slate-100 flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-slate-800">Profili Düzenle</h1>
-            <button onClick={() => navigate('/profile')} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full">
-               <X className="w-6 h-6" />
-            </button>
-         </div>
+    <PageContainer className="mx-auto max-w-[920px]">
+      <PageHeader
+        back={{ to: '/profile', label: 'Profilime dön' }}
+        title="Profili Düzenle"
+        description="Kişisel ve mesleki bilgilerinizi güncelleyin."
+      />
 
-         {error && (
-            <div className="mx-8 mt-6 bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl flex items-start gap-2 text-sm">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
+      <Card as="form" padding="none" onSubmit={handleSave} className="mt-6 p-5 sm:p-7" noValidate>
+        {error && (
+          <Callout tone="bad" role="alert" className="mb-5">{error}</Callout>
+        )}
 
-         <form onSubmit={handleSave} className="p-6 md:p-8 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                   <label className="text-sm font-bold text-slate-700">Ad</label>
-                   <input type="text" name="first_name" required value={profile.first_name} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                </div>
-                <div className="space-y-1.5">
-                   <label className="text-sm font-bold text-slate-700">Soyad</label>
-                   <input type="text" name="last_name" required value={profile.last_name} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                </div>
-                <div className="space-y-1.5">
-                   <label className="text-sm font-bold text-slate-700">Telefon</label>
-                   <input type="tel" name="phone" required value={profile.phone} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                </div>
-                <div className="space-y-1.5">
-                   <label className="text-sm font-bold text-slate-700">E-posta (Değiştirilemez)</label>
-                   <input type="email" disabled value={profile.email} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed text-sm" />
-                </div>
-            </div>
+        <h2 className="m-0 text-16 font-bold">Kişisel Bilgiler</h2>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Input id="profile-first-name" name="first_name" label="Ad" autoComplete="given-name" required value={profile.first_name ?? ''} onChange={handleChange} />
+          <Input id="profile-last-name" name="last_name" label="Soyad" autoComplete="family-name" required value={profile.last_name ?? ''} onChange={handleChange} />
+          <Input id="profile-phone" type="tel" name="phone" label="Telefon" leadingIcon="phone" autoComplete="tel" required value={profile.phone ?? ''} onChange={handleChange} />
+          <Input id="profile-email" type="email" label="E-posta (Değiştirilemez)" leadingIcon="envelope" disabled value={profile.email ?? ''} />
+        </div>
 
-            <div className="space-y-6 pt-4 border-t border-slate-100">
-               <h3 className="font-bold text-slate-800">Mesleki Bilgiler</h3>
-               <div className="space-y-1.5">
-                   <label className="text-sm font-bold text-slate-700">Üniversite</label>
-                   <input type="text" name="university" required value={profile.university} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <div className="space-y-1.5">
-                     <label className="text-sm font-bold text-slate-700">Mezuniyet Yılı</label>
-                     <input type="number" name="graduation_year" required value={profile.graduation_year} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                   </div>
-                   <div className="space-y-1.5">
-                     <label className="text-sm font-bold text-slate-700">Deneyim (Yıl)</label>
-                     <input type="number" name="experience_years" required value={profile.experience_years} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                   </div>
-                </div>
-                <div className="space-y-1.5">
-                   <label className="text-sm font-bold text-slate-700">Uzmanlık Alanı</label>
-                   <input type="text" name="specialization" required value={profile.specialization} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm" />
-                </div>
-                <div className="space-y-1.5">
-                   <label className="text-sm font-bold text-slate-700">Biyografi</label>
-                   <textarea rows={5} name="bio" required value={profile.bio} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm resize-none" />
-                </div>
-            </div>
+        <h2 className="m-0 mt-7 border-t border-line pt-6 text-16 font-bold">Mesleki Bilgiler</h2>
+        <div className="mt-4 flex flex-col gap-4">
+          <Input id="profile-university" name="university" label="Üniversite" required value={profile.university ?? ''} onChange={handleChange} />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Input id="profile-graduation-year" type="number" inputMode="numeric" name="graduation_year" label="Mezuniyet Yılı" min={MIN_GRADUATION_YEAR} max={new Date().getFullYear()} required value={profile.graduation_year ?? ''} onChange={handleChange} />
+            <Input id="profile-experience-years" type="number" inputMode="numeric" name="experience_years" label="Deneyim (Yıl)" min={0} max={MAX_EXPERIENCE_YEARS} required value={profile.experience_years ?? ''} onChange={handleChange} />
+          </div>
+          <Input id="profile-specialization" name="specialization" label="Uzmanlık Alanı" hint="Birden fazla alanı virgülle ayırın." required value={profile.specialization ?? ''} onChange={handleChange} />
+          <Textarea id="profile-bio" name="bio" label="Biyografi" rows={5} required value={profile.bio ?? ''} onChange={handleChange} />
+        </div>
 
-            <div className="pt-6 flex gap-4">
-               <button 
-                  type="button" 
-                  onClick={() => navigate('/profile')} 
-                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl border border-slate-200 transition-colors"
-               >
-                  İptal
-               </button>
-               <button 
-                  type="submit" 
-                  disabled={saving}
-                  className="flex-1 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-dark transition-colors flex items-center justify-center gap-2"
-               >
-                  {saving ? 'Kaydediliyor...' : <><Save className="w-5 h-5" /> Kaydet</>}
-               </button>
-            </div>
-         </form>
-      </div>
-    </div>
+        <div className="mt-7 flex flex-col-reverse gap-3 border-t border-line pt-6 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={() => navigate('/profile')} disabled={saving}>İptal</Button>
+          <Button type="submit" variant="primary" leftIcon="check" loading={saving} disabled={saving}>
+            {saving ? 'Kaydediliyor...' : 'Kaydet'}
+          </Button>
+        </div>
+      </Card>
+    </PageContainer>
   );
 };
 

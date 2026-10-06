@@ -183,12 +183,13 @@ test('registration UX exposes one shared password visibility toggle for both pas
   assert.match(page, /<button[\s\S]*?type="button"[\s\S]*?aria-label=\{showPasswords \? 'Şifreleri gizle' : 'Şifreleri göster'\}/u);
   assert.match(page, /setShowPasswords\(previous => !previous\)/u);
   assert.match(page, /EyeOff[\s\S]*Eye/u);
-  assert.match(page, /register-password"[^>]*className="[^"]*pr-12/u);
+  // The single toggle is rendered as the password field's trailing slot.
+  assert.match(page, /id="register-password"[\s\S]*?trailing=\{passwordToggle\}/u);
 
-  const confirmationInputStart = page.indexOf('<input id="register-password-confirm"');
+  const confirmationInputStart = page.indexOf('id="register-password-confirm"');
   const confirmationInputEnd = page.indexOf('/>', confirmationInputStart);
   assert.ok(confirmationInputStart >= 0 && confirmationInputEnd > confirmationInputStart);
-  assert.doesNotMatch(page.slice(confirmationInputStart, confirmationInputEnd), /Eye|aria-label/u);
+  assert.doesNotMatch(page.slice(confirmationInputStart, confirmationInputEnd), /Eye|aria-label|trailing=/u);
 });
 
 test('complete-registration is state-aware and all non-approved states remain fail-closed', () => {
