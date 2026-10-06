@@ -157,25 +157,25 @@ test('new appointment form defaults to an editable weekly control title and clic
 
 test('appointment page preserves persisted titles for edits and uses the canonical create flow', () => {
   const source = read('pages/Appointments.tsx');
-  assert.match(source, /setFormData\(createAppointmentDraft\(nextDate\)\)/);
+  const form = read('features/appointments/components/AppointmentFormModal.tsx');
+  assert.match(source, /setFormData\(createAppointmentDraft\(nextDate < today \? today : nextDate\)\)/);
   assert.match(source, /title: appointment\.title/);
-  assert.match(source, /onChange=\{\(e\) => setFormData\(\{\.\.\.formData, date: e\.target\.value\}\)\}/);
+  assert.match(form, /onChange=\{\(event\) => onDraftChange\(\{ \.\.\.draft, date: event\.target\.value \}\)\}/);
   assert.doesNotMatch(source, /title: DEFAULT_APPOINTMENT_TITLE/);
 });
 
 test('appointment modal close keeps page state isolated from form state', () => {
   const source = read('pages/Appointments.tsx');
-  assert.match(source, /const openCreateModal = \(date\?: string\) => \{/);
-  assert.match(source, /const nextDate = typeof date === 'string' \? date : selectedDate;/);
-  assert.match(source, /setViewMode\('list'\)/);
-  assert.match(source, /setViewMode\('calendar'\)/);
+  assert.match(source, /const openCreateModal = useCallback\(\(date\?: string\) => \{/);
+  assert.match(source, /const nextDate = date \?\? selectedDate;/);
+  assert.match(source, /options=\{\[\{ value: 'list', label: 'Liste' \}, \{ value: 'calendar', label: 'Takvim' \}\]\}/);
   assert.match(source, /viewMode === 'calendar' \?/);
-  assert.doesNotMatch(source, /onClick=\{openCreateModal\}/);
-  assert.equal((source.match(/onClick=\{\(\) => openCreateModal\(\)\}/g) ?? []).length, 2);
-  assert.match(source, /const closeModal = \(\) => \{[\s\S]*?setIsModalOpen\(false\);[\s\S]*?setEditingAppointment\(null\);[\s\S]*?setFormData\(createAppointmentDraft\(\)\);[\s\S]*?\}/);
-  assert.equal((source.match(/onClick=\{closeModal\}/g) ?? []).length, 2);
+  assert.equal((source.match(/onClick=\{\(\) => openCreateModal\(\)\}/g) ?? []).length, 1);
+  assert.match(source, /onClick=\{\(\) => openCreateModal\(selectedDate\)\}/);
   const closeHandler = source.match(/const closeModal = \(\) => \{([\s\S]*?)\n  \};/);
   assert.ok(closeHandler);
+  assert.match(closeHandler[1], /setIsModalOpen\(false\)/);
+  assert.match(closeHandler[1], /setEditingAppointment\(null\)/);
   assert.doesNotMatch(closeHandler[1], /addAppointment|updateAppointment|deleteAppointment|refreshAppointments|setSelectedDate|setVisibleMonth/);
 });
 
@@ -216,23 +216,46 @@ test('appointment context has no local persistence fallback and refreshes canoni
 
 test('appointment page uses active linked clients and awaits CRUD outcomes', () => {
   const source = read('pages/Appointments.tsx');
-  assert.doesNotMatch(source, /\bCLIENTS\b|Date\.now\(\)|toISOString\(\)\.split/);
+  assert.doesNotMatch(source, /\bCLIENTS\b|Date\.now\(\)|toISOString\(\)\.split|window\.confirm/);
   assert.match(source, /fetchActiveDietitianClientList/);
   assert.match(source, /await updateAppointment\(appointmentId, draft\)/);
   assert.match(source, /await addAppointment\(draft\)/);
   assert.match(source, /checkAppointmentBooking\(draft, appointmentId\)/);
-  assert.match(source, /window\.confirm/);
-  assert.match(source, /disabled=\{pendingAction !== null/);
+  // Destructive and status changes are explicit confirmations.
+  assert.match(source, /<ConfirmDialog/);
+  assert.match(source, /await deleteAppointment\(appointment\.id\)/);
+  assert.match(source, /await changeAppointmentStatus\(appointment\.id, kind === 'complete' \? 'completed' : 'cancelled'\)/);
+  assert.match(source, /const actionsDisabled = pendingAction !== null;/);
+});
+
+test('appointment status changes only close upcoming appointments of the current dietitian', () => {
+  const service = read('features/appointments/services/appointmentService.ts');
+  const context = read('features/appointments/context/AppointmentContext.tsx');
+  const actions = read('features/appointments/components/AppointmentRowActions.tsx');
+  const body = service.slice(service.indexOf('export const setAppointmentStatus'));
+  assert.match(body, /status !== 'completed' && status !== 'cancelled'/);
+  assert.match(body, /\.update\(\{ status \}\)/);
+  assert.match(body, /\.eq\('dietitian_id', dietitianId\)/);
+  assert.match(body, /\.eq\('status', SLOT_BLOCKING_APPOINTMENT_STATUSES\[0\]\)/);
+  assert.match(body, /if \(error \|\| !data\) throw/);
+  assert.match(context, /`status:\$\{id\}`/);
+  assert.match(actions, /appointment\.status === 'upcoming' &&/);
+  assert.doesNotMatch(read('pages/Appointments.tsx'), /Katıl|video.?call|meeting link|toplantı bağlantısı/i);
 });
 
 test('appointment booking rules keep slot conflicts and same-week warnings separate', () => {
   const page = read('pages/Appointments.tsx');
+  const form = read('features/appointments/components/AppointmentFormModal.tsx');
   const service = read('features/appointments/services/appointmentService.ts');
   const migration = read('supabase/migrations/20260814120000_appointment_slot_collision_and_booking_indexes.sql');
   assert.match(page, /const \[slotConflict, setSlotConflict\]/);
-  assert.match(page, /const \[sameWeekWarning, setSameWeekWarning\]/);
-  assert.match(page, /Yine de oluştur/);
-  assert.match(page, /Vazgeç/);
+  assert.match(page, /const \[sameWeekCount, setSameWeekCount\]/);
+  // The same-week notice requires a second explicit submit before saving.
+  assert.match(page, /if \(sameWeekCount !== null && sameWeekCount > 0\) \{\s*await persistForm\(draft, appointmentId\);/);
+  assert.match(page, /if \(check\.value\.sameWeekCount > 0\) \{\s*setSameWeekCount\(check\.value\.sameWeekCount\);\s*return;/);
+  assert.match(form, /Yine de kaydet/);
+  assert.match(form, /APPOINTMENT_SLOT_CONFLICT_ERROR/);
+  assert.match(form, /Vazgeç/);
   assert.match(service, /\.eq\('status', SLOT_BLOCKING_APPOINTMENT_STATUSES\[0\]\)/);
   assert.match(service, /\.neq\('id', appointmentId\)/);
   assert.match(service, /sameWeekCount/);
@@ -242,20 +265,24 @@ test('appointment booking rules keep slot conflicts and same-week warnings separ
 });
 
 test('monthly appointment cells keep two entries and expose all overflow appointments', () => {
-  const source = read('pages/Appointments.tsx');
-  assert.match(source, /dayAppointments\.slice\(0, 2\)/);
-  assert.match(source, /\+\{dayAppointments\.length - 2\} randevu daha/);
-  assert.match(source, /onClick=\{\(event\) => openDayDetail\(event, day\.date\)\}/);
-  assert.match(source, /event\.stopPropagation\(\)/);
-  assert.match(source, /dayDetailAppointments\.map/);
-  assert.match(source, /appointment\.clientName[\s\S]*?appointment\.title/);
+  const grid = read('features/appointments/components/AppointmentMonthGrid.tsx');
+  const page = read('pages/Appointments.tsx');
+  assert.match(grid, /dayAppointments\.slice\(0, 2\)/);
+  assert.match(grid, /\+\{dayAppointments\.length - 2\} daha/);
+  assert.match(grid, /onClick=\{\(\) => onSelectDate\(day\.date\)\}/);
+  // Selecting a day lists every appointment of that day in the side panel.
+  assert.match(page, /const selectedDayAppointments = appointmentsByDate\.get\(selectedDate\) \?\? \[\];/);
+  assert.match(page, /selectedDayAppointments\.map/);
+  assert.match(page, /appointment\.clientName[\s\S]*?appointment\.title/);
 });
 
 test('dashboard keeps appointment loading, error and empty states distinct using Istanbul dates', () => {
   const source = read('features/dashboard/pages/DashboardPage.tsx');
-  assert.match(source, /getTodayDateKey\(\)/);
+  const schedule = read('features/dashboard/components/TodayScheduleCard.tsx');
+  assert.match(source, /const today = getTodayDateKey\(now\);/);
   assert.doesNotMatch(source, /toISOString\(\)\.split/);
-  assert.match(source, /appointmentsLoading[\s\S]*appointmentsError[\s\S]*todaysAppointments\.length/);
+  assert.match(source, /loading=\{appointmentsLoading\}\s*error=\{Boolean\(appointmentsError\)\}/);
+  assert.match(schedule, /loading \? \([\s\S]*?\) : error \? \([\s\S]*?\) : appointments\.length === 0 \?/);
   assert.match(source, /refreshAppointments\(\)/);
 });
 
@@ -428,7 +455,8 @@ test('appointment screens request the date range they render instead of an unbou
   assert.match(context, /fetchAppointmentsAfterDate\(range\.endDate, UPCOMING_APPOINTMENT_PREVIEW_LIMIT\)/);
   assert.match(page, /getMonthCalendarRange\(visibleMonth\)/);
   assert.match(page, /requestAppointmentRange\(visibleRange\)/);
-  assert.match(page, /\[\.\.\.appointments, \.\.\.appointmentsAfterRange\]/);
+  assert.match(page, /appointmentsAfterRange\.filter\(\(appointment\) => appointment\.status === 'upcoming'\)/);
+  assert.match(dashboard, /\[\.\.\.appointments, \.\.\.appointmentsAfterRange\]/);
   assert.match(dashboard, /requestAppointmentRange\(todayRange\)/);
   assert.match(dashboard, /getAppointmentRangeForDate\(today\)/);
 });

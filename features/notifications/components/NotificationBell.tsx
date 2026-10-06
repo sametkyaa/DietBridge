@@ -1,12 +1,12 @@
-import React from 'react';
-import { Bell } from 'lucide-react';
+import { Icon, cx } from '../../../shared/ui';
+import { iconButtonClasses } from '../../../shared/ui/buttonStyles';
 import { useNotificationCenter } from '../hooks/useNotificationCenter';
 
 interface NotificationBellProps {
   className?: string;
 }
 
-const NotificationBell: React.FC<NotificationBellProps> = ({ className = '' }) => {
+const NotificationBell = ({ className = '' }: NotificationBellProps) => {
   const { unseenCount, isOpen, toggle } = useNotificationCenter();
   const badgeLabel = unseenCount >= 10 ? '9+' : String(unseenCount);
   const accessibleLabel = unseenCount > 0
@@ -17,16 +17,16 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ className = '' }) =
     <button
       type="button"
       onClick={(event) => toggle(event.currentTarget)}
-      className={`relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${className}`}
+      className={cx(iconButtonClasses(), className)}
       aria-label={accessibleLabel}
       aria-expanded={isOpen}
       aria-controls="notification-center-drawer"
       data-testid="notification-bell"
     >
-      <Bell className="h-5 w-5" aria-hidden="true" />
+      <Icon name="bell" size={19} />
       {unseenCount > 0 && (
         <span
-          className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-[10px] font-bold leading-none text-white"
+          className="absolute -right-1 -top-1 inline-grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-surface bg-bad px-1 text-10 font-bold leading-none text-white"
           aria-hidden="true"
           data-testid="notification-badge"
         >
