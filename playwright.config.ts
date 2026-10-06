@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: './tests/e2e',
   // Mocked feature fixtures run through playwright.features.config.ts (npm run test:e2e:features);
   // they cannot run against the disposable Supabase stack used by the critical gate.
-  testIgnore: ['invite-sharing.spec.ts', 'recipe-import.spec.ts', 'design-system.spec.ts', 'dashboard-tasks.spec.ts'],
+  testIgnore: ['invite-sharing.spec.ts', 'recipe-import.spec.ts', 'design-system.spec.ts', 'dashboard-tasks.spec.ts', 'nutrition-ui.spec.ts'],
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

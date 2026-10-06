@@ -1,0 +1,142 @@
+/* Meal plans and recipe library share the existing DietBridge design tokens. */
+.nutrition-page { max-width: 1530px; }
+.nutrition-notice { margin-bottom: 16px; display: flex; gap: 12px; justify-content: space-between; align-items: center; }
+.nutrition-form { display: flex; flex-direction: column; gap: 17px; }
+.nutrition-form-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.nutrition-form-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.nutrition-image-input { position: relative; display: flex; align-items: center; flex-direction: column; justify-content: center; gap: 7px; min-height: 115px; padding: 15px; border: 1px dashed rgb(var(--db-line-strong)); border-radius: 9px; background: rgb(var(--db-surface-alt)); cursor: pointer; color: rgb(var(--db-ink-3)); }
+.nutrition-image-input b { color: rgb(var(--db-ink-2)); font-size: 12.5px; font-weight: 500; }
+.nutrition-image-input span { font-size: 11px; }
+.nutrition-image-input input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.nutrition-image-input:focus-within { outline: 2px solid rgb(var(--db-brand)); outline-offset: 3px; }
+.recipe-form-photo { width: 100%; height: 160px; object-fit: cover; border-radius: 9px; }
+.recipe-library { overflow: hidden; }
+.recipe-library-heading { padding: 21px 22px 6px; }
+.recipe-filter-row { display: flex; gap: 15px; align-items: center; justify-content: space-between; padding: 15px 22px; border-top: 1px solid rgb(var(--db-line)); border-bottom: 1px solid rgb(var(--db-line)); background: rgb(var(--db-surface-alt)); }
+.recipe-category-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+.recipe-category-filters button { display: flex; align-items: center; gap: 6px; white-space: nowrap; padding: 7px 9px; border: 1px solid transparent; background: transparent; color: rgb(var(--db-ink-2)); font-size: 12px; font-weight: 500; border-radius: 7px; }
+.recipe-category-filters button span { color: rgb(var(--db-ink-3)); font-size: 11px; font-weight: 400; }
+.recipe-category-filters button.active { color: rgb(var(--db-brand)); background: rgb(var(--db-brand-tint)); border-color: rgb(var(--db-brand-soft)); font-weight: 600; }
+.recipe-library-body { padding: 22px; }
+.recipe-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px; }
+.recipe-card { overflow: hidden; }
+.recipe-card:hover { border-color: rgb(var(--db-line-strong)); }
+.recipe-overview { display: flex; gap: 13px; padding: 18px 16px; min-height: 135px; }
+.recipe-thumbnail { flex-shrink: 0; width: 60px; height: 60px; border-radius: 11px; object-fit: cover; }
+.recipe-image-empty { display: grid; place-items: center; background: rgb(var(--db-sunk)); color: rgb(var(--db-ink-3)); }
+.recipe-overview > div:last-child { min-width: 0; flex: 1; }
+.recipe-overview h2 { margin: 8px 0 5px; color: rgb(var(--db-ink)); font-size: 14px; font-weight: 600; letter-spacing: -.1px; line-height: 1.4; overflow-wrap: anywhere; }
+.recipe-overview p { margin: 0; font-size: 11.5px; line-height: 1.6; color: rgb(var(--db-ink-3)); overflow-wrap: anywhere; }
+.recipe-macros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 16px; background: rgb(var(--db-surface-alt)); border-top: 1px solid rgb(var(--db-line)); border-bottom: 1px solid rgb(var(--db-line)); }
+.recipe-macros span { display: block; font-size: 10.5px; color: rgb(var(--db-ink-3)); }
+.recipe-macros b { display: block; font-weight: 600; color: rgb(var(--db-ink-2)); font-size: 14px; margin-top: 4px; }
+.recipe-macros small { font-size: 11px; font-weight: 400; color: rgb(var(--db-ink-3)); }
+.recipe-footer { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 10px 16px; }
+.recipe-calories { display: flex; align-items: center; gap: 4px; color: rgb(var(--db-ink-3)); font-size: 11px; }
+.recipe-calories svg { color: rgb(var(--db-warn)); }
+.recipe-calories b { font-weight: 600; color: rgb(var(--db-ink-2)); font-size: 13px; }
+.recipe-footer > div { display: flex; align-items: center; gap: 1px; }
+.recipe-delete { display: grid; place-items: center; width: 34px; height: 34px; border: 0; background: transparent; color: rgb(var(--db-ink-3)); border-radius: 9px; }
+.recipe-delete:hover { background: rgb(var(--db-bad-bg)); color: rgb(var(--db-bad)); }
+.library-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 22px; color: rgb(var(--db-ink-3)); font-size: 11.5px; border-top: 1px solid rgb(var(--db-line)); }
+.meal-client-context { display: flex; gap: 18px; align-items: center; margin-bottom: 18px; padding: 14px 18px; background: rgb(var(--db-surface)); border: 1px solid rgb(var(--db-line)); border-radius: 14px; box-shadow: var(--db-shadow-card); }
+.meal-client-context > div:first-child > button { border: 0; background: transparent; padding: 0; }
+.meal-client-context .client-avatar { width: 42px; height: 42px; }
+.meal-client-goal { flex: 1; color: rgb(var(--db-ink-2)); font-size: 12px; }
+.plan-summary-row { display: flex; gap: 18px; align-items: stretch; margin-bottom: 20px; }
+.plan-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex: 1; gap: 14px; min-width: 0; }
+.plan-kpis > div { padding: 15px 18px; }
+.plan-kpis > div > p:first-child { font-size: 12.5px; }
+.meal-target-heading { display: flex; align-items: center; gap: 8px; color: rgb(var(--db-ink-2)); font-size: 12.5px; }
+.meal-target-heading > svg { color: rgb(var(--db-brand)); flex-shrink: 0; }
+.meal-target-heading button { margin-left: auto; }
+.meal-target-value { margin: 3px 0; font-size: 25px; line-height: 1.3; font-weight: 700; color: rgb(var(--db-ink)); letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.meal-target-hint { margin: 0; color: rgb(var(--db-ink-3)); font-size: 12.5px; }
+.plan-save-area { display: flex; flex-direction: column; justify-content: center; gap: 10px; width: 272px; flex-shrink: 0; }
+.plan-save-area button { width: 100%; }
+.meal-plan-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 272px; align-items: start; gap: 18px; }
+.meal-plan-main, .meal-grid-area { min-width: 0; }
+.meal-plan-rail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.meal-week-toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; min-height: 71px; padding: 12px 14px; background: rgb(var(--db-surface)); border: 1px solid rgb(var(--db-line)); border-radius: 14px 14px 0 0; }
+.meal-week-toolbar > div:first-child { border: 0; background: transparent; padding: 0; }
+.meal-week-actions { display: flex; align-items: center; gap: 6px; }
+.meal-mobile-picker { display: none; }
+.meal-week-grid { overflow: auto; position: relative; background: rgb(var(--db-surface)); border: 1px solid rgb(var(--db-line)); border-top: 0; border-radius: 0 0 14px 14px; box-shadow: var(--db-shadow-card); }
+.meal-grid-row { display: grid; grid-template-columns: 100px repeat(7, minmax(0, 1fr)); min-width: 742px; }
+.meal-grid-row:first-of-type > div { padding: 13px 3px; font-size: 11px; font-weight: 500; }
+.meal-weekday { text-align: center; color: rgb(var(--db-ink-2)); }
+.meal-weekday span { display: block; }
+.meal-weekday time { display: grid; place-items: center; width: 26px; height: 26px; margin: 6px auto 0; color: rgb(var(--db-ink)); font-size: 14px; font-weight: 600; }
+.meal-weekday.is-today { color: rgb(var(--db-brand)); }
+.meal-weekday.is-today time { border-radius: 50%; background: rgb(var(--db-brand)); color: white; }
+.meal-row-label { background: rgb(var(--db-surface-alt)); }
+.meal-row-label input { font-weight: 600; text-align: left; }
+.meal-row-label button:focus-visible { opacity: 1; }
+.meal-day-cell { min-height: 185px; padding: 7px 4px; }
+.meal-day-cell:focus-within { z-index: 10; }
+.meal-entry-card { padding: 7px; display: flex; flex-direction: column; gap: 5px; border: 1px solid rgb(var(--db-line)); border-radius: 8px; background: rgb(var(--db-surface)); }
+.meal-entry-card > button:first-child { gap: 5px; }
+.meal-day-cell.bg-emerald-50 .meal-entry-card { border-color: rgb(var(--db-brand)); background: rgb(var(--db-brand-tint)); }
+.meal-entry-photo { width: 100%; aspect-ratio: 1; flex-shrink: 0; overflow: hidden; border-radius: 5px; }
+.meal-entry-photo > * { width: 100%; height: 100%; object-fit: cover; }
+.meal-entry-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex-shrink: 0; font-size: 11px; line-height: 1.4; font-weight: 600; min-height: 31px; }
+.meal-entry-calories { color: rgb(var(--db-ink-2)); font-size: 10.5px; }
+.meal-entry-macros { color: rgb(var(--db-ink-3)); font-size: 9px; white-space: nowrap; }
+.meal-entry-card > div.absolute button { width: 25px; height: 25px; }
+.meal-note-card { margin-top: 17px; }
+.meal-picker-recipes { display: flex; flex-direction: column; max-height: 550px; overflow-y: auto; }
+.meal-picker-recipes > button { border: 0; border-bottom: 1px solid rgb(var(--db-line)); border-radius: 0; padding: 11px 0; gap: 8px; }
+.meal-picker-recipes > button > div:first-child { display: none; }
+.meal-picker-recipes img, .meal-picker-recipes button > div:nth-child(2) { width: 42px; height: 42px; border-radius: 9px; }
+.meal-picker-recipes p:first-child { white-space: normal; font-size: 11.5px; font-weight: 600; }
+.meal-picker-recipes p:not(:first-child) { font-size: 10px; }
+.meal-recipe-picker { overflow: hidden; }
+.meal-recipe-picker > div:first-child { padding-bottom: 12px; }
+.picker-slot-label { padding: 10px 11px; border-radius: 8px; color: rgb(var(--db-brand)); background: rgb(var(--db-brand-tint)); font-size: 10.5px; }
+.picker-slot-label b { display: block; margin-top: 3px; font-size: 11.5px; }
+.picker-slot-label p { margin: 0; }
+.meal-picker-search { width: 100% !important; margin-bottom: 12px; }
+.nutrition-drawer .meal-recipe-picker { border: 0; box-shadow: none; }
+@media (max-width: 1359px) {
+  .meal-plan-workspace { grid-template-columns: minmax(0, 1fr); }
+  .meal-plan-rail { display: none; }
+  .meal-mobile-picker { display: inline-flex; }
+  .recipe-filter-row { flex-wrap: wrap; }
+  .recipe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .plan-save-area { width: 230px; }
+}
+@media (max-width: 767px) {
+  .nutrition-form-three { grid-template-columns: 1fr; }
+  .nutrition-form-two { gap: 12px; }
+  .recipe-library-heading { padding: 17px 16px 3px; }
+  .recipe-filter-row { padding: 14px 15px; gap: 12px; }
+  .recipe-filter-row > div:first-child { width: 100%; }
+  .recipe-category-filters { gap: 3px; }
+  .recipe-category-filters button { font-size: 11px; padding: 6px; }
+  .recipe-library-body { padding: 15px; }
+  .recipe-grid { grid-template-columns: 1fr; gap: 13px; }
+  .recipe-overview { min-height: 123px; }
+  .library-footer { padding: 13px 16px; flex-wrap: wrap; gap: 6px; }
+  .meal-client-context { flex-wrap: wrap; gap: 10px; padding: 12px; }
+  .meal-client-context > div:first-child { flex: 1; }
+  .meal-client-context > div:first-child > button { min-width: 0; width: 100%; }
+  .meal-client-goal { display: none; }
+  .meal-client-context > button { padding: 0 5px; font-size: 11px; }
+  .plan-summary-row { flex-direction: column; gap: 12px; }
+  .plan-kpis { gap: 11px; }
+  .plan-kpis > div { padding: 13px; }
+  .plan-kpis > div > p:first-child, .meal-target-heading { font-size: 11px; }
+  .meal-target-heading { flex-wrap: wrap; }
+  .meal-target-heading button { min-height: 26px; padding: 0; }
+  .meal-target-value { font-size: 19px; overflow-wrap: anywhere; }
+  .meal-target-hint { font-size: 11px; }
+  .plan-save-area { width: 100%; flex-direction: row; gap: 10px; }
+  .plan-save-area button { font-size: 11px; padding-inline: 9px; }
+  .meal-week-toolbar { flex-direction: column; align-items: stretch; gap: 8px; padding: 11px; }
+  .meal-week-toolbar > div:first-child { justify-content: space-between; }
+  .meal-week-toolbar > div:first-child button { padding-inline: 4px; }
+  .meal-week-actions { justify-content: flex-end; flex-wrap: wrap; }
+  .meal-week-actions button { font-size: 11px; }
+  .meal-week-grid { overscroll-behavior-x: contain; }
+  .meal-entry-card > div.absolute button { opacity: 1; }
+}

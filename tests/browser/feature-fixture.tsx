@@ -11,9 +11,17 @@ import DashboardPage from '../../features/dashboard/pages/DashboardPage';
 import Sidebar from '../../shared/components/Sidebar';
 import { AuthProvider } from '../../features/auth/context/AuthContext';
 import { AppointmentProvider } from '../../features/appointments/context/AppointmentContext';
+import MealPlans from '../../pages/MealPlans';
+import Recipes from '../../pages/Recipes';
 function Fixture() {
   const [busy, setBusy] = useState(false);
   const [saved,setSaved]=useState(0);
+  const nutritionView = new URLSearchParams(location.search).get('view');
+  if (nutritionView === 'meal-plans' || nutritionView === 'recipes') return (
+    <BrowserRouter><div className="flex w-full max-w-full bg-canvas md:pl-sidebar">
+      <main className="min-w-0 w-full max-w-full">{nutritionView === 'meal-plans' ? <MealPlans /> : <Recipes />}</main>
+    </div></BrowserRouter>
+  );
   if (new URLSearchParams(location.search).get('view') === 'dashboard') return (
     <BrowserRouter><AuthProvider><AppointmentProvider><NotificationCenterProvider>
       <Sidebar /><main className="md:ml-[260px]"><DashboardPage /></main>

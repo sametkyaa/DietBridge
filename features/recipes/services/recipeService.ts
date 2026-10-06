@@ -258,7 +258,10 @@ export const updateRecipe = async (recipeId: string, input: RecipeInput, imageFi
     .select(RECIPE_SELECT)
     .single();
   if (error || !data) {
-    if (imagePath) await supabase.storage.from(RECIPE_IMAGE_BUCKET).remove([imagePath]);
+    // A failed text edit must never remove the recipe's already persisted image.
+    if (imageFile && imagePath && imagePath !== previousImagePath) {
+      await supabase.storage.from(RECIPE_IMAGE_BUCKET).remove([imagePath]);
+    }
     throw error ?? new RecipeValidationError('INVALID_RECIPE_RESPONSE', 'recipes');
   }
   const imagePreview = imagePath ? await getRecipeImagePreview(imagePath).catch(() => null) : null;

@@ -1,15 +1,12 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation , useNavigate} from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { 
   Search, 
   ChevronDown, 
   Plus, 
-  Save, 
   Trash2, 
-  Copy, 
   Info, 
-  Flame, 
   AlertCircle,
   X,
   Edit2,
@@ -25,7 +22,9 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { Client } from '../shared/types';
-import DietitianAvatar from '../shared/components/DietitianAvatar';
+import { USER_AVATAR } from '../shared/constants';
+import { Avatar, Badge, Button, Card, CardHeader, ConfirmDialog, Drawer, Icon, Input, KpiTile, Modal, PageContainer, PageHeader, SearchInput, Select, Textarea } from '../shared/ui';
+import './Nutrition.css';
 import Toast from '../shared/components/Toast';
 import {
   fetchActiveDietitianClientList,
@@ -59,6 +58,7 @@ import {
 } from '../features/meal-plans/services/mealPhotoService';
 import { supabase } from '../lib/supabaseClient';
 import { isValidUuid } from '../shared/utils/uuid';
+import { getDateKeyInTimeZone } from '../shared/utils/dateContract';
 import { compareOptionalMealTimes, formatOptionalMealTime } from '../shared/utils/mealTime';
 import {
   getMealPlanWeekDates,
@@ -319,7 +319,6 @@ const createPreviousWeekCopy = (
 };
 
 const MealPlans = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   // --- State ---
   const [clients, setClients] = useState<Client[]>([]);
@@ -367,8 +366,13 @@ const MealPlans = () => {
   weeklyPlanRef.current = weeklyPlan;
 
   // Modal State
+  const [isRecipeDrawerOpen, setIsRecipeDrawerOpen] = useState(false);
+  const [isClientInfoOpen, setIsClientInfoOpen] = useState(false);
+  const [isManualMealOpen, setIsManualMealOpen] = useState(false);
+  const [clearPlanOpen, setClearPlanOpen] = useState(false);
+  const [noteDay, setNoteDay] = useState<string>(DAYS[0]);
   const [isAddMealModalOpen, setIsAddMealModalOpen] = useState(false);
-  const [newMealType, setNewMealType] = useState('Ara Öğün');
+  const [newMealName, setNewMealName] = useState('');
   const [newMealTime, setNewMealTime] = useState('15:00');
   const [mealToDelete, setMealToDelete] = useState<string | null>(null);
   
@@ -480,6 +484,9 @@ const MealPlans = () => {
 
   useEffect(() => {
     setIsEditingNutritionTarget(false);
+    setIsRecipeDrawerOpen(false);
+    setIsClientInfoOpen(false);
+    setIsManualMealOpen(false);
   }, [selectedClient?.id]);
 
   const loadRecipes = useCallback(async () => {
@@ -884,6 +891,8 @@ const MealPlans = () => {
     } else {
       clearCustomMealForm();
       setActiveCell({ day, mealId });
+      setIsManualMealOpen(false);
+      if (window.matchMedia('(max-width: 1359px)').matches) setIsRecipeDrawerOpen(true);
       // If the cell has string content, pre-fill the input
       if (typeof currentContent === 'string') {
         setCustomMealText(currentContent);
@@ -1183,18 +1192,22 @@ const MealPlans = () => {
   // --- Dynamic Meal Functions ---
 
   const handleAddMealSubmit = () => {
-    if (!newMealType || !newMealTime) return;
+    if (!newMealName.trim() || !newMealTime) return;
+    let normalizedTime: string;
+    try { normalizedTime = normalizeMealTime(newMealTime); }
+    catch { showSaveNotification('Geçerli bir öğün saati girin.', 'error'); return; }
     const newId = `meal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newMeal: MealRow = { 
       id: newId, 
-      name: newMealType, 
-      time: newMealTime 
+      name: newMealName.trim(),
+      time: normalizedTime
     };
     
     const updatedMeals = [...meals, newMeal];
     updatedMeals.sort((a, b) => compareOptionalMealTimes(a.time, b.time));
     
     setMeals(updatedMeals);
+    setNewMealName('');
     setIsAddMealModalOpen(false);
   };
 
@@ -1390,8 +1403,233 @@ const MealPlans = () => {
         : null)
     : null;
 
+  const recipePickerContent = <>        {/* 2. Recipes Panel */}
+        <Card padding="none" className="meal-recipe-picker">
+           <div className="p-4 border-b border-line">
+              <CardHeader title="Tarif kütüphanesi" addon={<Badge size="sm">{recipes.length}</Badge>} />
+
+           </div>
+           <div className="border-t border-line">
+             <div className="p-4 pb-3">
+               <SearchInput label="Plana eklenecek tarif ara" className="meal-picker-search" placeholder="Tarif ara…" value={recipeSearch} onChange={event => setRecipeSearch(event.target.value)} /><div className="picker-slot-label">{activeCell ? <><span>Seçili öğün</span><b>{activeCell.day} · {meals.find(row => row.id === activeCell.mealId)?.name}</b></> : <p>Tarif eklemek için plandan bir öğün seçin.</p>}</div>
+               <div
+                 className="flex gap-2 overflow-x-auto overflow-y-hidden py-3"
+                 style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}
+               >
+                 {RECIPE_CATEGORY_OPTIONS.map((option) => {
+                   const isActive = recipeCategoryFilter === option.value;
+                   const count = option.value === 'all' ? recipes.length : categoryCounts[option.value as RecipeMealType] ?? 0;
+                   return (
+                     <button
+                       key={option.value}
+                       type="button"
+                       aria-pressed={isActive}
+                       aria-label={`${option.value === 'all' ? 'Tüm' : `${option.label}`} tariflerini göster (${count})`}
+                       onClick={() => setRecipeCategoryFilter(option.value)}
+                       className={`flex-shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand/20 ${
+                         isActive
+                           ? 'border-brand bg-emerald-50 text-brand'
+                           : 'border-line bg-white text-ink-2 hover:border-brand/50 hover:bg-emerald-50/30'
+                       }`}
+                     >
+                       {option.label}
+                       <span className={`ml-1 text-[10px] ${isActive ? 'text-brand/80' : 'text-ink-3'}`}>{count}</span>
+                     </button>
+                   );
+                 })}
+               </div>
+               {recipeSelectionInfo && <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800" role="status">{recipeSelectionInfo}</p>}
+             </div>
+             <div className="px-4 pb-4">
+               {isLoadingRecipes ? (
+                 <p className="p-4 text-center text-xs text-ink-2">Tarifler yükleniyor...</p>
+               ) : recipeError ? (
+                 <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">
+                   <p>{recipeError}</p>
+                   <button type="button" onClick={() => void loadRecipes()} className="mt-2 min-h-11 rounded-lg border border-rose-300 bg-white px-3 font-semibold">Tekrar dene</button>
+                 </div>
+               ) : recipes.length === 0 ? (
+                 <p className="p-4 text-center text-xs text-ink-2">Henüz kayıtlı tarif bulunmuyor.</p>
+               ) : filteredRecipes.length === 0 ? (
+                 <p className="p-4 text-center text-xs text-ink-2">
+                   {recipeCategoryFilter !== 'all' && recipeSearch.trim()
+                     ? 'Bu kategori ve arama için tarif bulunamadı.'
+                     : recipeCategoryFilter !== 'all'
+                       ? 'Bu kategoride kayıtlı tarif bulunmuyor.'
+                       : 'Aramanızla eşleşen tarif bulunamadı.'}
+                 </p>
+               ) : (
+                 <div className="meal-picker-recipes">
+                   {filteredRecipes.map((recipe) => (
+                     <button
+                       key={recipe.id}
+                       type="button"
+                       draggable
+                       onClick={() => handleAddRecipeToActiveCell(recipe)}
+                       onDragStart={(event) => handleRecipeDragStart(event, recipe.id)}
+                       aria-label={`Tarifi sürükleyin veya seçili öğüne eklemek için tıklayın: ${recipe.name}`}
+                       aria-disabled={!activeCell}
+                       title={activeCell ? 'Tarifi sürükleyin veya seçili hücreye eklemek için tıklayın' : 'Önce plandan bir öğün hücresi seçin, sonra tarifi sürükleyin veya tıklayın'}
+                       className="group flex w-full gap-3 rounded-xl border border-line bg-white p-3 text-left transition-colors hover:border-brand hover:bg-emerald-50/30"
+                     >
+                       <div className="flex flex-shrink-0 items-center justify-center text-slate-300 group-hover:text-brand transition-colors" aria-hidden="true">
+                         <GripVertical className="h-5 w-5" />
+                       </div>
+                       {recipe.imagePreview ? <img src={recipe.imagePreview} alt="" className="h-14 w-14 flex-shrink-0 rounded-lg object-cover" /> : <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-sunk text-[10px] font-semibold text-ink-3">Tarif</div>}
+                       <div className="min-w-0 flex-1">
+                         <p className="truncate text-sm font-bold text-ink">{recipe.name}</p>
+                         <p className="mt-1 text-[11px] font-medium text-emerald-700">{recipe.mealType === 'breakfast' ? 'Kahvaltı' : recipe.mealType === 'lunch' ? 'Öğle' : recipe.mealType === 'dinner' ? 'Akşam' : 'Ara Öğün'} · {recipe.calories} kcal</p>
+                         <p className="mt-1 text-[10px] text-ink-2">P {recipe.macros.protein}g · K {recipe.macros.carbs}g · Y {recipe.macros.fat}g</p>
+                       </div>
+                     </button>
+                   ))}
+                 </div>
+               )}
+             </div>
+           </div>
+           <div className="p-4 border-t border-line">              {/* Manual Entry Section (Visible when cell is active) */}
+              {activeCell && isManualMealOpen && (
+                <div className="mb-3 p-4 bg-brand-tint/50 rounded-xl border border-brand-soft animate-in slide-in-from-right-4 duration-300">
+                    <div className="flex items-center gap-2 mb-2 text-brand font-bold text-xs uppercase tracking-wide">
+                      <Edit2 className="w-3 h-3" />
+                      Manuel Ekleme / Düzenleme <button type="button" aria-label="Manuel öğün formunu kapat" className="ml-auto" onClick={() => setIsManualMealOpen(false)}><X className="h-4 w-4" /></button>
+                    </div>
+                    {customMealError && <p className="mb-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" role="alert">{customMealError}</p>}
+                    <div className="flex flex-col gap-3">
+                      <input
+                        type="text"
+                        value={customMealText}
+                        onChange={(e) => setCustomMealText(e.target.value)}
+                        aria-label="Yemek Adı (Örn: 2 Haşlanmış Yumurta...)"
+                        placeholder="Yemek Adı (Örn: 2 Haşlanmış Yumurta...)"
+                        className="w-full text-sm px-3 py-2 rounded-lg border border-brand-soft focus:outline-none focus:ring-2 focus:ring-brand/20 text-ink bg-white"
+                      />
+
+                      <div className="flex gap-2">
+                        <input
+                           type="number"
+                           aria-label="Kalori (kcal)"
+                        placeholder="Kalori (kcal)"
+                           value={customMealCalories}
+                           onChange={(e) => setCustomMealCalories(e.target.value)}
+                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-brand-soft focus:outline-none focus:ring-2 focus:ring-brand/20 text-ink bg-white"
+                        />
+                        <input
+                           type="number"
+                           aria-label="Protein (g)"
+                        placeholder="Protein (g)"
+                           value={customMealProtein}
+                           onChange={(e) => setCustomMealProtein(e.target.value)}
+                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-brand-soft focus:outline-none focus:ring-2 focus:ring-brand/20 text-ink bg-white"
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                           type="number"
+                           aria-label="Karb (g)"
+                        placeholder="Karb (g)"
+                           value={customMealCarbs}
+                           onChange={(e) => setCustomMealCarbs(e.target.value)}
+                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-brand-soft focus:outline-none focus:ring-2 focus:ring-brand/20 text-ink bg-white"
+                        />
+                        <input
+                           type="number"
+                           aria-label="Yağ (g)"
+                        placeholder="Yağ (g)"
+                           value={customMealFat}
+                           onChange={(e) => setCustomMealFat(e.target.value)}
+                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-brand-soft focus:outline-none focus:ring-2 focus:ring-brand/20 text-ink bg-white"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                         {customMealPhotoPreview ? (
+                            <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-brand-soft flex-shrink-0">
+                               <img src={customMealPhotoPreview} className="w-full h-full object-cover" />
+                               <button
+                                  onClick={() => {
+                                     revokeLocalPreviewUrl(customMealPhotoPreview);
+                                     setCustomMealPhoto(null);
+                                     setCustomMealPhotoPreview(null);
+                                  }}
+                                 className="absolute -top-1 -right-1 bg-white rounded-full text-red-500 shadow-sm"
+                               >
+                                 <X className="w-4 h-4" />
+                               </button>
+                            </div>
+                         ) : (
+                            <label className="flex-1 flex flex-col items-center justify-center h-16 border-2 border-dashed border-brand-soft rounded-lg bg-brand-tint/50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
+                               <div className="flex items-center gap-2 text-brand">
+                                  <Upload className="w-4 h-4" />
+                                  <span className="text-[11px] font-medium">Görsel (Opsiyonel)</span>
+                               </div>
+                               <input
+                                  type="file"
+                                  accept="image/jpeg, image/png, image/webp"
+                                  className="hidden"
+                                  onChange={handlePhotoChange}
+                               />
+                            </label>
+                         )}
+
+                         <button
+                           onClick={handleAddCustomMeal}
+                           disabled={!customMealText.trim() || isUploadingPhoto}
+                           className="h-16 px-4 bg-brand text-white rounded-lg hover:bg-brand-hi disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex flex-col items-center justify-center gap-1 font-medium flex-shrink-0"
+                         >
+                            {isUploadingPhoto ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                            <span className="text-[10px]">{isUploadingPhoto ? 'Yükleniyor...' : 'Ekle'}</span>
+                         </button>
+                      </div>
+                   </div>
+                </div>
+              )}
+              {activeCell && !isManualMealOpen && <Button fullWidth leftIcon="note-pencil" onClick={() => setIsManualMealOpen(true)}>Manuel öğün ekle</Button>}
+              {!activeCell && (
+                <p className="rounded-lg bg-surface-alt p-3 text-xs text-ink-2">Manuel öğün eklemek veya düzenlemek için plandan bir hücre seçin.</p>
+              )}
+</div>
+        </Card></>;
+  const clientDetailsContent = <>        {/* 1. Client Info Panel (Conditional) */}
+        {selectedClient ? (
+          <div className="p-6 border-b border-line bg-surface-alt/50">
+            <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-ink flex items-center gap-2">
+              <Info className="w-4 h-4 text-brand" /> Danışan Bilgileri
+            </h3>
+            {isLoadingClientDetails ? (
+              <p className="text-xs text-ink-2">Danışan ayrıntıları yükleniyor...</p>
+            ) : clientDetailsError ? (
+              <div className="text-xs text-rose-700" role="alert">
+                <p>{clientDetailsError}</p>
+                <button type="button" onClick={() => setClientDetailsLoadAttempt((attempt) => attempt + 1)} className="mt-2 min-h-11 rounded-lg border border-rose-200 bg-white px-3 font-semibold">Tekrar dene</button>
+              </div>
+            ) : clientDetails ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white p-3 rounded-xl border border-red-100 shadow-sm">
+                  <p className="text-xs font-bold text-red-500 mb-2 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Alerji / Kısıt</p>
+                  <div className="flex flex-wrap gap-1">
+                    {clientDetails.foodIntolerances.length > 0 ? clientDetails.foodIntolerances.map((item) => <span key={item} className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-medium">{item}</span>) : <span className="text-[10px] text-ink-3">Yok</span>}
+                  </div>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
+                  <p className="text-xs font-bold text-emerald-600 mb-2">Sevmedikleri</p>
+                  <div className="flex flex-wrap gap-1">
+                    {clientDetails.dislikedFoods.length > 0 ? clientDetails.dislikedFoods.map((item) => <span key={item} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-medium">{item}</span>) : <span className="text-[10px] text-ink-3">Yok</span>}
+                  </div>
+                </div>
+              </div>
+            ) : <p className="text-xs text-ink-3">{isClientDetailsEmpty ? 'Yok' : 'Danışan ayrıntısı bulunamadı.'}</p>}
+          </div>
+        ) : <p className="text-ink-3">Danışan seçin.</p>}</>;
+  const weekDates = getMealPlanWeekDates(weekStartDate);
+  const todayDateKey = getDateKeyInTimeZone();
+  const calorieMealCount = dailyCalorieTotals.reduce((sum, total) => sum + total.mealCount, 0);
+  const missingCalorieCount = dailyCalorieTotals.reduce((sum, total) => sum + total.missingCalories, 0);
+  const averageCalories = calorieMealCount > missingCalorieCount ? Math.round(dailyCalorieTotals.reduce((sum, total) => sum + total.calories, 0) / DAYS.length) : null;
+
   return (
-    <div className="flex h-[100dvh] bg-background-light overflow-hidden">
+    <PageContainer className="nutrition-page meal-plans-page">
       {saveNotification && (
         <Toast
           key={saveNotification.id}
@@ -1401,50 +1639,40 @@ const MealPlans = () => {
         />
       )}
       
-      {/* --- LEFT SIDE: Main Planning Area --- */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
-        
-        {/* Header Section */}
-        <header className="px-6 py-4 bg-white border-b border-slate-200 flex flex-wrap gap-y-3 justify-between items-center z-20 shadow-sm flex-shrink-0">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">Haftalık Yemek Planı</h1>
-            <p className="text-sm text-slate-500 mt-1">Danışan için haftalık beslenme programını oluşturun.</p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Client Selector */}
+      <PageHeader title="Beslenme planı" description="Danışanınızın haftalık beslenme programını hazırlayın." />
+      <div className="meal-client-context">            {/* Client Selector */}
             <div className="relative">
               <button 
                 onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
-                className="flex items-center gap-3 bg-slate-50 border border-slate-200 hover:border-emerald-500/50 hover:bg-emerald-50/30 px-4 py-2.5 rounded-xl transition-all min-w-[240px]"
+                className="flex items-center gap-3 bg-surface-alt border border-line hover:border-emerald-500/50 hover:bg-emerald-50/30 px-4 py-2.5 rounded-xl transition-all min-w-[240px]"
               >
                 {selectedClient ? (
                   <>
-                    <img src={selectedClient.avatar} alt={selectedClient.name} className="w-8 h-8 rounded-full object-cover" />
+                    <Avatar name={selectedClient.name} src={selectedClient.avatar === USER_AVATAR ? null : selectedClient.avatar} size="lg" className="client-avatar" />
                     <div className="text-left flex-1">
-                      <p className="text-xs text-slate-500 font-medium">Seçili Danışan</p>
-                      <p className="text-sm font-bold text-slate-800">{selectedClient.name}</p>
+                      <p className="text-xs text-ink-2 font-medium">Seçili Danışan</p>
+                      <p className="text-sm font-bold text-ink">{selectedClient.name}</p>
                     </div>
                   </>
                 ) : (
-                  <span className="text-slate-500 font-medium flex-1 text-left">Danışan Seçiniz...</span>
+                  <span className="text-ink-2 font-medium flex-1 text-left">Danışan Seçiniz...</span>
                 )}
-                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isClientDropdownOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-ink-3 transition-transform ${isClientDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {isClientDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setIsClientDropdownOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-100 z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-xl border border-line z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
                     <div className="p-2">
                        <div className="relative mb-2">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-3" />
                           <input
                             type="search"
                             value={clientSearch}
                             onChange={(event) => setClientSearch(event.target.value)}
                             placeholder="Ara..."
-                            className="w-full pl-9 pr-3 py-2 bg-slate-50 rounded-lg text-sm border-none focus:ring-1 focus:ring-primary"
+                            className="w-full pl-9 pr-3 py-2 bg-surface-alt rounded-lg text-sm border-none focus:ring-1 focus:ring-brand"
                           />
                        </div>
                        {clients.filter((client) => (
@@ -1454,12 +1682,12 @@ const MealPlans = () => {
                          <button
                            key={client.id}
                            onClick={() => { selectClient(client); setIsClientDropdownOpen(false); }}
-                           className="w-full flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors group"
+                           className="w-full flex items-center gap-3 p-2 hover:bg-surface-alt rounded-lg transition-colors group"
                          >
-                           <img src={client.avatar} className="w-8 h-8 rounded-full object-cover group-hover:ring-2 ring-primary/20" alt={client.name} />
+                           <Avatar name={client.name} src={client.avatar === USER_AVATAR ? null : client.avatar} size="sm" />
                            <div className="text-left">
-                              <p className="text-sm font-semibold text-slate-700">{client.name}</p>
-                              <p className="text-sm text-slate-400">{client.goal}</p>
+                              <p className="text-sm font-semibold text-ink">{client.name}</p>
+                              <p className="text-sm text-ink-3">{client.goal}</p>
                            </div>
                          </button>
                        ))}
@@ -1470,10 +1698,10 @@ const MealPlans = () => {
                          </div>
                        )}
                        {!clientError && clients.length === 0 && !loadingClients && (
-                         <div className="p-4 text-center text-slate-400 text-sm">Danışan bulunamadı.</div>
+                         <div className="p-4 text-center text-ink-3 text-sm">Danışan bulunamadı.</div>
                        )}
                        {loadingClients && (
-                         <div className="p-4 text-center text-slate-400 text-sm">Yükleniyor...</div>
+                         <div className="p-4 text-center text-ink-3 text-sm">Yükleniyor...</div>
                        )}
                     </div>
                   </div>
@@ -1481,56 +1709,25 @@ const MealPlans = () => {
               )}
             </div>
             
-            <div className="h-8 w-px bg-slate-200"></div>
-
-            {/* Date Picker */}
-            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-xl">
-              <button type="button" aria-label="Önceki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, -1))} className="min-h-11 min-w-11 rounded-lg text-slate-500 hover:bg-white"><ChevronLeft className="mx-auto h-4 w-4" /></button>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={handleOpenWeekPicker}
-                  aria-label={`Hafta seç: ${formatMealPlanWeekRangeLabel(weekStartDate)}`}
-                  title="Tarih seç"
-                  className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-left hover:bg-white"
-                >
-                  <CalendarIcon className="w-4 h-4 text-slate-400" />
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase leading-none">Hafta</span>
-                    <span className="whitespace-nowrap text-sm font-bold leading-tight text-slate-700">{formatMealPlanWeekRangeLabel(weekStartDate)}</span>
-                  </div>
-                </button>
-                <input
-                  ref={weekPickerInputRef}
-                  type="date"
-                  value={weekStartDate}
-                  onChange={handleWeekDateChange}
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 bottom-0 h-1 w-full opacity-0"
-                />
-              </div>
-              <button type="button" aria-label="Sonraki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, 1))} className="min-h-11 min-w-11 rounded-lg text-slate-500 hover:bg-white"><ChevronRight className="mx-auto h-4 w-4" /></button>
-            </div>
-
-            <div className="h-8 w-px bg-slate-200"></div>
-
-            <button onClick={() => navigate('/profile')} className="focus:outline-none hover:opacity-80 transition-opacity p-0 border-0 bg-transparent cursor-pointer rounded-full" aria-label="Profil sayfasına git" role="button">
-            <DietitianAvatar className="w-10 h-10 rounded-full border border-slate-200 object-cover" alt="Diyetisyen profil fotoğrafı" />
-          </button>
-          </div>
-        </header>
+<div className="meal-client-goal">{selectedClient?.goal && <span>{selectedClient.goal}</span>}</div><Button size="sm" variant="ghost" rightIcon="caret-right" disabled={!selectedClient} onClick={() => setIsClientInfoOpen(true)}>Danışan bilgileri</Button></div>
+      <div className="plan-summary-row"><div className="plan-kpis">
+        <KpiTile label="Günlük ortalama kalori" icon="flame" loading={isLoadingPlan} value={planError || averageCalories === null ? '—' : averageCalories.toLocaleString('tr-TR')} unit={averageCalories !== null && !planError ? 'kcal' : undefined} hint={planError ? 'Plan yüklenemedi.' : averageCalories === null ? 'Kalori bilgisi olan öğün ekleyin.' : missingCalorieCount > 0 ? `7 günlük ortalama · ${missingCalorieCount} öğünde kalori yok` : 'Editördeki 7 günlük planın ortalaması'} />
+        <Card padding="none" className="meal-target-card"><div className="meal-target-heading"><Icon name="flag-checkered-duotone" size={22} /><span>Günlük enerji hedefi</span>{nutritionTarget.state.status === 'success' && <Button size="sm" variant="ghost" onClick={() => setIsEditingNutritionTarget(true)}>{currentNutritionTarget ? 'Düzenle' : 'Belirle'}</Button>}</div>{!selectedClient ? <p className="meal-target-value">—</p> : nutritionTarget.state.status === 'loading' || nutritionTarget.state.status === 'idle' ? <p className="text-ink-3" role="status">Yükleniyor…</p> : nutritionTarget.state.status === 'error' ? <div className="text-bad text-12" role="alert">{nutritionTarget.state.message}<Button size="sm" variant="ghost" onClick={() => void nutritionTarget.reload()}>Tekrar dene</Button></div> : <><p className="meal-target-value">{nutritionTargetLabel ?? '—'}</p><p className="meal-target-hint">{currentNutritionTarget ? 'Seçili danışanın kayıtlı hedefi' : 'Henüz kalori hedefi belirlenmedi.'}</p></>}</Card>
+      </div><div className="plan-save-area"><Button leftIcon="copy" loading={isCopyingPreviousWeek} disabled={!selectedClient || isLoadingPlan || isSaving || Boolean(planError)} onClick={() => void handleCopyPreviousWeek()}>Geçen haftayı kopyala</Button><Button variant="primary" leftIcon="check" loading={isSaving} disabled={!selectedClient || isLoadingPlan || isCopyingPreviousWeek || Boolean(planError)} onClick={() => void handleSavePlan()}>Planı kaydet</Button></div></div>
+      <div className="meal-plan-workspace">
+      {/* --- LEFT SIDE: Main Planning Area --- */}
+      <div className="meal-plan-main">
 
         {/* Weekly Grid Area */}
-        <div className="flex-1 overflow-hidden p-4 relative flex flex-col min-h-0">
+        <div className="meal-grid-area">
            {!selectedClient ? (
              <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
-                <div className="bg-slate-100 p-6 rounded-full mb-4">
-                  <Search className="w-12 h-12 text-slate-400" />
+                <div className="bg-sunk p-6 rounded-full mb-4">
+                  <Search className="w-12 h-12 text-ink-3" />
                 </div>
-                <h2 className="text-xl font-bold text-slate-700">{loadingClients ? 'Aktif danışanlar yükleniyor' : clientError ? 'Danışanlar yüklenemedi' : 'Aktif danışan yok'}</h2>
-                <p className="text-slate-500 mt-2 max-w-md">{loadingClients ? 'Aktif danışanlar güvenli biçimde doğrulanıyor.' : clientError ? clientError : 'Plan oluşturmak için aktif danışan ilişkisinin bulunması gerekir.'}</p>
-                {clientError && <button type="button" onClick={() => setClientLoadAttempt((attempt) => attempt + 1)} className="mt-4 min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700">Tekrar dene</button>}
+                <h2 className="text-xl font-bold text-ink">{loadingClients ? 'Aktif danışanlar yükleniyor' : clientError ? 'Danışanlar yüklenemedi' : 'Aktif danışan yok'}</h2>
+                <p className="text-ink-2 mt-2 max-w-md">{loadingClients ? 'Aktif danışanlar güvenli biçimde doğrulanıyor.' : clientError ? clientError : 'Plan oluşturmak için aktif danışan ilişkisinin bulunması gerekir.'}</p>
+                {clientError && <button type="button" onClick={() => setClientLoadAttempt((attempt) => attempt + 1)} className="mt-4 min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-ink">Tekrar dene</button>}
              </div>
            ) : (
              <>
@@ -1570,36 +1767,40 @@ const MealPlans = () => {
                  </div>
                )}
                {!planError && <>
-               {/* Grid Controls */}
-               <div className="flex justify-between items-center mb-6 flex-shrink-0">
-                  <div className="flex gap-2">
-                     <button onClick={() => { revokePlanLocalPreviews(weeklyPlanRef.current); closeMealEdit(); setMealDetailCell(null); clearCustomMealForm(); setWeeklyPlan({}); setPlanNotes({}); }} className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-sm font-medium shadow-sm">
-                      <Trash2 className="w-4 h-4" /> Temizle
-                    </button>
-                    <button type="button" onClick={() => void handleCopyPreviousWeek()} disabled={isCopyingPreviousWeek} className="flex min-h-11 items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
-                      {isCopyingPreviousWeek ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />} {isCopyingPreviousWeek ? 'Kopyalanıyor...' : 'Geçen Haftayı Kopyala'}
-                    </button>
+               <div className="meal-week-toolbar">
+                             {/* Date Picker */}
+            <div className="flex items-center gap-1 bg-surface-alt border border-line px-2 py-1.5 rounded-xl">
+              <button type="button" aria-label="Önceki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, -1))} className="min-h-11 min-w-11 rounded-lg text-ink-2 hover:bg-white"><ChevronLeft className="mx-auto h-4 w-4" /></button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={handleOpenWeekPicker}
+                  aria-label={`Hafta seç: ${formatMealPlanWeekRangeLabel(weekStartDate)}`}
+                  title="Tarih seç"
+                  className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-left hover:bg-white"
+                >
+                  <CalendarIcon className="w-4 h-4 text-ink-3" />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-ink-3 font-bold uppercase leading-none">Hafta</span>
+                    <span className="whitespace-nowrap text-sm font-bold leading-tight text-ink">{formatMealPlanWeekRangeLabel(weekStartDate)}</span>
                   </div>
-                  <div className="flex gap-3">
-                     <button 
-                        onClick={handleSavePlan}
-                        disabled={isSaving || !selectedClient}
-                        className="flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-all text-sm font-bold shadow-md shadow-primary/30 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                     >
-                        {isSaving ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            Kaydediliyor...
-                          </>
-                        ) : (
-                          <>
-                            <Save className="w-4 h-4" /> Planı Kaydet
-                          </>
-                        )}
-                     </button>
-                  </div>
-               </div>
+                </button>
+                <input
+                  ref={weekPickerInputRef}
+                  type="date"
+                  value={weekStartDate}
+                  onChange={handleWeekDateChange}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-1 w-full opacity-0"
+                />
+              </div>
+              <button type="button" aria-label="Sonraki hafta" onClick={() => setWeekStartDate((value) => shiftMealPlanWeek(value, 1))} className="min-h-11 min-w-11 rounded-lg text-ink-2 hover:bg-white"><ChevronRight className="mx-auto h-4 w-4" /></button>
+            </div>
 
+
+                 <div className="meal-week-actions"><Button size="sm" leftIcon="plus" onClick={() => setIsAddMealModalOpen(true)}>Öğün satırı ekle</Button><Button size="sm" variant="ghost" leftIcon="x" onClick={() => setClearPlanOpen(true)}>Temizle</Button><Button size="sm" className="meal-mobile-picker" leftIcon="bowl-food" onClick={() => setIsRecipeDrawerOpen(true)}>Tarifler</Button></div>
+               </div>
                {moveFeedback && (
                  <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
                    {moveFeedback}
@@ -1607,7 +1808,7 @@ const MealPlans = () => {
                )}
 
                {/* The Grid */}
-               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-auto min-w-[900px] relative flex-1 min-h-0">
+               <div className="meal-week-grid">
                   {/* Loading Overlay */}
                   {isLoadingPlan && (
                     <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -1625,14 +1826,13 @@ const MealPlans = () => {
                   )}
 
                   {/* Header Row */}
-                  <div className="grid grid-cols-8 divide-x divide-slate-100 border-b border-slate-200 bg-slate-50">
-                     <div className="p-4 flex items-center justify-center font-bold text-slate-400 text-xs uppercase tracking-wider bg-slate-50/80">
+                  <div className="meal-grid-row divide-x divide-line border-b border-line bg-surface-alt">
+                     <div className="p-4 flex items-center justify-center font-bold text-ink-3 text-xs uppercase tracking-wider bg-surface-alt/80">
                         Öğünler
                      </div>
                      {DAYS.map((day, index) => (
-                       <div key={day} className="p-4 text-center font-bold text-slate-700 text-sm">
-                         <div>{day}</div>
-                         <div className="mt-1 text-xs font-medium text-slate-400">{getMealPlanWeekDates(weekStartDate)[index]}</div>
+                       <div key={day} className={`meal-weekday ${weekDates[index] === todayDateKey ? 'is-today' : ''}`}>
+                         <span>{day}</span><time dateTime={weekDates[index]} title={weekDates[index]}>{Number(weekDates[index].slice(-2))}</time>
                        </div>
                      ))}
                   </div>
@@ -1649,9 +1849,9 @@ const MealPlans = () => {
 
                   {meals.length === 0 && !isLoadingPlan && (
                     <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center" role="status">
-                      <p className="font-semibold text-slate-700">Bu haftada öğün satırı yok.</p>
-                      <p className="max-w-md text-sm text-slate-500">Planı kurmak için önce bir öğün satırı ekleyin (ör. Kahvaltı 08:00). Satır adı ve saati kaydedildiğinde danışanın uygulamasında aynı görünür.</p>
-                      <button type="button" onClick={() => setIsAddMealModalOpen(true)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">
+                      <p className="font-semibold text-ink">Bu haftada öğün satırı yok.</p>
+                      <p className="max-w-md text-sm text-ink-2">Planı kurmak için önce bir öğün satırı ekleyin (ör. Kahvaltı 08:00). Satır adı ve saati kaydedildiğinde danışanın uygulamasında aynı görünür.</p>
+                      <button type="button" onClick={() => setIsAddMealModalOpen(true)} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-hi">
                         <Plus className="h-4 w-4" /> Öğün ekle
                       </button>
                     </div>
@@ -1659,16 +1859,16 @@ const MealPlans = () => {
 
                   {/* Dynamic Meal Rows */}
                   {meals.map((meal, idx) => (
-                    <div key={meal.id} className={`grid grid-cols-8 divide-x divide-slate-100 ${idx !== meals.length - 1 ? 'border-b border-slate-100' : ''}`}>
+                    <div key={meal.id} className={`meal-grid-row divide-x divide-line ${idx !== meals.length - 1 ? 'border-b border-line' : ''}`}>
                        
                        {/* Row Header (Editable Meal Name & Time) */}
-                       <div className="bg-slate-50/50 p-2 flex flex-col justify-center items-center group relative border-r border-slate-100 hover:bg-slate-100/80 transition-colors">
+                       <div className="meal-row-label p-2 flex flex-col justify-center items-center group relative border-r border-line hover:bg-sunk/80 transition-colors">
                           <div className="absolute left-1 top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-50">
-                             <button disabled={idx === 0} onClick={() => handleMoveMeal(idx, 'up')} className="p-0.5 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"><ArrowUp className="w-3.5 h-3.5" /></button>
-                             <button disabled={idx === meals.length - 1} onClick={() => handleMoveMeal(idx, 'down')} className="p-0.5 text-slate-400 hover:text-primary hover:bg-emerald-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"><ArrowDown className="w-3.5 h-3.5" /></button>
+                             <button type="button" aria-label={`${meal.name} satırını yukarı taşı`} disabled={idx === 0} onClick={() => handleMoveMeal(idx, 'up')} className="p-0.5 text-ink-3 hover:text-brand hover:bg-emerald-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"><ArrowUp className="w-3.5 h-3.5" /></button>
+                             <button type="button" aria-label={`${meal.name} satırını aşağı taşı`} disabled={idx === meals.length - 1} onClick={() => handleMoveMeal(idx, 'down')} className="p-0.5 text-ink-3 hover:text-brand hover:bg-emerald-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"><ArrowDown className="w-3.5 h-3.5" /></button>
                           </div>
                           <div className="flex flex-col items-center w-full px-1 gap-1 relative z-10 pl-5">
-                             {/* Meal Type Dropdown */}
+                             {/* Editable row name — no icon or separate type field. */}
                              <div className="relative w-full">
                                 <input
                                    type="text"
@@ -1678,7 +1878,7 @@ const MealPlans = () => {
                                    aria-label="Öğün adı"
                                    title={meal.name}
                                    onChange={(e) => handleUpdateMeal(meal.id, 'name', e.target.value)}
-                                   className="w-full text-center font-bold text-slate-700 text-xs bg-transparent border-b border-transparent hover:border-primary/30 focus:border-primary focus:outline-none py-1 transition-colors"
+                                   className="w-full text-center font-bold text-ink text-xs bg-transparent border-b border-transparent hover:border-brand/30 focus:border-brand focus:outline-none py-1 transition-colors"
                                 />
                              </div>
 
@@ -1691,7 +1891,7 @@ const MealPlans = () => {
                                   aria-label={`${meal.name} saati (SS:DD)`}
                                   maxLength={5}
                                   onChange={(e) => handleUpdateMeal(meal.id, 'time', e.target.value)}
-                                  className="bg-transparent text-center text-[11px] text-slate-500 font-medium uppercase tracking-wider w-16 cursor-text hover:text-primary focus:outline-none focus:text-primary border border-transparent hover:border-slate-200 rounded px-1"
+                                  className="bg-transparent text-center text-[11px] text-ink-2 font-medium uppercase tracking-wider w-16 cursor-text hover:text-brand focus:outline-none focus:text-brand border border-transparent hover:border-line rounded px-1"
                                 />
                              </div>
                           </div>
@@ -1699,7 +1899,7 @@ const MealPlans = () => {
                           <button 
                              type="button"
                              onClick={(e) => handleRemoveMeal(e, meal.id)}
-                             className="absolute top-1 right-1 z-50 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                             className="absolute top-1 right-1 z-50 p-1.5 text-ink-3 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                              title="Bu öğünü sil"
                           >
                              <Trash2 className="w-3.5 h-3.5" />
@@ -1723,21 +1923,21 @@ const MealPlans = () => {
                              onDragLeave={(event) => handleCellDragLeave(event, day, meal.id)}
                              onDrop={(event) => handleCellDrop(event, day, meal.id)}
                              className={`
-                               relative min-h-[140px] p-2 transition-all cursor-pointer group
-                               ${isActive ? 'bg-emerald-50 ring-2 ring-inset ring-primary z-10' : isInvalidMoveTarget ? 'bg-slate-50/70 cursor-not-allowed' : dropTarget?.day === day && dropTarget?.mealId === meal.id ? 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400 z-10' : 'hover:bg-slate-50 bg-white'}
+                               meal-day-cell relative transition-all cursor-pointer group
+                               ${isActive ? 'bg-emerald-50 ring-2 ring-inset ring-brand z-10' : isInvalidMoveTarget ? 'bg-surface-alt/70 cursor-not-allowed' : dropTarget?.day === day && dropTarget?.mealId === meal.id ? 'bg-emerald-50/50 ring-2 ring-inset ring-emerald-400 z-10' : 'hover:bg-surface-alt bg-white'}
                              `}
                            >
                              {!cellContent ? (
-                               <div className={`h-full border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-400 transition-colors ${isActive ? 'border-emerald-300 bg-white' : 'group-hover:border-slate-300'}`}>
+                               <button type="button" aria-label={`${day} ${meal.name} öğününe içerik ekle`} className={`h-full w-full min-h-[168px] border border-dashed border-line rounded-lg flex flex-col items-center justify-center gap-2 text-ink-3 transition-colors ${isActive ? 'border-brand bg-white' : 'group-hover:border-slate-300'}`}>
                                   <Plus className={`w-5 h-5 ${isActive ? 'text-emerald-500' : ''}`} />
-                                  <span className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Ekle</span>
-                               </div>
+                                  <span className="text-xs font-medium">Öğün ekle</span>
+                               </button>
                              ) : typeof cellContent === 'string' ? (
                                // Legacy Manual Text Content
-                               <div className="h-full bg-slate-100 rounded-xl p-3 text-sm text-slate-700 relative group/text">
+                               <div className="h-full bg-sunk rounded-xl p-3 text-sm text-ink relative group/text">
                                   <button 
                                     onClick={(e) => handleClearCell(e, day, meal.id)}
-                                    className="absolute -top-1.5 -right-1.5 bg-white text-slate-400 hover:text-red-500 border border-slate-200 rounded-full p-0.5 opacity-0 group-hover/text:opacity-100 transition-opacity shadow-sm z-20"
+                                    className="absolute -top-1.5 -right-1.5 bg-white text-ink-3 hover:text-red-500 border border-line rounded-full p-0.5 opacity-0 group-hover/text:opacity-100 transition-opacity shadow-sm z-20"
                                   >
                                     <X className="w-3 h-3" />
                                   </button>
@@ -1745,7 +1945,7 @@ const MealPlans = () => {
                                </div>
                               ) : (
                                 // Manual meal content
-                                <div className={`h-full bg-white rounded-xl border border-slate-200 shadow-sm p-2 flex flex-col gap-2 relative group/card animate-in zoom-in-95 duration-200 ${isDraggedSource ? 'opacity-60' : ''}`}>
+                                <div className={`meal-entry-card h-full relative group/card animate-in zoom-in-95 duration-200 ${isDraggedSource ? 'opacity-60' : ''}`}>
                                    <button
                                      type="button"
                                      onClick={(event) => {
@@ -1754,30 +1954,12 @@ const MealPlans = () => {
                                      }}
                                      onKeyDown={(event) => handlePlannedMealCardKeyDown(event, { day, mealId: meal.id })}
                                      aria-label={`Öğün detayını aç: ${cellContent.name}`}
-                                     className="flex min-h-0 w-full flex-1 flex-col gap-2 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-primary/40"
+                                     className="flex min-h-0 w-full flex-1 flex-col gap-2 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-brand/40"
                                    >
-                                     <div className="h-20 w-full rounded-lg overflow-hidden relative bg-slate-100 flex items-center justify-center">
-                                        {mealImageSource ? (
-                                            <img
-                                              src={mealImageSource}
-                                              alt={cellContent.name}
-                                              className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <span className="text-slate-400 text-xs font-medium px-2 text-center">{cellContent.name}</span>
-                                        )}
-                                        {mealImageSource && (
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2">
-                                               <p className="text-white text-[10px] font-bold line-clamp-1">{cellContent.name}</p>
-                                            </div>
-                                        )}
-                                     </div>
-                                     <div className="flex justify-between items-center px-1">
-                                        <span className="text-[10px] font-bold text-orange-500 flex items-center gap-0.5">
-                                          <Flame className="w-3 h-3" /> {cellContent.calories || 0}
-                                        </span>
-                                        <span className="text-[10px] text-slate-400">{cellContent.macros.protein}g Prot</span>
-                                     </div>
+                                     <div className="meal-entry-photo">{mealImageSource ? <img src={mealImageSource} alt={cellContent.name} loading="lazy" /> : <div className="recipe-image-empty" aria-label="Öğün görseli yok"><Icon name="bowl-food" size={28} /></div>}</div>
+                                     <b className="meal-entry-title" title={cellContent.name}>{cellContent.name}</b>
+                                     <span className="meal-entry-calories">{cellContent.calories > 0 ? `${cellContent.calories} kcal` : 'Kalori bilgisi yok'}</span>
+                                     <small className="meal-entry-macros">P {cellContent.macros.protein} · K {cellContent.macros.carbs} · Y {cellContent.macros.fat}</small>
                                      {(() => {
                                        const conflicts = findDietaryConflicts(
                                          `${cellContent.name} ${cellContent.description ?? ''}`,
@@ -1812,7 +1994,7 @@ const MealPlans = () => {
                                         aria-label={isCompleted ? 'Tamamlanmış öğün taşınamaz' : `${cellContent.name} öğününü taşı`}
                                         aria-disabled={isCompleted}
                                         title={isCompleted ? 'Tamamlanmış öğün taşınamaz' : 'Öğünü taşı'}
-                                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border shadow-sm transition-opacity focus:outline-none focus:ring-2 focus:ring-primary/40 ${isCompleted ? 'cursor-not-allowed border-slate-200 bg-slate-100/90 text-slate-300' : 'cursor-grab border-white/80 bg-white/90 text-slate-500 hover:text-primary active:cursor-grabbing sm:opacity-0 sm:group-hover/card:opacity-100'}`}
+                                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border shadow-sm transition-opacity focus:outline-none focus:ring-2 focus:ring-brand/40 ${isCompleted ? 'cursor-not-allowed border-line bg-sunk/90 text-slate-300' : 'cursor-grab border-white/80 bg-white/90 text-ink-2 hover:text-brand active:cursor-grabbing sm:opacity-0 sm:group-hover/card:opacity-100'}`}
                                       >
                                         <GripVertical className="h-4 w-4" aria-hidden="true" />
                                       </button>
@@ -1825,7 +2007,7 @@ const MealPlans = () => {
                                         }}
                                         aria-label={isCompleted ? 'Tamamlanmış öğünün içeriği değiştirilemez' : `${cellContent.name} öğününü düzenle`}
                                         title={isCompleted ? 'Tamamlanmış öğünün içeriği değiştirilemez' : 'Öğünü düzenle'}
-                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/80 bg-white/90 text-slate-500 shadow-sm transition-colors hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:text-slate-300"
+                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/80 bg-white/90 text-ink-2 shadow-sm transition-colors hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand/40 disabled:cursor-not-allowed disabled:text-slate-300"
                                       >
                                         <Edit2 className="h-4 w-4" aria-hidden="true" />
                                       </button>
@@ -1836,7 +2018,7 @@ const MealPlans = () => {
                                      onClick={(e) => handleClearCell(e, day, meal.id)}
                                      aria-label={isCompleted ? 'Tamamlanmış öğün silinemez' : `${cellContent.name} öğününü plandan kaldır`}
                                      title={isCompleted ? 'Tamamlanmış öğün silinemez' : 'Öğünü kaldır'}
-                                     className="absolute -right-1.5 -top-1.5 z-20 rounded-full border border-slate-200 bg-white p-0.5 text-slate-400 opacity-0 shadow-sm transition-opacity hover:text-red-500 group-hover/card:opacity-100 disabled:cursor-not-allowed disabled:text-slate-300"
+                                     className="absolute -right-1.5 -top-1.5 z-20 rounded-full border border-line bg-white p-0.5 text-ink-3 opacity-0 shadow-sm transition-opacity hover:text-red-500 group-hover/card:opacity-100 disabled:cursor-not-allowed disabled:text-slate-300"
                                    >
                                      <X className="w-3 h-3" />
                                    </button>
@@ -1849,21 +2031,21 @@ const MealPlans = () => {
                   ))}
 
                   {meals.length > 0 && (
-                    <div className="grid grid-cols-8 divide-x divide-slate-100 border-t border-slate-200 bg-slate-50/70" aria-label="Günlük planlanan kalori">
+                    <div className="meal-grid-row divide-x divide-line border-t border-line bg-surface-alt/70" aria-label="Günlük planlanan kalori">
                       <div className="flex flex-col items-center justify-center p-2 text-center">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Günlük toplam</span>
-                        {nutritionTargetLabel && <span className="mt-0.5 text-[11px] text-slate-400">Hedef {nutritionTargetLabel}</span>}
+                        <span className="text-xs font-bold uppercase tracking-wider text-ink-2">Günlük toplam</span>
+                        {nutritionTargetLabel && <span className="mt-0.5 text-[11px] text-ink-3">Hedef {nutritionTargetLabel}</span>}
                       </div>
                       {dailyCalorieTotals.map((total) => (
                         <div key={total.day} className="flex flex-col items-center justify-center p-2 text-center">
                           {total.mealCount === 0 ? (
-                            <span className="text-xs text-slate-400">—</span>
+                            <span className="text-xs text-ink-3">—</span>
                           ) : (
                             <>
-                              <span className={`text-sm font-bold tabular-nums ${total.status === 'below' ? 'text-amber-700' : total.status === 'above' ? 'text-rose-700' : total.status === 'within' ? 'text-emerald-700' : 'text-slate-700'}`}>
+                              <span className={`text-sm font-bold tabular-nums ${total.status === 'below' ? 'text-amber-700' : total.status === 'above' ? 'text-rose-700' : total.status === 'within' ? 'text-emerald-700' : 'text-ink'}`}>
                                 {total.calories.toLocaleString('tr-TR')} kcal
                               </span>
-                              <span className="text-[11px] text-slate-400">
+                              <span className="text-[11px] text-ink-3">
                                 {total.status === 'below' ? 'Hedefin altında' : total.status === 'above' ? 'Hedefin üstünde' : total.status === 'within' ? 'Hedef aralığında' : `${total.mealCount} öğün`}
                                 {total.missingCalories > 0 ? ` · ${total.missingCalories} öğünde kalori yok` : ''}
                               </span>
@@ -1875,10 +2057,10 @@ const MealPlans = () => {
                   )}
 
                   {/* Add New Meal Row Button */}
-                  <div className="border-t border-slate-200 bg-slate-50 p-2">
+                  <div className="border-t border-line bg-surface-alt p-2">
                     <button 
                       onClick={() => setIsAddMealModalOpen(true)}
-                      className="w-full py-3 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 font-medium hover:border-primary hover:text-primary hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
+                      className="w-full py-3 border-2 border-dashed border-slate-300 rounded-xl text-ink-2 font-medium hover:border-brand hover:text-brand hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
                     >
                        <Plus className="w-4 h-4" /> Yeni Öğün Ekle
                     </button>
@@ -1888,271 +2070,21 @@ const MealPlans = () => {
              </>
            )}
         </div>
+        {selectedClient && !isLoadingPlan && !planError && <Card className="meal-note-card"><CardHeader title="Danışana not" description="Seçtiğiniz günün planına eşlik edecek kısa bir not." actions={<Select label="Notun günü" hideLabel value={noteDay} onChange={event => setNoteDay(event.target.value)} options={DAYS.map(day => ({ value: day, label: day }))} />} /><Textarea label={`${noteDay} plan notu`} value={planNotes[noteDay] ?? ''} onChange={event => setPlanNotes(current => ({ ...current, [noteDay]: event.target.value || null }))} rows={2} disabled={isSaving} /></Card>}
       </div>
 
-      {/* --- RIGHT SIDE: Sidebar (Client Info & Recipes) --- */}
-      <aside className="w-[clamp(320px,23vw,390px)] flex-shrink-0 bg-white border-l border-slate-200 flex flex-col h-full shadow-lg z-30">
-        <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
-        
-        {/* 1. Client Info Panel (Conditional) */}
-        {selectedClient ? (
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-            <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-800 flex items-center gap-2">
-              <Info className="w-4 h-4 text-primary" /> Danışan Bilgileri
-            </h3>
-            {isLoadingClientDetails ? (
-              <p className="text-xs text-slate-500">Danışan ayrıntıları yükleniyor...</p>
-            ) : clientDetailsError ? (
-              <div className="text-xs text-rose-700" role="alert">
-                <p>{clientDetailsError}</p>
-                <button type="button" onClick={() => setClientDetailsLoadAttempt((attempt) => attempt + 1)} className="mt-2 min-h-11 rounded-lg border border-rose-200 bg-white px-3 font-semibold">Tekrar dene</button>
-              </div>
-            ) : clientDetails ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white p-3 rounded-xl border border-red-100 shadow-sm">
-                  <p className="text-xs font-bold text-red-500 mb-2 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Alerji / Kısıt</p>
-                  <div className="flex flex-wrap gap-1">
-                    {clientDetails.foodIntolerances.length > 0 ? clientDetails.foodIntolerances.map((item) => <span key={item} className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-medium">{item}</span>) : <span className="text-[10px] text-slate-400">Yok</span>}
-                  </div>
-                </div>
-                <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
-                  <p className="text-xs font-bold text-emerald-600 mb-2">Sevmedikleri</p>
-                  <div className="flex flex-wrap gap-1">
-                    {clientDetails.dislikedFoods.length > 0 ? clientDetails.dislikedFoods.map((item) => <span key={item} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-medium">{item}</span>) : <span className="text-[10px] text-slate-400">Yok</span>}
-                  </div>
-                </div>
-              </div>
-            ) : <p className="text-xs text-slate-400">{isClientDetailsEmpty ? 'Yok' : 'Danışan ayrıntısı bulunamadı.'}</p>}
-            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-bold text-slate-700">Günlük kalori hedefi</p>
-                {nutritionTarget.state.status === 'success' && !isEditingNutritionTarget && (
-                  <button type="button" onClick={() => setIsEditingNutritionTarget(true)} className="min-h-8 rounded-md px-2 text-xs font-semibold text-primary hover:bg-emerald-50">
-                    {currentNutritionTarget ? 'Düzenle' : 'Belirle'}
-                  </button>
-                )}
-              </div>
-              {nutritionTarget.state.status === 'loading' || nutritionTarget.state.status === 'idle' ? (
-                <p className="mt-1 text-xs text-slate-500">Yükleniyor…</p>
-              ) : nutritionTarget.state.status === 'error' ? (
-                <p className="mt-1 text-xs text-rose-700" role="alert">
-                  {nutritionTarget.state.message}{' '}
-                  <button type="button" onClick={() => void nutritionTarget.reload()} className="font-semibold underline">Tekrar dene</button>
-                </p>
-              ) : isEditingNutritionTarget && selectedClient ? (
-                <div className="mt-2">
-                  <NutritionTargetEditor
+      <aside className="meal-plan-rail">{recipePickerContent}</aside>
+      </div>
+      <Drawer open={isRecipeDrawerOpen} onClose={() => setIsRecipeDrawerOpen(false)} title="Öğüne tarif ekle" className="nutrition-drawer">{recipePickerContent}</Drawer>
+      <Modal open={isClientInfoOpen} onClose={() => setIsClientInfoOpen(false)} title="Danışan bilgileri" size="lg">{clientDetailsContent}</Modal>
+      <Modal open={isEditingNutritionTarget} onClose={() => setIsEditingNutritionTarget(false)} title="Günlük enerji hedefi" dismissible={false}>{selectedClient && <div>                  <NutritionTargetEditor
                     clientId={selectedClient.id}
                     target={currentNutritionTarget}
                     onSaved={(saved) => { nutritionTarget.setTarget(saved); setIsEditingNutritionTarget(false); }}
                     onCancel={() => setIsEditingNutritionTarget(false)}
                   />
-                </div>
-              ) : (
-                <p className="mt-1 text-sm font-semibold text-slate-800">{nutritionTargetLabel ?? <span className="text-xs font-normal text-slate-400">Henüz belirlenmedi; günlük toplamlar hedefle karşılaştırılmaz.</span>}</p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="p-6 border-b border-slate-100 bg-slate-50 flex items-center justify-center text-slate-400 text-sm">
-             <p>Danışan bilgileri burada görünecek.</p>
-          </div>
-        )}
-
-        {/* 2. Recipes Panel */}
-        <div className="bg-white">
-           <div className="p-4 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 mb-3 px-1">Öğün Ekle</h3>
-
-              {/* Manual Entry Section (Visible when cell is active) */}
-              {activeCell && (
-                <div className="mb-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 animate-in slide-in-from-right-4 duration-300">
-                    <div className="flex items-center gap-2 mb-2 text-indigo-700 font-bold text-xs uppercase tracking-wide">
-                      <Edit2 className="w-3 h-3" />
-                      Manuel Ekleme / Düzenleme
-                    </div>
-                    {customMealError && <p className="mb-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" role="alert">{customMealError}</p>}
-                    <div className="flex flex-col gap-3">
-                      <input 
-                        type="text"
-                        value={customMealText}
-                        onChange={(e) => setCustomMealText(e.target.value)}
-                        placeholder="Yemek Adı (Örn: 2 Haşlanmış Yumurta...)"
-                        className="w-full text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
-                      />
-                      
-                      <div className="flex gap-2">
-                        <input
-                           type="number"
-                           placeholder="Kalori (kcal)"
-                           value={customMealCalories}
-                           onChange={(e) => setCustomMealCalories(e.target.value)}
-                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
-                        />
-                        <input
-                           type="number"
-                           placeholder="Protein (g)"
-                           value={customMealProtein}
-                           onChange={(e) => setCustomMealProtein(e.target.value)}
-                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
-                        />
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <input
-                           type="number"
-                           placeholder="Karb (g)"
-                           value={customMealCarbs}
-                           onChange={(e) => setCustomMealCarbs(e.target.value)}
-                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
-                        />
-                        <input
-                           type="number"
-                           placeholder="Yağ (g)"
-                           value={customMealFat}
-                           onChange={(e) => setCustomMealFat(e.target.value)}
-                           className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 bg-white"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                         {customMealPhotoPreview ? (
-                            <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-indigo-200 flex-shrink-0">
-                               <img src={customMealPhotoPreview} className="w-full h-full object-cover" />
-                               <button 
-                                  onClick={() => {
-                                     revokeLocalPreviewUrl(customMealPhotoPreview);
-                                     setCustomMealPhoto(null);
-                                     setCustomMealPhotoPreview(null);
-                                  }}
-                                 className="absolute -top-1 -right-1 bg-white rounded-full text-red-500 shadow-sm"
-                               >
-                                 <X className="w-4 h-4" />
-                               </button>
-                            </div>
-                         ) : (
-                            <label className="flex-1 flex flex-col items-center justify-center h-16 border-2 border-dashed border-indigo-200 rounded-lg bg-indigo-50/50 cursor-pointer hover:bg-indigo-100/50 transition-colors">
-                               <div className="flex items-center gap-2 text-indigo-500">
-                                  <Upload className="w-4 h-4" />
-                                  <span className="text-[11px] font-medium">Görsel (Opsiyonel)</span>
-                               </div>
-                               <input 
-                                  type="file" 
-                                  accept="image/jpeg, image/png, image/webp" 
-                                  className="hidden" 
-                                  onChange={handlePhotoChange} 
-                               />
-                            </label>
-                         )}
-                         
-                         <button 
-                           onClick={handleAddCustomMeal}
-                           disabled={!customMealText.trim() || isUploadingPhoto}
-                           className="h-16 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex flex-col items-center justify-center gap-1 font-medium flex-shrink-0"
-                         >
-                            {isUploadingPhoto ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-                            <span className="text-[10px]">{isUploadingPhoto ? 'Yükleniyor...' : 'Ekle'}</span>
-                         </button>
-                      </div>
-                   </div>
-                </div>
-              )}
-              {!activeCell && (
-                <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Manuel öğün eklemek veya düzenlemek için plandan bir hücre seçin.</p>
-              )}
-           </div>
-           <div className="border-t border-slate-100">
-             <div className="p-4 pb-3">
-               <h3 className="px-1 text-sm font-bold text-slate-800">Kayıtlı Tarifler</h3>
-               <div
-                 className="flex gap-2 overflow-x-auto overflow-y-hidden py-3"
-                 style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}
-               >
-                 {RECIPE_CATEGORY_OPTIONS.map((option) => {
-                   const isActive = recipeCategoryFilter === option.value;
-                   const count = option.value === 'all' ? recipes.length : categoryCounts[option.value as RecipeMealType] ?? 0;
-                   return (
-                     <button
-                       key={option.value}
-                       type="button"
-                       aria-pressed={isActive}
-                       aria-label={`${option.value === 'all' ? 'Tüm' : `${option.label}`} tariflerini göster (${count})`}
-                       onClick={() => setRecipeCategoryFilter(option.value)}
-                       className={`flex-shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 ${
-                         isActive
-                           ? 'border-primary bg-emerald-50 text-primary'
-                           : 'border-slate-200 bg-white text-slate-600 hover:border-primary/50 hover:bg-emerald-50/30'
-                       }`}
-                     >
-                       {option.label}
-                       <span className={`ml-1 text-[10px] ${isActive ? 'text-primary/80' : 'text-slate-400'}`}>{count}</span>
-                     </button>
-                   );
-                 })}
-               </div>
-               <label className="relative mt-1 block">
-                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                 <input
-                   type="search"
-                   value={recipeSearch}
-                   onChange={(event) => setRecipeSearch(event.target.value)}
-                   placeholder="Tarif ara..."
-                   className="min-h-11 w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                 />
-               </label>
-               {recipeSelectionInfo && <p className="mt-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800" role="status">{recipeSelectionInfo}</p>}
-             </div>
-             <div className="px-4 pb-4">
-               {isLoadingRecipes ? (
-                 <p className="p-4 text-center text-xs text-slate-500">Tarifler yükleniyor...</p>
-               ) : recipeError ? (
-                 <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">
-                   <p>{recipeError}</p>
-                   <button type="button" onClick={() => void loadRecipes()} className="mt-2 min-h-11 rounded-lg border border-rose-300 bg-white px-3 font-semibold">Tekrar dene</button>
-                 </div>
-               ) : recipes.length === 0 ? (
-                 <p className="p-4 text-center text-xs text-slate-500">Henüz kayıtlı tarif bulunmuyor.</p>
-               ) : filteredRecipes.length === 0 ? (
-                 <p className="p-4 text-center text-xs text-slate-500">
-                   {recipeCategoryFilter !== 'all' && recipeSearch.trim()
-                     ? 'Bu kategori ve arama için tarif bulunamadı.'
-                     : recipeCategoryFilter !== 'all'
-                       ? 'Bu kategoride kayıtlı tarif bulunmuyor.'
-                       : 'Aramanızla eşleşen tarif bulunamadı.'}
-                 </p>
-               ) : (
-                 <div className="space-y-2">
-                   {filteredRecipes.map((recipe) => (
-                     <button
-                       key={recipe.id}
-                       type="button"
-                       draggable
-                       onClick={() => handleAddRecipeToActiveCell(recipe)}
-                       onDragStart={(event) => handleRecipeDragStart(event, recipe.id)}
-                       aria-label={`Tarifi sürükleyin veya seçili öğüne eklemek için tıklayın: ${recipe.name}`}
-                       aria-disabled={!activeCell}
-                       title={activeCell ? 'Tarifi sürükleyin veya seçili hücreye eklemek için tıklayın' : 'Önce plandan bir öğün hücresi seçin, sonra tarifi sürükleyin veya tıklayın'}
-                       className="group flex w-full gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:border-primary hover:bg-emerald-50/30"
-                     >
-                       <div className="flex flex-shrink-0 items-center justify-center text-slate-300 group-hover:text-primary transition-colors" aria-hidden="true">
-                         <GripVertical className="h-5 w-5" />
-                       </div>
-                       {recipe.imagePreview ? <img src={recipe.imagePreview} alt="" className="h-14 w-14 flex-shrink-0 rounded-lg object-cover" /> : <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-semibold text-slate-400">Tarif</div>}
-                       <div className="min-w-0 flex-1">
-                         <p className="truncate text-sm font-bold text-slate-800">{recipe.name}</p>
-                         <p className="mt-1 text-[11px] font-medium text-emerald-700">{recipe.mealType === 'breakfast' ? 'Kahvaltı' : recipe.mealType === 'lunch' ? 'Öğle' : recipe.mealType === 'dinner' ? 'Akşam' : 'Ara Öğün'} · {recipe.calories} kcal</p>
-                         <p className="mt-1 text-[10px] text-slate-500">P {recipe.macros.protein}g · K {recipe.macros.carbs}g · Y {recipe.macros.fat}g</p>
-                       </div>
-                     </button>
-                   ))}
-                 </div>
-               )}
-             </div>
-           </div>
-        </div>
-       </div>
-      </aside>
-
+</div>}</Modal>
+      <ConfirmDialog open={clearPlanOpen} onCancel={() => setClearPlanOpen(false)} onConfirm={() => { revokePlanLocalPreviews(weeklyPlanRef.current); closeMealEdit(); setMealDetailCell(null); clearCustomMealForm(); setWeeklyPlan({}); setPlanNotes({}); setClearPlanOpen(false); }} title="Plan editörü temizlensin mi?" description="Bu haftanın editöründeki öğünler kaldırılacak. Değişiklikler Planı kaydet ile kaydedilir." confirmLabel="Temizle" tone="danger" />
       {mealDetailCell && isPlannedMealContent(detailContent) && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
@@ -2168,15 +2100,15 @@ const MealPlans = () => {
             className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <div className="flex items-start justify-between border-b border-slate-100 p-5">
+            <div className="flex items-start justify-between border-b border-line p-5">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Öğün Detayı</p>
-                <h2 id="meal-detail-dialog-title" className="mt-1 text-xl font-bold text-slate-800">{detailContent.name}</h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand">Öğün Detayı</p>
+                <h2 id="meal-detail-dialog-title" className="mt-1 text-xl font-bold text-ink">{detailContent.name}</h2>
+                <p className="mt-1 text-sm text-ink-2">
                   {detailMealRow?.name ?? 'Öğün'} · {formatMealRowTime(detailMealRow)} · {mealDetailCell.day}
                 </p>
               </div>
-              <button type="button" onClick={() => setMealDetailCell(null)} aria-label="Öğün detayını kapat" className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700">
+              <button type="button" onClick={() => setMealDetailCell(null)} aria-label="Öğün detayını kapat" className="rounded-lg p-2 text-ink-3 hover:bg-surface-alt hover:text-ink">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -2184,43 +2116,43 @@ const MealPlans = () => {
               {getMealImageSource(detailContent) ? (
                 <img src={getMealImageSource(detailContent) ?? ''} alt={detailContent.name} className="h-48 w-full rounded-xl object-cover" />
               ) : (
-                <div className="flex h-32 items-center justify-center rounded-xl bg-slate-100 px-4 text-center text-sm font-semibold text-slate-400">Görsel eklenmemiş</div>
+                <div className="flex h-32 items-center justify-center rounded-xl bg-sunk px-4 text-center text-sm font-semibold text-ink-3">Görsel eklenmemiş</div>
               )}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="rounded-xl bg-orange-50 p-3">
                   <p className="text-[11px] font-semibold text-orange-700">Kalori</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">{detailContent.calories == null ? '—' : `${detailContent.calories} kcal`}</p>
+                  <p className="mt-1 text-sm font-bold text-ink">{detailContent.calories == null ? '—' : `${detailContent.calories} kcal`}</p>
                 </div>
                 <div className="rounded-xl bg-emerald-50 p-3">
                   <p className="text-[11px] font-semibold text-emerald-700">Protein</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">{detailContent.macros.protein} g</p>
+                  <p className="mt-1 text-sm font-bold text-ink">{detailContent.macros.protein} g</p>
                 </div>
                 <div className="rounded-xl bg-sky-50 p-3">
                   <p className="text-[11px] font-semibold text-sky-700">Karbonhidrat</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">{detailContent.macros.carbs} g</p>
+                  <p className="mt-1 text-sm font-bold text-ink">{detailContent.macros.carbs} g</p>
                 </div>
                 <div className="rounded-xl bg-violet-50 p-3">
                   <p className="text-[11px] font-semibold text-violet-700">Yağ</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">{detailContent.macros.fat} g</p>
+                  <p className="mt-1 text-sm font-bold text-ink">{detailContent.macros.fat} g</p>
                 </div>
               </div>
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Açıklama</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{detailContent.description || 'Açıklama eklenmemiş.'}</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink-3">Açıklama</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink-2">{detailContent.description || 'Açıklama eklenmemiş.'}</p>
               </div>
-              <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-500">
-                <span className="rounded-full bg-slate-100 px-3 py-1.5">{detailContent.source === 'recipe' ? (detailContent.recipeId ? 'Tariften eklendi' : 'Tarif snapshotı') : 'Manuel öğün'}</span>
+              <div className="flex flex-wrap gap-2 text-xs font-medium text-ink-2">
+                <span className="rounded-full bg-sunk px-3 py-1.5">{detailContent.source === 'recipe' ? 'Tariften eklendi' : 'Manuel öğün'}</span>
                 {detailContent.isEaten && <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-700">Tamamlandı</span>}
               </div>
             </div>
-            <div className="flex justify-end gap-3 border-t border-slate-100 p-5">
-              <button type="button" onClick={() => setMealDetailCell(null)} className="min-h-11 rounded-lg px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700">Kapat</button>
+            <div className="flex justify-end gap-3 border-t border-line p-5">
+              <button type="button" onClick={() => setMealDetailCell(null)} className="min-h-11 rounded-lg px-4 py-2 text-sm font-bold text-ink-2 hover:bg-surface-alt hover:text-ink">Kapat</button>
               <button
                 type="button"
                 disabled={detailContent.isEaten === true}
                 onClick={() => openMealEdit(mealDetailCell)}
                 title={detailContent.isEaten === true ? 'Tamamlanmış öğünün içeriği değiştirilemez' : 'Öğünü düzenle'}
-                className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+                className="min-h-11 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary/20 hover:bg-brand-hi disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Düzenle
               </button>
@@ -2243,67 +2175,67 @@ const MealPlans = () => {
                 handleApplyMealEdit();
               }}
             >
-              <div className="flex items-start justify-between border-b border-slate-100 p-5">
+              <div className="flex items-start justify-between border-b border-line p-5">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">Öğün Snapshot Düzenleme</p>
-                  <h2 id="meal-edit-dialog-title" className="mt-1 text-xl font-bold text-slate-800">Öğün İçeriğini Düzenle</h2>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-brand">Öğünü düzenle</p>
+                  <h2 id="meal-edit-dialog-title" className="mt-1 text-xl font-bold text-ink">Öğün İçeriğini Düzenle</h2>
+                  <p className="mt-1 text-sm text-ink-2">
                     {mealEditSession.cell.day} · {meals.find((meal) => meal.id === mealEditSession.cell.mealId)?.name ?? 'Öğün'} · {formatMealRowTime(meals.find((meal) => meal.id === mealEditSession.cell.mealId))}
                   </p>
                 </div>
-                <button type="button" onClick={closeMealEdit} aria-label="Öğün düzenlemeyi kapat" className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700">
+                <button type="button" onClick={closeMealEdit} aria-label="Öğün düzenlemeyi kapat" className="rounded-lg p-2 text-ink-3 hover:bg-surface-alt hover:text-ink">
                   <X className="h-5 w-5" />
                 </button>
               </div>
               <div className="space-y-4 p-5">
                 {mealEditSession.error && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{mealEditSession.error}</p>}
                 <div>
-                  <label htmlFor="meal-edit-name" className="mb-1.5 block text-sm font-bold text-slate-700">Öğün adı</label>
-                  <input id="meal-edit-name" type="text" value={mealEditSession.draft.name} onChange={(event) => updateMealEditDraft('name', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  <label htmlFor="meal-edit-name" className="mb-1.5 block text-sm font-bold text-ink">Öğün adı</label>
+                  <input id="meal-edit-name" type="text" value={mealEditSession.draft.name} onChange={(event) => updateMealEditDraft('name', event.target.value)} className="min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20" />
                 </div>
                 <div>
-                  <label htmlFor="meal-edit-description" className="mb-1.5 block text-sm font-bold text-slate-700">Açıklama</label>
-                  <textarea id="meal-edit-description" value={mealEditSession.draft.description} onChange={(event) => updateMealEditDraft('description', event.target.value)} rows={3} className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  <label htmlFor="meal-edit-description" className="mb-1.5 block text-sm font-bold text-ink">Açıklama</label>
+                  <textarea id="meal-edit-description" value={mealEditSession.draft.description} onChange={(event) => updateMealEditDraft('description', event.target.value)} rows={3} className="w-full resize-y rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20" />
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div>
-                    <label htmlFor="meal-edit-calories" className="mb-1.5 block text-xs font-bold text-slate-700">Kalori</label>
-                    <input id="meal-edit-calories" type="number" min="0" max="100000" step="1" inputMode="numeric" value={mealEditSession.draft.calories} onChange={(event) => updateMealEditDraft('calories', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    <label htmlFor="meal-edit-calories" className="mb-1.5 block text-xs font-bold text-ink">Kalori</label>
+                    <input id="meal-edit-calories" type="number" min="0" max="100000" step="1" inputMode="numeric" value={mealEditSession.draft.calories} onChange={(event) => updateMealEditDraft('calories', event.target.value)} className="min-h-11 w-full rounded-lg border border-line px-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20" />
                   </div>
                   <div>
-                    <label htmlFor="meal-edit-protein" className="mb-1.5 block text-xs font-bold text-slate-700">Protein (g)</label>
-                    <input id="meal-edit-protein" type="number" min="0" max="10000" step="any" inputMode="decimal" value={mealEditSession.draft.protein} onChange={(event) => updateMealEditDraft('protein', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    <label htmlFor="meal-edit-protein" className="mb-1.5 block text-xs font-bold text-ink">Protein (g)</label>
+                    <input id="meal-edit-protein" type="number" min="0" max="10000" step="any" inputMode="decimal" value={mealEditSession.draft.protein} onChange={(event) => updateMealEditDraft('protein', event.target.value)} className="min-h-11 w-full rounded-lg border border-line px-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20" />
                   </div>
                   <div>
-                    <label htmlFor="meal-edit-carbs" className="mb-1.5 block text-xs font-bold text-slate-700">Karb. (g)</label>
-                    <input id="meal-edit-carbs" type="number" min="0" max="10000" step="any" inputMode="decimal" value={mealEditSession.draft.carbs} onChange={(event) => updateMealEditDraft('carbs', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    <label htmlFor="meal-edit-carbs" className="mb-1.5 block text-xs font-bold text-ink">Karb. (g)</label>
+                    <input id="meal-edit-carbs" type="number" min="0" max="10000" step="any" inputMode="decimal" value={mealEditSession.draft.carbs} onChange={(event) => updateMealEditDraft('carbs', event.target.value)} className="min-h-11 w-full rounded-lg border border-line px-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20" />
                   </div>
                   <div>
-                    <label htmlFor="meal-edit-fat" className="mb-1.5 block text-xs font-bold text-slate-700">Yağ (g)</label>
-                    <input id="meal-edit-fat" type="number" min="0" max="10000" step="any" inputMode="decimal" value={mealEditSession.draft.fat} onChange={(event) => updateMealEditDraft('fat', event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    <label htmlFor="meal-edit-fat" className="mb-1.5 block text-xs font-bold text-ink">Yağ (g)</label>
+                    <input id="meal-edit-fat" type="number" min="0" max="10000" step="any" inputMode="decimal" value={mealEditSession.draft.fat} onChange={(event) => updateMealEditDraft('fat', event.target.value)} className="min-h-11 w-full rounded-lg border border-line px-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20" />
                   </div>
                 </div>
                 <div>
-                  <p className="mb-1.5 block text-sm font-bold text-slate-700">Görsel</p>
+                  <p className="mb-1.5 block text-sm font-bold text-ink">Görsel</p>
                   {editImageSource ? (
-                    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+                    <div className="relative overflow-hidden rounded-xl border border-line">
                       <img src={editImageSource} alt="Öğün önizlemesi" className="h-44 w-full object-cover" />
                       <button type="button" onClick={handleMealEditRemovePhoto} className="absolute right-2 top-2 inline-flex min-h-10 items-center gap-1 rounded-lg bg-white/95 px-3 text-xs font-bold text-rose-600 shadow-sm hover:bg-white"><X className="h-3.5 w-3.5" /> Kaldır</button>
                     </div>
                   ) : (
-                    <div className="flex min-h-28 items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 text-sm text-slate-400">Görsel eklenmemiş</div>
+                    <div className="flex min-h-28 items-center justify-center rounded-xl border-2 border-dashed border-line bg-surface-alt px-4 text-sm text-ink-3">Görsel eklenmemiş</div>
                   )}
-                  <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 hover:border-primary hover:text-primary">
+                  <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink-2 hover:border-brand hover:text-brand">
                     <Upload className="h-4 w-4" />
                     {editImageSource ? 'Görseli değiştir' : 'Görsel ekle'}
                     <input type="file" accept="image/jpeg, image/png, image/webp" className="hidden" onChange={handleMealEditPhotoChange} />
                   </label>
                 </div>
-                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">Gün, öğün tipi, saat, kaynak, tarif ilişkisi ve tamamlanma durumu bu ekranda değiştirilemez.</p>
+                <p className="rounded-lg bg-surface-alt px-3 py-2 text-xs leading-5 text-ink-2">Gün, öğün tipi, saat, kaynak, tarif ilişkisi ve tamamlanma durumu bu ekranda değiştirilemez.</p>
               </div>
-              <div className="flex justify-end gap-3 border-t border-slate-100 p-5">
-                <button type="button" onClick={closeMealEdit} className="min-h-11 rounded-lg px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-700">Vazgeç</button>
-                <button type="submit" className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-dark">Değişiklikleri Uygula</button>
+              <div className="flex justify-end gap-3 border-t border-line p-5">
+                <button type="button" onClick={closeMealEdit} className="min-h-11 rounded-lg px-4 py-2 text-sm font-bold text-ink-2 hover:bg-surface-alt hover:text-ink">Vazgeç</button>
+                <button type="submit" className="min-h-11 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary/20 hover:bg-brand-hi">Değişiklikleri Uygula</button>
               </div>
             </form>
           </div>
@@ -2320,8 +2252,8 @@ const MealPlans = () => {
             className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-xl"
           >
             <div className="p-6">
-              <h3 id="meal-move-dialog-title" className="text-lg font-bold text-slate-800">Öğünü Taşı</h3>
-              <p id="meal-move-dialog-description" className="mt-1 text-sm text-slate-500">
+              <h3 id="meal-move-dialog-title" className="text-lg font-bold text-ink">Öğünü Taşı</h3>
+              <p id="meal-move-dialog-description" className="mt-1 text-sm text-ink-2">
                 {(() => {
                   const content = weeklyPlan[moveSelectorSource.day]?.[moveSelectorSource.mealId];
                   return typeof content === 'object' && content !== null ? content.name : 'Seçili öğün';
@@ -2329,32 +2261,32 @@ const MealPlans = () => {
               </p>
               <div className="mt-5 space-y-4">
                 <div>
-                  <label htmlFor="meal-move-day" className="mb-1.5 block text-sm font-bold text-slate-700">Gün</label>
+                  <label htmlFor="meal-move-day" className="mb-1.5 block text-sm font-bold text-ink">Gün</label>
                   <select
                     ref={moveTargetDaySelectRef}
                     id="meal-move-day"
                     value={moveTargetDay}
                     onChange={(event) => setMoveTargetDay(event.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-line bg-surface-alt px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                   >
                     {DAYS.map((day) => <option key={day} value={day}>{day}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="meal-move-row" className="mb-1.5 block text-sm font-bold text-slate-700">Öğün satırı</label>
+                  <label htmlFor="meal-move-row" className="mb-1.5 block text-sm font-bold text-ink">Öğün satırı</label>
                   <select
                     id="meal-move-row"
                     value={moveTargetMealId}
                     onChange={(event) => setMoveTargetMealId(event.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-line bg-surface-alt px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                   >
                     {meals.map((meal) => <option key={meal.id} value={meal.id}>{meal.name} · {formatOptionalMealTime(meal.time)}</option>)}
                   </select>
                 </div>
               </div>
               <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setMoveSelectorSource(null)} className="min-h-11 rounded-lg px-4 py-2 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">Vazgeç</button>
-                <button type="button" onClick={handleMoveSelectorSubmit} disabled={!moveTargetMealId} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary/30 transition-all hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50">Taşı</button>
+                <button type="button" onClick={() => setMoveSelectorSource(null)} className="min-h-11 rounded-lg px-4 py-2 text-sm font-bold text-ink-2 transition-colors hover:bg-surface-alt hover:text-ink">Vazgeç</button>
+                <button type="button" onClick={handleMoveSelectorSubmit} disabled={!moveTargetMealId} className="min-h-11 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white shadow-md shadow-primary/30 transition-all hover:bg-brand-hi disabled:cursor-not-allowed disabled:opacity-50">Taşı</button>
               </div>
             </div>
           </div>
@@ -2362,51 +2294,9 @@ const MealPlans = () => {
       )}
 
 
-      {isAddMealModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-             <div className="p-6">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Yeni Öğün Ekle</h3>
-                <div className="space-y-4">
-                   <div>
-                     <label className="block text-sm font-bold text-slate-700 mb-1.5">Öğün Tipi</label>
-                     <select 
-                       value={newMealType}
-                       onChange={(e) => setNewMealType(e.target.value)}
-                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                     >
-                       {MEAL_OPTIONS.map(opt => (
-                         <option key={opt} value={opt}>{opt}</option>
-                       ))}
-                     </select>
-                   </div>
-                   <div>
-                     <label className="block text-sm font-bold text-slate-700 mb-1.5">Öğün Saati</label>
-                     <input 
-                       type="time" 
-                       value={newMealTime}
-                       onChange={(e) => setNewMealTime(e.target.value)}
-                       onClick={(e) => {
-                         try {
-                           if ('showPicker' in HTMLInputElement.prototype) {
-                             (e.target as HTMLInputElement).showPicker();
-                           }
-                         } catch {
-                           // Ignore unsupported
-                         }
-                       }}
-                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
-                     />
-                   </div>
-                </div>
-                <div className="mt-6 flex gap-3 justify-end">
-                   <button onClick={() => setIsAddMealModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">İptal</button>
-                   <button onClick={handleAddMealSubmit} className="px-4 py-2 text-sm font-bold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-md shadow-primary/30 transition-all active:scale-95">Ekle</button>
-                </div>
-             </div>
-          </div>
-        </div>
-      )}
+      <Modal open={isAddMealModalOpen} onClose={() => setIsAddMealModalOpen(false)} title="Öğün satırı ekle" description="Yeni öğünün adını ve saatini belirleyin." footer={<><Button onClick={() => setIsAddMealModalOpen(false)}>Vazgeç</Button><Button variant="primary" type="submit" form="meal-row-form">Satır ekle</Button></>}>
+        <form id="meal-row-form" onSubmit={event => { event.preventDefault(); handleAddMealSubmit(); }} className="nutrition-form-two"><Input label="Öğün adı" list="meal-row-name-options" maxLength={MEAL_SLOT_LABEL_MAX_LENGTH} required value={newMealName} onChange={event => setNewMealName(event.target.value)} placeholder="Örn. İkinci ara öğün" /><Input label="Saat" type="time" required value={newMealTime} onChange={event => setNewMealTime(event.target.value)} /></form>
+      </Modal>
 
       {mealToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
@@ -2414,18 +2304,18 @@ const MealPlans = () => {
              <div className="p-6">
                 <div className="flex items-center gap-3 mb-2 text-red-600">
                    <div className="p-2 bg-red-50 rounded-full"><Trash2 className="w-5 h-5" /></div>
-                   <h3 className="text-lg font-bold text-slate-800">Öğünü Sil</h3>
+                   <h3 className="text-lg font-bold text-ink">Öğünü Sil</h3>
                 </div>
-                <p className="text-sm text-slate-600 mb-6 pl-12">Bu öğün satırını silmek istiyor musunuz?</p>
+                <p className="text-sm text-ink-2 mb-6 pl-12">Bu öğün satırını silmek istiyor musunuz?</p>
                 <div className="flex gap-3 justify-end">
-                   <button onClick={() => setMealToDelete(null)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">Vazgeç</button>
+                   <button onClick={() => setMealToDelete(null)} className="px-4 py-2 text-sm font-bold text-ink-2 hover:text-ink hover:bg-surface-alt rounded-lg transition-colors">Vazgeç</button>
                    <button onClick={executeRemoveMeal} className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md shadow-red-600/30 transition-all active:scale-95">Evet, Sil</button>
                 </div>
              </div>
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 };
 
