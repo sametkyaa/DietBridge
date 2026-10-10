@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { Link } from "react-router-dom";
 import { ArrowLeft, Check, CheckCheck, MoreVertical } from "lucide-react";
 import { OptimisticChatMessage } from "../hooks/useChatComposer";
 import { ChatConversationListItem, ChatMessage } from "../types/chat";
@@ -530,11 +531,17 @@ const ChatMessagePanel: React.FC<ChatMessagePanelProps> = ({
         )}
         {conversation && (
           <>
-            <ChatClientAvatar
-              name={conversation.clientName}
-              url={conversation.clientAvatarUrl}
-              className="h-10 w-10 shrink-0 rounded-full"
-            />
+            <Link
+              to={`/clients/${encodeURIComponent(conversation.clientId)}`}
+              aria-label={`${conversation.clientName} danışan profilini aç`}
+              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
+              <ChatClientAvatar
+                name={conversation.clientName}
+                url={conversation.clientAvatarUrl}
+                className="h-10 w-10 shrink-0 rounded-full"
+              />
+            </Link>
             <h2 className="min-w-0 truncate font-bold text-slate-800">
               {conversation.clientName}
             </h2>

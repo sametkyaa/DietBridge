@@ -30,6 +30,7 @@ import { formatPercentageDisplay } from '../../../shared/utils/percentageDisplay
 import { DailyTaskDetailModal } from '../components/DailyTaskDetailModal';
 import { DailyTaskFormModal } from '../components/DailyTaskFormModal';
 import { DashboardClientSearch } from '../components/DashboardClientSearch';
+import DashboardAccountMenu from '../components/DashboardAccountMenu';
 import { DashboardTaskPanel, type TaskTab } from '../components/DashboardTaskPanel';
 import { NextAppointmentBanner } from '../components/NextAppointmentBanner';
 import { RecentMessagesCard, type RecentMessagesState } from '../components/RecentMessagesCard';
@@ -281,8 +282,10 @@ const DashboardPage = () => {
   return (
     <PageContainer>
       <PageHeader
+        className="relative"
         eyebrow={<span className="capitalize">{formatLongDate(now)}</span>}
-        title={firstName ? `${greetingFor(istanbulHour)}, ${firstName}` : greetingFor(istanbulHour)}
+        title={<span className="block pr-14 md:pr-0">{firstName ? `${greetingFor(istanbulHour)}, ${firstName}` : greetingFor(istanbulHour)}</span>}
+        titleAddon={<DashboardAccountMenu />}
         description={focusMessage}
         actions={(
           <>
