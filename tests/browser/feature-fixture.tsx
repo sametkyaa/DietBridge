@@ -14,10 +14,20 @@ import { AppointmentProvider } from '../../features/appointments/context/Appoint
 import MealPlans from '../../pages/MealPlans';
 import Recipes from '../../pages/Recipes';
 import DashboardLayout from '../../shared/components/DashboardLayout';
+import { MealChangeRequestReviewDialog } from '../../features/meal-change-requests/components/MealChangeRequestReviewDialog';
 function Fixture() {
   const [busy, setBusy] = useState(false);
   const [saved,setSaved]=useState(0);
   const nutritionView = new URLSearchParams(location.search).get('view');
+  if (nutritionView === 'meal-request-review') return saved
+    ? <p role="status">{saved > 0 ? 'Talep sonuçlandırıldı.' : 'İşlem iptal edildi.'}</p>
+    : <MealChangeRequestReviewDialog
+        request={{ id: '33333333-3333-4333-8333-333333333333', clientId: '22222222-2222-4222-8222-222222222222',
+          clientName: 'Test Danışan', clientAvatarPath: null, planDate: '2026-10-11', mealSlot: 'breakfast',
+          requestedSlots: ['breakfast', 'lunch'], notes: 'Kahvaltıyı değiştirebilir miyiz?', status: 'pending',
+          createdAt: '2026-10-10T10:00:00Z', reviewedAt: null, responseNote: null }}
+        onClose={() => setSaved(-1)} onReviewed={() => setSaved(1)}
+      />;
   if (nutritionView === 'meal-plans' && new URLSearchParams(location.search).has('shell')) return (
     <MemoryRouter initialEntries={['/meal-plans']}><Routes><Route element={<DashboardLayout />}><Route path="/meal-plans" element={<MealPlans />} /></Route></Routes></MemoryRouter>
   );

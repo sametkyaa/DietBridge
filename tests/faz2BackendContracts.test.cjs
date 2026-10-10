@@ -65,6 +65,21 @@ test('meal change requests: no direct status writes, decision only through the R
   assert.match(sql, /grant execute on function public\.review_meal_change_request\(uuid, text, text\) to authenticated/);
 });
 
+test('meal request chat reply migration keeps the mobile contract and runs in both release gates', () => {
+  const name = '20261010202019_meal_change_request_chat_replies.sql';
+  const sql = read(name);
+  assert.match(sql, /^begin;$/m);
+  assert.match(sql, /^commit;\s*$/m);
+  assert.match(sql, /perform public\.send_chat_message\(v_relation_id, v_request\.id, v_body\)/);
+  assert.doesNotMatch(sql, /insert into public\.chat_messages|create table|alter table|create policy|exception when/i);
+  assert.match(sql, /v_request\.reviewed_by = v_actor_id/);
+  assert.match(sql, /v_request\.response_note is not distinct from v_note/);
+  for (const path of ['scripts/runDisposableFaz2RuntimeHarness.mjs', 'scripts/runCriticalE2E.mjs']) {
+    assert.ok(readFileSync(join(root, path), 'utf8').includes('addMealRequestChatReplyMigration('));
+  }
+  assert.ok(readFileSync(join(root, 'scripts/runDisposableSupabaseLocalReplay.mjs'), 'utf8').includes(`'${name}'`));
+});
+
 test('unread counts count only non-deleted client messages after the read cursor', () => {
   const sql = read(FAZ2[1]);
   assert.match(sql, /m\.sender_id = c\.client_id/);

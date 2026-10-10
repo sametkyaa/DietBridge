@@ -98,7 +98,8 @@ export const MealChangeRequestReviewDialog = ({ request, onClose, onReviewed }: 
             </p>
           </div>
           <Textarea
-            label="Yanıt notu (isteğe bağlı)"
+            label="Danışana yanıt (isteğe bağlı)"
+            hint="Onayla veya Reddet seçildiğinde yanıtınız danışana sohbet mesajı olarak gönderilir. Boş bırakırsanız mesaj gönderilmez."
             value={note}
             maxLength={1000}
             rows={3}
