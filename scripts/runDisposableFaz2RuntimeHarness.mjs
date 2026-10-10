@@ -352,7 +352,7 @@ const runRestFlows = async () => {
     .eq('category', 'chat_message').eq('conversation_id', reply.conversation_id).single(), 'reply notification');
   assert(clientChatNotification.event_type === 'new_message' && clientChatNotification.event_count === 1
     && clientChatNotification.actor_id === dietitianA.id, 'REST_REVIEW_REPLY_USES_CHAT_NOTIFICATION_ONCE');
-  expectDenied(await dietitianAApi.rpc('review_meal_change_request', { ...reviewInput, p_response_note: 'Farklı yanıt' }), 'REST_CONFLICTING_REVIEW_RETRY_DENIED');
+  expectDenied(await dietitianAApi.rpc('review_meal_change_request', { ...reviewInput, p_response_note: 'Farklı yanıt' }), 'REST_CONFLICTING_REVIEW_RETRY_DENIED', ['P0001']);
   const foreignReply = assertNoError(await dietitianBApi.from('chat_messages').select('id').eq('id', reply.id), 'foreign reply read');
   assert(foreignReply.length === 0, 'REST_REVIEW_REPLY_CROSS_DIETITIAN_ISOLATION');
 
@@ -370,6 +370,9 @@ const runRestFlows = async () => {
     && rejectedReplies[0].body.includes('Karar: Reddedildi') && rejectedReplies[0].body.endsWith(rejectedInput.p_response_note), 'REST_PARALLEL_REJECT_PRESERVES_MULTIPLE_SLOTS_AND_NOTE');
 
   const silentRequest = await makeRequest({ requested_meals: null });
+  expectDenied(await dietitianAApi.rpc('review_meal_change_request', {
+    p_request_id: silentRequest.id, p_decision: 'approved', p_response_note: 'x'.repeat(1001),
+  }), 'REST_REVIEW_NOTE_LIMIT_ENFORCED', ['22023']);
   assertNoError(await dietitianAApi.rpc('review_meal_change_request', {
     p_request_id: silentRequest.id, p_decision: 'approved', p_response_note: '   ',
   }), 'silent review');
@@ -384,7 +387,7 @@ const runRestFlows = async () => {
   }), 'conflict fixture');
   expectDenied(await dietitianAApi.rpc('review_meal_change_request', {
     p_request_id: failedRequest.id, p_decision: 'approved', p_response_note: 'Rollback test',
-  }), 'REST_CHAT_FAILURE_PROPAGATES');
+  }), 'REST_CHAT_FAILURE_PROPAGATES', ['22023']);
   const failedRow = assertNoError(await clientApi.from('meal_change_requests')
     .select('status,reviewed_at,reviewed_by,response_note').eq('id', failedRequest.id).single(), 'rollback read');
   assert(failedRow.status === 'pending' && failedRow.reviewed_at === null
