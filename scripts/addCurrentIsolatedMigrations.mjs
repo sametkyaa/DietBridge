@@ -39,6 +39,13 @@ export const addFaz2Migrations = ({ repoRoot, tempRoot }) => {
 
 export const AUTOMATIC_TASK_DISMISSAL_MIGRATION = '20261006202442_automatic_task_dismissals.sql';
 
+export const MEAL_REQUEST_CHAT_REPLY_MIGRATION = '20261010202019_meal_change_request_chat_replies.sql';
+
+export const addMealRequestChatReplyMigration = ({ repoRoot, tempRoot }) => {
+  const name = MEAL_REQUEST_CHAT_REPLY_MIGRATION;
+  copyFileSync(join(repoRoot, 'supabase', 'migrations', name), join(tempRoot, 'supabase', 'migrations', name), 1);
+};
+
 export const addAutomaticTaskDismissalMigration = ({ repoRoot, tempRoot }) => {
   const name = AUTOMATIC_TASK_DISMISSAL_MIGRATION;
   copyFileSync(join(repoRoot, 'supabase', 'migrations', name), join(tempRoot, 'supabase', 'migrations', name), 1);

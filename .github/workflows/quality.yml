@@ -83,6 +83,8 @@ jobs:
         run: npm ci
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+      - name: Meal request reply UI tests
+        run: npx playwright test -c playwright.features.config.ts tests/e2e/meal-request-reply.spec.ts
       - name: Run disposable critical browser E2E
         run: npm run test:e2e
       - name: Upload browser failure evidence

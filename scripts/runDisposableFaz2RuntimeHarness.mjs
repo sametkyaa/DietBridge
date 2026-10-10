@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createClient } from '@supabase/supabase-js';
 import { assertCiSafeEnvironment } from './ciSafetyGuard.mjs';
-import { addCurrentIsolatedMigrations, addFaz2Migrations, addAutomaticTaskDismissalMigration, AUTOMATIC_TASK_DISMISSAL_MIGRATION, FAZ2_MIGRATIONS } from './addCurrentIsolatedMigrations.mjs';
+import { addCurrentIsolatedMigrations, addFaz2Migrations, addAutomaticTaskDismissalMigration, addMealRequestChatReplyMigration, MEAL_REQUEST_CHAT_REPLY_MIGRATION, FAZ2_MIGRATIONS } from './addCurrentIsolatedMigrations.mjs';
 import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalReplay.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -333,6 +333,65 @@ const runRestFlows = async () => {
   assert(clientMeals[0]?.slot_label === 'Antrenman öncesi' && clientMeals[0]?.type === 'snack', 'REST_CLIENT_READS_SLOT_LABEL');
   const clientPlanNotifications = assertNoError(await clientApi.from('notifications').select('id').eq('category', 'meal_plan'), 'client plan notifications');
   assert(clientPlanNotifications.length === 0, 'REST_PLAN_UPDATED_GATED_OFF');
+
+  // Read the exact canonical text projection used by the existing mobile chat.
+  const reply = assertNoError(await clientApi.from('chat_messages')
+    .select('id,conversation_id,sender_id,client_message_id,body,message_kind,created_at,deleted_at,deleted_by')
+    .eq('client_message_id', request.id).single(), 'client reads review reply');
+  assert(reply.sender_id === dietitianA.id && reply.message_kind === 'text'
+    && reply.body.includes('Öğün değişikliği talebine yanıt')
+    && reply.body.includes('Öğle') && reply.body.includes('Karar: Onaylandı')
+    && reply.body.endsWith('Planı güncelledim.'), 'REST_MOBILE_READS_REVIEW_REPLY_AS_TEXT');
+  const reviewInput = { p_request_id: request.id, p_decision: 'approved', p_response_note: '  Planı güncelledim.  ' };
+  const repeated = await Promise.all(Array.from({ length: 3 }, () => dietitianAApi.rpc('review_meal_change_request', reviewInput)));
+  repeated.forEach((result) => assertNoError(result, 'identical review retry'));
+  const replyRows = assertNoError(await clientApi.from('chat_messages').select('id').eq('client_message_id', request.id), 'reply deduplication read');
+  assert(replyRows.length === 1 && replyRows[0].id === reply.id, 'REST_PARALLEL_RETRIES_CREATE_ONE_REPLY');
+  const clientChatNotification = assertNoError(await clientApi.from('notifications')
+    .select('id,category,event_type,event_count,actor_id,conversation_id')
+    .eq('category', 'chat_message').eq('conversation_id', reply.conversation_id).single(), 'reply notification');
+  assert(clientChatNotification.event_type === 'new_message' && clientChatNotification.event_count === 1
+    && clientChatNotification.actor_id === dietitianA.id, 'REST_REVIEW_REPLY_USES_CHAT_NOTIFICATION_ONCE');
+  expectDenied(await dietitianAApi.rpc('review_meal_change_request', { ...reviewInput, p_response_note: 'Farklı yanıt' }), 'REST_CONFLICTING_REVIEW_RETRY_DENIED', ['P0001']);
+  const foreignReply = assertNoError(await dietitianBApi.from('chat_messages').select('id').eq('id', reply.id), 'foreign reply read');
+  assert(foreignReply.length === 0, 'REST_REVIEW_REPLY_CROSS_DIETITIAN_ISOLATION');
+
+  const makeRequest = async (overrides = {}) => assertNoError(await clientApi.from('meal_change_requests').insert({
+    client_id: clientA.id, dietitian_id: dietitianA.id, plan_date: today,
+    meal_slot: 'breakfast', requested_meals: { alternatives: ['breakfast', 'dinner', 'breakfast', 'unknown'] },
+    notes: 'Disposable review reply test', status: 'pending', ...overrides,
+  }).select().single(), 'review reply request fixture');
+  const rejectRequest = await makeRequest();
+  const rejectedInput = { p_request_id: rejectRequest.id, p_decision: 'rejected', p_response_note: 'Şimdilik aynı planla devam edelim.\nBirlikte değerlendirelim.' };
+  const parallelReviews = await Promise.all([dietitianAApi.rpc('review_meal_change_request', rejectedInput), dietitianAApi.rpc('review_meal_change_request', rejectedInput)]);
+  parallelReviews.forEach((result) => assertNoError(result, 'parallel first review'));
+  const rejectedReplies = assertNoError(await clientApi.from('chat_messages').select('body').eq('client_message_id', rejectRequest.id), 'rejected reply');
+  assert(rejectedReplies.length === 1 && rejectedReplies[0].body.includes('Kahvaltı, Akşam')
+    && rejectedReplies[0].body.includes('Karar: Reddedildi') && rejectedReplies[0].body.endsWith(rejectedInput.p_response_note), 'REST_PARALLEL_REJECT_PRESERVES_MULTIPLE_SLOTS_AND_NOTE');
+
+  const silentRequest = await makeRequest({ requested_meals: null });
+  expectDenied(await dietitianAApi.rpc('review_meal_change_request', {
+    p_request_id: silentRequest.id, p_decision: 'approved', p_response_note: 'x'.repeat(1001),
+  }), 'REST_REVIEW_NOTE_LIMIT_ENFORCED', ['22023']);
+  assertNoError(await dietitianAApi.rpc('review_meal_change_request', {
+    p_request_id: silentRequest.id, p_decision: 'approved', p_response_note: '   ',
+  }), 'silent review');
+  const silentMessages = assertNoError(await clientApi.from('chat_messages').select('id').eq('client_message_id', silentRequest.id), 'silent messages');
+  assert(silentMessages.length === 0, 'REST_BLANK_NOTE_CREATES_NO_CHAT_MESSAGE');
+
+  // Force the existing send RPC to fail at its idempotency check. The request
+  // update happens first, so observing pending afterward proves DB rollback.
+  const failedRequest = await makeRequest();
+  assertNoError(await dietitianAApi.rpc('send_chat_message', {
+    p_dietitian_client_id: relation.id, p_client_message_id: failedRequest.id, p_body: 'Conflicting disposable key',
+  }), 'conflict fixture');
+  expectDenied(await dietitianAApi.rpc('review_meal_change_request', {
+    p_request_id: failedRequest.id, p_decision: 'approved', p_response_note: 'Rollback test',
+  }), 'REST_CHAT_FAILURE_PROPAGATES', ['22023']);
+  const failedRow = assertNoError(await clientApi.from('meal_change_requests')
+    .select('status,reviewed_at,reviewed_by,response_note').eq('id', failedRequest.id).single(), 'rollback read');
+  assert(failedRow.status === 'pending' && failedRow.reviewed_at === null
+    && failedRow.reviewed_by === null && failedRow.response_note === null, 'REST_CHAT_FAILURE_ROLLS_BACK_DECISION');
 };
 
 const run = async () => {
@@ -340,11 +399,12 @@ const run = async () => {
   addCurrentIsolatedMigrations({ repoRoot, tempRoot: disposable.tempRoot });
   addFaz2Migrations({ repoRoot, tempRoot: disposable.tempRoot });
   addAutomaticTaskDismissalMigration({ repoRoot, tempRoot: disposable.tempRoot });
+  addMealRequestChatReplyMigration({ repoRoot, tempRoot: disposable.tempRoot });
   const migrationFiles = readdirSync(join(disposable.tempRoot, 'supabase', 'migrations'))
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(migrationFiles.at(-1) === AUTOMATIC_TASK_DISMISSAL_MIGRATION, 'DASHBOARD_PREFERENCE_MIGRATION_IS_DISPOSABLE_TAIL');
-  assert(migrationFiles.length === 63 + FAZ2_MIGRATIONS.length, `DISPOSABLE_MIGRATION_CHAIN_${63 + FAZ2_MIGRATIONS.length}`);
+  assert(migrationFiles.at(-1) === MEAL_REQUEST_CHAT_REPLY_MIGRATION, 'MEAL_REQUEST_CHAT_REPLY_MIGRATION_IS_DISPOSABLE_TAIL');
+  assert(migrationFiles.length === 64 + FAZ2_MIGRATIONS.length, `DISPOSABLE_MIGRATION_CHAIN_${64 + FAZ2_MIGRATIONS.length}`);
   await configureDisposableProject(disposable.configPath);
   stackStartAttempted = true;
   runCli(disposable.tempRoot, ['start']);
@@ -355,7 +415,7 @@ const run = async () => {
   assertCiSafeEnvironment({ SUPABASE_URL: local.API_URL }, { requireLoopback: true });
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_ONLY');
   assert(Boolean(local.ANON_KEY && local.SERVICE_ROLE_KEY), 'DISPOSABLE_KEYS_PRESENT');
-  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === String(63 + FAZ2_MIGRATIONS.length), 'SCHEMA_MIGRATION_REPLAY_COMPLETE');
+  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === String(64 + FAZ2_MIGRATIONS.length), 'SCHEMA_MIGRATION_REPLAY_COMPLETE');
 
   const sqlOutput = runSqlFile(sqlContractPath);
   assert(sqlOutput.includes('FAZ2_BACKEND_CONTRACT_PASS'), 'SQL_CONTRACT_MATRIX_PASS');

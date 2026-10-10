@@ -740,4 +740,127 @@ $$;
 
 \echo FAZ2_BACKEND_CONTRACT_PASS
 
+-- ===========================================================================
+-- 9. Meal request replies reuse mobile text chat atomically (local only).
+-- ===========================================================================
+create function faz2_test.fail_reply_notification() returns trigger language plpgsql as $$
+begin
+  if new.category = 'chat_message'
+     and current_setting('faz2_test.fail_reply_notification', true) = 'true' then
+    raise exception 'Disposable notification failure' using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+create trigger faz2_reply_notification_failure before insert or update on public.notifications
+for each row execute function faz2_test.fail_reply_notification();
+
+do $$
+declare
+  c faz2_test.ctx;
+  v_request public.meal_change_requests;
+  v_result public.meal_change_requests;
+  v_reply public.chat_messages;
+  v_note text := E'Yumurta tercih edebilirsin.\nPorsiyonu birlikte netleştirelim.';
+  v_before integer;
+  v_last_message uuid;
+begin
+  select * into c from faz2_test.ctx;
+  perform faz2_test.act_as(c.client_a);
+  insert into public.meal_change_requests (client_id,dietitian_id,plan_date,meal_slot,requested_meals,notes)
+  values (c.client_a,c.dietitian_a,c.today,'breakfast',
+    '{"alternatives":["breakfast","dinner","breakfast",null,123,"unknown"]}', 'Kahvaltı değişsin')
+  returning * into v_request;
+  perform faz2_test.reset_actor();
+  select coalesce(sum(event_count),0) into v_before from public.notifications
+    where recipient_id=c.client_a and category='chat_message';
+
+  perform faz2_test.act_as(c.dietitian_a);
+  select * into v_result from public.review_meal_change_request(v_request.id,'approved','  '||v_note||'  ');
+  select * into v_reply from public.chat_messages where client_message_id=v_request.id and sender_id=c.dietitian_a;
+  if v_reply.id is null or v_reply.message_kind<>'text'
+     or v_reply.body <> format(E'Öğün değişikliği talebine yanıt\n%s · Kahvaltı, Akşam\nKarar: Onaylandı\n\n%s',to_char(c.today,'DD.MM.YYYY'),v_note) then
+    raise exception 'FAIL: REVIEW_CHAT_CONTEXT_AND_MULTILINE_NOTE';
+  end if;
+  perform public.review_meal_change_request(v_request.id,'approved',v_note);
+  if (select count(*) from public.chat_messages where client_message_id=v_request.id and sender_id=c.dietitian_a)<>1 then
+    raise exception 'FAIL: REVIEW_CHAT_IDENTICAL_RETRY_ONCE';
+  end if;
+  perform faz2_test.expect_error(format(
+    'select public.review_meal_change_request(%L,%L,%L)',v_request.id,'rejected',v_note),array['P0001'],'REVIEW_CHAT_CONFLICTING_DECISION_DENIED');
+  perform faz2_test.reset_actor();
+  if (select coalesce(sum(event_count),0) from public.notifications where recipient_id=c.client_a and category='chat_message')<>v_before+1 then
+    raise exception 'FAIL: REVIEW_CHAT_NOTIFICATION_ONCE';
+  end if;
+  if (select last_message_id from public.chat_conversations where id=v_reply.conversation_id)<>v_reply.id then
+    raise exception 'FAIL: REVIEW_CHAT_LAST_MESSAGE_TRACKED';
+  end if;
+  perform faz2_test.act_as(c.client_a);
+  if not exists (select 1 from public.chat_messages where id=v_reply.id) then
+    raise exception 'FAIL: REVIEW_CHAT_CLIENT_CAN_READ';
+  end if;
+  perform faz2_test.reset_actor();
+  perform faz2_test.act_as(c.client_b);
+  if exists (select 1 from public.chat_messages where id=v_reply.id) then
+    raise exception 'FAIL: REVIEW_CHAT_FOREIGN_CLIENT_CANNOT_READ';
+  end if;
+  perform faz2_test.reset_actor();
+
+  -- A deleted message stays deleted when the exact review is retried.
+  perform faz2_test.act_as(c.dietitian_a);
+  perform public.delete_chat_message(v_reply.id);
+  perform public.review_meal_change_request(v_request.id,'approved',v_note);
+  if exists (select 1 from public.chat_messages where id=v_reply.id and deleted_at is null) then
+    raise exception 'FAIL: REVIEW_CHAT_RETRY_DOES_NOT_RESURRECT';
+  end if;
+  perform faz2_test.reset_actor();
+
+  -- A rejected review without a note writes no message.
+  perform faz2_test.act_as(c.client_a);
+  insert into public.meal_change_requests (client_id,dietitian_id,plan_date,meal_slot)
+  values (c.client_a,c.dietitian_a,c.today,'lunch') returning * into v_request;
+  perform faz2_test.reset_actor();
+  perform faz2_test.act_as(c.dietitian_a);
+  perform public.review_meal_change_request(v_request.id,'rejected','   ');
+  if exists (select 1 from public.chat_messages where client_message_id=v_request.id) then
+    raise exception 'FAIL: REVIEW_CHAT_BLANK_NOTE_SILENT';
+  end if;
+  perform faz2_test.reset_actor();
+
+  -- A historical reviewed row must not be used to backfill a message.
+  insert into public.meal_change_requests (client_id,dietitian_id,plan_date,meal_slot,status,reviewed_at,reviewed_by,response_note)
+  values (c.client_a,c.dietitian_a,c.today,'lunch','approved',now(),c.dietitian_a,'Historical note') returning * into v_request;
+  perform faz2_test.act_as(c.dietitian_a);
+  perform faz2_test.expect_error(format(
+    'select public.review_meal_change_request(%L,%L,%L)',v_request.id,'approved','Historical note'),array['P0001'],'REVIEW_CHAT_NO_HISTORY_BACKFILL');
+  perform faz2_test.reset_actor();
+
+  -- Fail after inserting the chat message but before its notification succeeds.
+  -- The decision, message and conversation pointer must all roll back.
+  perform faz2_test.act_as(c.client_a);
+  insert into public.meal_change_requests (client_id,dietitian_id,plan_date,meal_slot,requested_meals)
+  values (c.client_a,c.dietitian_a,c.today,'snack','{"alternatives":"malformed"}') returning * into v_request;
+  perform faz2_test.reset_actor();
+  select last_message_id into v_last_message from public.chat_conversations where dietitian_client_id=c.relation_a;
+  perform set_config('faz2_test.fail_reply_notification','true',true);
+  perform faz2_test.act_as(c.dietitian_a);
+  perform faz2_test.expect_error(format(
+    'select public.review_meal_change_request(%L,%L,%L)',v_request.id,'rejected','Retry later'),array['P0001'],'REVIEW_CHAT_NOTIFICATION_FAILURE_PROPAGATES');
+  perform faz2_test.reset_actor();
+  perform set_config('faz2_test.fail_reply_notification','false',true);
+  select * into v_result from public.meal_change_requests where id=v_request.id;
+  if v_result.status<>'pending' or v_result.reviewed_at is not null or v_result.response_note is not null
+     or exists(select 1 from public.chat_messages where client_message_id=v_request.id)
+     or (select last_message_id from public.chat_conversations where dietitian_client_id=c.relation_a) is distinct from v_last_message then
+    raise exception 'FAIL: REVIEW_CHAT_NOTIFICATION_FAILURE_ATOMIC_ROLLBACK';
+  end if;
+  perform faz2_test.act_as(c.dietitian_a);
+  perform public.review_meal_change_request(v_request.id,'rejected','Retry later');
+  select * into v_reply from public.chat_messages where client_message_id=v_request.id;
+  if v_reply.id is null or position('Ara öğün' in v_reply.body)=0 or position('Karar: Reddedildi' in v_reply.body)=0 then
+    raise exception 'FAIL: REVIEW_CHAT_MALFORMED_SLOTS_FALLBACK';
+  end if;
+  perform faz2_test.reset_actor();
+  raise notice 'PASS: REVIEW_CHAT_ATOMIC_MOBILE_CONTRACT';
+end $$;
+
 rollback;
