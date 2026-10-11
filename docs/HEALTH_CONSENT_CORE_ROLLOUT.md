@@ -23,7 +23,7 @@ Sağlık bildirim üreticileri paylaşım tercihini kontrol eder; yeni kayıt/ou
 
 1. Gerçek veri sorumlusu kimliği ve başvuru kanalı; işleme şartları, aydınlatma/rıza metni ve sürümler. SQL'deki `*-draft` metinler kamuya sunulmaz.
 2. Supabase ve gerçek teknik sağlayıcılar için KVKK m.9 aktarım mekanizması.
-3. Kalan ayrıcalıklı okuma/cache yollarının değerlendirmesi, gerçek migration zinciri/PostgREST/RPC/Storage ve fiziksel cihaz testleri; uyumlu mobil sürüm. Backend etkin olduğunda eski mobil sürümler korunan sağlık yazmalarında hata alır.
+3. Kalan ayrıcalıklı okuma/cache yollarının değerlendirmesi, tam zincir/API CI sonuçlarının doğrulanması ve fiziksel cihaz testleri; uyumlu mobil sürüm. Backend etkin olduğunda eski mobil sürümler korunan sağlık yazmalarında hata alır.
 
 Bu kapılar ve canlı uygulama onayı olmadan `private.health_consent_settings.enabled` false kalır. Mobil `EXPO_PUBLIC_ENABLE_HEALTH_CONSENT=false` kalır. Mobil flag güvenlik sınırı değildir; backend kendi ayarını bağımsız uygular. Sağlık bilgisi girmeden hesap kullanımına devam edilebilir.
 
@@ -41,4 +41,9 @@ Kaynak: https://www.kvkk.gov.tr/Icerik/2037/Acik-Riza-Alirken-Dikkat-Edilecek-Hu
 
 Mesaj/bildirim matrisi üç gerçek migration üzerinde yerelde PGlite ile PASS: paylaşım yok/yalnız saklama/paylaşım var, RPC tekrar yanıtları, diyetisyen SELECT/okunmamış sayıları, yeni görsel işlemi, kendi geçmiş erişimi/soft-delete/iptal, servis içerik/validasyon yazması, bildirimin atlanması, push geçişinin durması ve metin sürümü değişikliği. Chat replay RPC fixture'ları kasıtlı olarak minimaldir; bulk bildirim, hedef temizleme ve bildirim üretici gövdeleri repository migration'larından alınır (fixture durum enum'u hedef temizlemede text'e uyarlanır). Gerçek üretim fonksiyonlarının tam davranış testi sayılmaz. İmza/parametre/ACL/entry marker önkoşulları production'da salt okunur doğrulandı; migration production'da çalıştırılmadı.
 
-`node scripts/runChatImageValidatorTests.mjs`: 13 saf handler vakası Node 24 adaptöründe PASS; testler JPEG doğrulayıcıyı dependency injection ile değiştirir. Bu çalıştırma gerçek Deno/Edge veya JPEG decoder testi değildir. Gerçek Edge dağıtımı ve HTTP testi yayın kapısıdır. Docker bu yerel çalışma ortamında yoktur; PostgreSQL 17 matrisi CI'da yürütülür.
+`node scripts/runChatImageValidatorTests.mjs`: 13 saf handler vakası Node 24 adaptöründe PASS; testler JPEG doğrulayıcıyı dependency injection ile değiştirir. Bu çalıştırma gerçek Deno/Edge veya JPEG decoder testi değildir. Docker ve Deno bu yerel çalışma ortamında yoktur; aşağıdaki ek kontroller CI'da yürütülür. Son commit'in iş sonuçları PR kontrollerinden doğrulanır.
+
+- `deno-validator`: Deno 2.9.7 ile gerçek kaynakların typecheck'i, handler testleri ve gerçek `jpeg-js` çözümleme testleri.
+- `full-runtime`: `node scripts/runDisposableFaz2RuntimeHarness.mjs --health-consent`. Repository'deki 77 migration dosyasının tamamı ve tek yerel önkoşul, mevcut salt sözdizimi materialization uyarlamalarıyla geçici Supabase zincirine alınır. Yeni yedi dosya kaynakla birebir kopyalanır; kaynak migration değiştirilmez. Önce kapalı özelliğin mevcut Faz 2 davranışı, sonra geçici ayar etkinleştirilerek gerçek Auth/PostgREST/RPC/Storage/Edge HTTP senaryoları çalıştırılır. İki aşamalı tercih, gerçek RPC tekrar yanıtları, JPEG doğrulama/finalize, yabancı erişim, negatif tercih, soft-delete/upload iptali, servis validasyon/yazma, bildirim ve push outbox, sürüm değişikliği ve sunucu olay kaydı sınanır. Yeni signed URL erişimi kapanırken önceden verilmiş 300 saniyelik URL'nin sürebildiği açıkça doğrulanır.
+
+Geçici stack yalnız loopback adresine açılır, yerel anahtarlar bellekte tutulur ve stack/volume sonunda silinir. Bu CI ortamı production dağıtımı, fiziksel cihaz testi veya başlamış indirme/cache işlemlerinin tümünü geri çağırma garantisi değildir. Production Edge dağıtımı ve uyumlu mobil cihaz kontrolü ayrıca tamamlanmalıdır.

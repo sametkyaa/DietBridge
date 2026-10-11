@@ -10,17 +10,20 @@
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createClient } from '@supabase/supabase-js';
 import { assertCiSafeEnvironment } from './ciSafetyGuard.mjs';
-import { addCurrentIsolatedMigrations, addFaz2Migrations, addAutomaticTaskDismissalMigration, addMealRequestChatReplyMigration, MEAL_REQUEST_CHAT_REPLY_MIGRATION, FAZ2_MIGRATIONS } from './addCurrentIsolatedMigrations.mjs';
+import { addHealthConsentRuntimeMigrations, HEALTH_RUNTIME_EXTRA_MIGRATIONS, addCurrentIsolatedMigrations, addFaz2Migrations, addAutomaticTaskDismissalMigration, addMealRequestChatReplyMigration, MEAL_REQUEST_CHAT_REPLY_MIGRATION, FAZ2_MIGRATIONS } from './addCurrentIsolatedMigrations.mjs';
+import { runHealthConsentRuntimeFlows } from './healthConsentRuntimeFlows.mjs';
 import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalReplay.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SUPABASE_VERSION = '2.110.0';
+const includeHealthConsent = process.argv.includes('--health-consent');
+const expectedMigrationCount = 64 + FAZ2_MIGRATIONS.length + (includeHealthConsent ? HEALTH_RUNTIME_EXTRA_MIGRATIONS.length : 0);
 const PASSWORD = 'Disposable-Faz2-Runtime-9k!';
 const projectId = `dietbridge-faz2-${process.pid}-${randomUUID().slice(0, 8)}`;
 const sqlContractPath = join(repoRoot, 'supabase', 'tests', 'faz2_backend_contract.sql');
@@ -400,11 +403,21 @@ const run = async () => {
   addFaz2Migrations({ repoRoot, tempRoot: disposable.tempRoot });
   addAutomaticTaskDismissalMigration({ repoRoot, tempRoot: disposable.tempRoot });
   addMealRequestChatReplyMigration({ repoRoot, tempRoot: disposable.tempRoot });
+  if (includeHealthConsent) {
+    addHealthConsentRuntimeMigrations({ repoRoot, tempRoot: disposable.tempRoot });
+    const target = join(disposable.tempRoot, 'supabase', 'functions', 'validate-chat-image');
+    mkdirSync(target, { recursive: true });
+    for (const file of ['index.ts', 'handler.ts', 'contracts.ts', 'jpegValidator.ts', 'deno.json']) {
+      copyFileSync(join(repoRoot, 'supabase', 'functions', 'validate-chat-image', file), join(target, file), 1);
+    }
+    writeFileSync(disposable.configPath, readFileSync(disposable.configPath, 'utf8') +
+      '\n[functions.validate-chat-image]\nenabled = true\nverify_jwt = true\nentrypoint = "./functions/validate-chat-image/index.ts"\n');
+  }
   const migrationFiles = readdirSync(join(disposable.tempRoot, 'supabase', 'migrations'))
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
-  assert(migrationFiles.at(-1) === MEAL_REQUEST_CHAT_REPLY_MIGRATION, 'MEAL_REQUEST_CHAT_REPLY_MIGRATION_IS_DISPOSABLE_TAIL');
-  assert(migrationFiles.length === 64 + FAZ2_MIGRATIONS.length, `DISPOSABLE_MIGRATION_CHAIN_${64 + FAZ2_MIGRATIONS.length}`);
+  assert(migrationFiles.at(-1) === (includeHealthConsent ? HEALTH_RUNTIME_EXTRA_MIGRATIONS.at(-1) : MEAL_REQUEST_CHAT_REPLY_MIGRATION), 'MEAL_REQUEST_CHAT_REPLY_MIGRATION_IS_DISPOSABLE_TAIL');
+  assert(migrationFiles.length === expectedMigrationCount, `DISPOSABLE_MIGRATION_CHAIN_${expectedMigrationCount}`);
   await configureDisposableProject(disposable.configPath);
   stackStartAttempted = true;
   runCli(disposable.tempRoot, ['start']);
@@ -415,7 +428,7 @@ const run = async () => {
   assertCiSafeEnvironment({ SUPABASE_URL: local.API_URL }, { requireLoopback: true });
   assert(/^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/.test(local.API_URL ?? ''), 'LOOPBACK_API_ONLY');
   assert(Boolean(local.ANON_KEY && local.SERVICE_ROLE_KEY), 'DISPOSABLE_KEYS_PRESENT');
-  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === String(64 + FAZ2_MIGRATIONS.length), 'SCHEMA_MIGRATION_REPLAY_COMPLETE');
+  assert(runSql('select count(*) from supabase_migrations.schema_migrations') === String(expectedMigrationCount), 'SCHEMA_MIGRATION_REPLAY_COMPLETE');
 
   const sqlOutput = runSqlFile(sqlContractPath);
   assert(sqlOutput.includes('FAZ2_BACKEND_CONTRACT_PASS'), 'SQL_CONTRACT_MATRIX_PASS');
@@ -423,6 +436,11 @@ const run = async () => {
   admin = createClient(local.API_URL, local.SERVICE_ROLE_KEY, clientOptions);
   await runRestFlows();
   pass('FAZ2_RUNTIME_PASS');
+  if (includeHealthConsent) {
+    await runHealthConsentRuntimeFlows({ admin, local, runSql, createActor, signIn,
+      approveDietitian, bootstrapDietitian, activateRelationship, assert, assertNoError, expectDenied });
+    pass('HEALTH_CONSENT_FULL_RUNTIME_PASS');
+  }
 };
 
 try {

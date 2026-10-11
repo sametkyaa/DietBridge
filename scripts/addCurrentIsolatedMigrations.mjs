@@ -63,3 +63,29 @@ export const addCurrentIsolatedMigrations = ({ repoRoot, tempRoot }) => {
   if (count !== 62) throw new Error(`Current disposable migration count must be 62, received ${count}.`);
   return { canonical: 61, localPrerequisite: 1, total: count };
 };
+
+// Remaining source migrations for the complete health-consent HTTP replay.
+// Keep the list explicit so adding an omitted migration cannot silently pass.
+export const HEALTH_RUNTIME_EXTRA_MIGRATIONS = Object.freeze([
+  '20261005120859_dietitian_invite_codes.sql',
+  '20261005124951_recipe_import_core.sql',
+  '20261005132107_recipe_import_extraction_metrics.sql',
+  '20261011103029_mobile_weight_istanbul_date.sql',
+  '20261011191135_health_data_consent.sql',
+  '20261011193450_health_consent_meal_paths.sql',
+  '20261011195445_health_consent_chat_background_paths.sql',
+]);
+
+export const addHealthConsentRuntimeMigrations = ({ repoRoot, tempRoot }) => {
+  const sourceDirectory = join(repoRoot, 'supabase', 'migrations');
+  const destinationDirectory = join(tempRoot, 'supabase', 'migrations');
+  const source = readdirSync(sourceDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
+  const missing = source.filter((name) => !existsSync(join(destinationDirectory, name)));
+  if (JSON.stringify(missing) !== JSON.stringify(HEALTH_RUNTIME_EXTRA_MIGRATIONS)) {
+    throw new Error('Health runtime migration inventory changed; review the complete chain.');
+  }
+  for (const name of missing) copyFileSync(join(sourceDirectory, name), join(destinationDirectory, name), 1);
+  const total = readdirSync(destinationDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).length;
+  if (total !== source.length + 1) throw new Error('Full source chain plus one local prerequisite expected.');
+  return total;
+};
