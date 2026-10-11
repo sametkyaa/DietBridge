@@ -1,0 +1,57 @@
+{
+  "migrationName": "mobile_weight_istanbul_date",
+  "productionVersion": "20261011103029",
+  "approvedSourceFile": "20261011120000_mobile_weight_istanbul_date.sql",
+  "canonicalSourceFile": "20261011103029_mobile_weight_istanbul_date.sql",
+  "sourceUnchanged": true,
+  "productionApplied": true,
+  "postflight": "PASS",
+  "before": [
+    {
+      "signature": "save_my_current_weight(numeric)",
+      "owner": "postgres",
+      "security_definer": true,
+      "proconfig": [
+        "search_path=pg_catalog, public"
+      ],
+      "grants": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_hash": "8e878ab9823af5150e3a14911c4482a8"
+    },
+    {
+      "signature": "sync_client_weight_to_measurements()",
+      "owner": "postgres",
+      "security_definer": true,
+      "proconfig": [
+        "search_path=pg_catalog, public"
+      ],
+      "grants": "{postgres=X/postgres,service_role=X/postgres}",
+      "body_hash": "02c64e1a661c10863896c7a0116161a7"
+    }
+  ],
+  "after": [
+    {
+      "signature": "save_my_current_weight(numeric)",
+      "owner": "postgres",
+      "security_definer": true,
+      "proconfig": [
+        "search_path=pg_catalog, public",
+        "TimeZone=Europe/Istanbul"
+      ],
+      "grants": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "body_hash": "8e878ab9823af5150e3a14911c4482a8"
+    },
+    {
+      "signature": "sync_client_weight_to_measurements()",
+      "owner": "postgres",
+      "security_definer": true,
+      "proconfig": [
+        "search_path=pg_catalog, public",
+        "TimeZone=Europe/Istanbul"
+      ],
+      "grants": "{postgres=X/postgres,service_role=X/postgres}",
+      "body_hash": "02c64e1a661c10863896c7a0116161a7"
+    }
+  ],
+  "applicationDataWrites": false,
+  "storageWrites": false
+}
