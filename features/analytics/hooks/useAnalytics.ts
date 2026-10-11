@@ -5,6 +5,8 @@ import {
   fetchClientAnalytics,
 } from '../services/analyticsService';
 import { getPreviousPeriodNow } from '../utils/analyticsInsights';
+import { useAuth } from '../../auth/context/AuthContext';
+import { subscribeToHealthDataRefresh } from '../../../shared/utils/healthDataRefresh';
 import type {
   AnalyticsClientOption,
   AnalyticsDateRangeKey,
@@ -45,6 +47,8 @@ const userMessageFrom = (cause: unknown): string => {
 };
 
 export const useAnalytics = (): UseAnalyticsResult => {
+  const { user, accessState } = useAuth();
+  const userId = accessState.status === 'allowed' ? user?.id ?? null : null;
   const [clients, setClients] = useState<AnalyticsClientOption[]>([]);
   const [clientListStatus, setClientListStatus] = useState<ClientListStatus>('loading');
   const [clientListError, setClientListError] = useState<string | null>(null);
@@ -56,6 +60,12 @@ export const useAnalytics = (): UseAnalyticsResult => {
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const clientRequestGeneration = useRef(0);
   const analyticsRequestGeneration = useRef(0);
+
+  const clearAnalytics = useCallback(() => {
+    analyticsRequestGeneration.current += 1;
+    setReport(null);
+    setPreviousReport(null);
+  }, []);
 
   const loadClients = useCallback(async (): Promise<void> => {
     const generation = ++clientRequestGeneration.current;
@@ -81,8 +91,9 @@ export const useAnalytics = (): UseAnalyticsResult => {
 
   const loadAnalytics = useCallback(async (): Promise<void> => {
     const generation = ++analyticsRequestGeneration.current;
-    if (selectedClientId === null) {
+    if (!userId || selectedClientId === null) {
       setReport(null);
+      setPreviousReport(null);
       setAnalyticsStatus('idle');
       setAnalyticsError(null);
       return;
@@ -113,7 +124,7 @@ export const useAnalytics = (): UseAnalyticsResult => {
       setAnalyticsStatus('error');
       setAnalyticsError(userMessageFrom(cause));
     }
-  }, [rangeKey, selectedClientId]);
+  }, [rangeKey, selectedClientId, userId]);
 
   useEffect(() => {
     void loadClients();
@@ -128,6 +139,11 @@ export const useAnalytics = (): UseAnalyticsResult => {
       analyticsRequestGeneration.current += 1;
     };
   }, [loadAnalytics]);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+    return subscribeToHealthDataRefresh(loadAnalytics, clearAnalytics);
+  }, [clearAnalytics, loadAnalytics, userId]);
 
   const selectClient = useCallback((clientId: string | null) => {
     analyticsRequestGeneration.current += 1;

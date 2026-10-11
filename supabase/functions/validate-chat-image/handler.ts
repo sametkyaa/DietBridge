@@ -222,6 +222,26 @@ const hasActiveConversationRelationship = async (
   }
 };
 
+// Use the caller's JWT for consent; service-role reads never prove consent.
+const hasImageProcessingConsent = async (
+  configuration: ServiceConfiguration,
+  intentId: string,
+  token: string,
+  dependencies: ValidateChatImageDependencies,
+): Promise<boolean> => {
+  try {
+    const response = await dependencies.fetch(
+      `${configuration.baseUrl}/rest/v1/rpc/can_process_my_chat_image`,
+      { method: "POST", headers: {
+        ...userHeaders(configuration.anonKey, token), "content-type": "application/json",
+      }, body: JSON.stringify({ p_intent_id: intentId }) },
+    );
+    return response.ok && (await parseJson(response)) === true;
+  } catch {
+    return false;
+  }
+};
+
 const readBoundedResponseBody = async (
   response: Response,
 ): Promise<Uint8Array | null> => {
@@ -376,6 +396,10 @@ async function handleRequest(
 
   const intentId = parseIntentIdRequest(await request.text());
   if (!intentId) return errorResponse(400, "invalid_request");
+
+  if (!await hasImageProcessingConsent(configuration, intentId, token, dependencies)) {
+    return errorResponse(404, "not_found");
+  }
 
   const intent = await fetchIntent(configuration, intentId, dependencies);
   // Missing, malformed, or someone else's intent deliberately share one response.

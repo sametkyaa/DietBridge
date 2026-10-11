@@ -17,7 +17,7 @@ assertCiSafeEnvironment();
 const docker = (args, input) => execFileSync('docker', args, {
   input, encoding: 'utf8', timeout: 120000, maxBuffer: 4 * 1024 * 1024,
 });
-const sql = (input) => docker(['exec', '-i', name, 'psql', '-X', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], input);
+const sql = (input) => docker(['exec', '-i', name, 'psql', '-h', '127.0.0.1', '-X', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], input);
 const originalDefinition = (fn) => {
   const start = baseline.indexOf(`CREATE OR REPLACE FUNCTION "public"."${fn}"`);
   const end = baseline.indexOf('\n$$;', start);
@@ -58,7 +58,7 @@ try {
   started = true;
   let ready = false;
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    try { docker(['exec', name, 'pg_isready', '-U', 'postgres']); ready = true; break; } catch { /* startup only */ }
+    try { docker(['exec', name, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres']); ready = true; break; } catch { /* startup only */ }
     await new Promise((done) => setTimeout(done, 500));
   }
   assert(ready, 'Disposable PostgreSQL did not start.');

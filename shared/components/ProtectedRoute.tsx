@@ -34,7 +34,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ allowIncomplete = false }: ProtectedRouteProps) => {
-  const { accessState, refreshAccess, signOut } = useAuth();
+  const { accessState, refreshAccess, signOut, user } = useAuth();
 
   switch (accessState.status) {
     case 'initializing':
@@ -42,7 +42,7 @@ const ProtectedRoute = ({ allowIncomplete = false }: ProtectedRouteProps) => {
     case 'resolving_access':
       return <LoadingState message="Hesap erişimi doğrulanıyor..." />;
     case 'allowed':
-      return allowIncomplete ? <Navigate to="/" replace /> : <Outlet />;
+      return allowIncomplete ? <Navigate to="/" replace /> : <React.Fragment key={user?.id}><Outlet /></React.Fragment>;
     case 'incomplete_registration':
       return allowIncomplete ? <Outlet /> : <Navigate to="/complete-registration" replace />;
     case 'pending':

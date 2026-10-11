@@ -12,6 +12,7 @@ type UrlMap = ReadonlyMap<string, string>;
 
 const cache = new Map<string, CachedUrl>();
 const inFlight = new Map<string, Promise<string | null>>();
+let cacheGeneration = 0;
 
 const isFresh = (entry: CachedUrl, now: number): boolean => now - entry.refreshedAt < CHAT_IMAGE_SIGNED_URL_REFRESH_MS;
 
@@ -48,10 +49,13 @@ export const getReadableChatImagePath = (message: Pick<ChatMessage, 'id' | 'mess
 
 export const purgeChatImageSignedUrl = (path: string | null | undefined): void => {
   if (typeof path !== 'string') return;
+  cacheGeneration += 1;
   cache.delete(path);
+  inFlight.clear();
 };
 
 export const clearChatImageSignedUrlCache = (): void => {
+  cacheGeneration += 1;
   cache.clear();
   inFlight.clear();
 };
@@ -61,12 +65,12 @@ const cacheUrl = (path: string, url: string): string => {
   return url;
 };
 
-const requestSignedUrls = async (paths: readonly string[]): Promise<UrlMap> => {
+const requestSignedUrls = async (paths: readonly string[], generation: number): Promise<UrlMap> => {
   if (paths.length === 0) return new Map();
   const { data, error } = await supabase.storage
     .from(CHAT_IMAGE_BUCKET_ID)
     .createSignedUrls([...paths], CHAT_IMAGE_SIGNED_URL_TTL_SECONDS);
-  if (error || !Array.isArray(data)) return new Map();
+  if (generation !== cacheGeneration || error || !Array.isArray(data)) return new Map();
   const urls = new Map<string, string>();
   for (const entry of data) {
     if (!entry || typeof entry.path !== 'string' || typeof entry.signedUrl !== 'string') continue;
@@ -83,6 +87,8 @@ export const resolveChatImageSignedUrls = async (
   messages: readonly Pick<ChatMessage, 'id' | 'messageKind' | 'deletedAt' | 'attachment'>[],
   options: { forceRefresh?: boolean } = {},
 ): Promise<UrlMap> => {
+  if (options.forceRefresh) clearChatImageSignedUrlCache();
+  const generation = cacheGeneration;
   const paths = [...new Set(messages.map(getReadableChatImagePath).filter((path): path is string => path !== null))];
   const now = Date.now();
   const resolved = new Map<string, string>();
@@ -97,15 +103,20 @@ export const resolveChatImageSignedUrls = async (
     }
   }
   if (missing.length > 0) {
-    const batch = requestSignedUrls(missing);
-    for (const path of missing) inFlight.set(path, batch.then((urls) => urls.get(path) ?? null));
+    const batch = requestSignedUrls(missing, generation).catch(() => new Map<string, string>());
+    const pending = new Map(missing.map((path) => [path, batch.then((urls) => urls.get(path) ?? null)]));
+    for (const [path, request] of pending) inFlight.set(path, request);
     try {
       const urls = await batch;
+      if (generation !== cacheGeneration) return new Map();
       for (const [path, url] of urls) resolved.set(path, url);
     } finally {
-      for (const path of missing) inFlight.delete(path);
+      for (const [path, request] of pending) {
+        if (inFlight.get(path) === request) inFlight.delete(path);
+      }
     }
   }
+  if (generation !== cacheGeneration) return new Map();
   for (const path of paths) {
     if (resolved.has(path)) continue;
     const pending = inFlight.get(path);
@@ -113,7 +124,7 @@ export const resolveChatImageSignedUrls = async (
     const url = await pending;
     if (url) resolved.set(path, url);
   }
-  return resolved;
+  return generation === cacheGeneration ? resolved : new Map();
 };
 
 export const getCachedChatImageSignedUrl = (path: string): string | null => {

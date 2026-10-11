@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '../../auth/context/AuthContext';
+import { subscribeToHealthDataRefresh } from '../../../shared/utils/healthDataRefresh';
 import {
   fetchDietitianUnreadCounts,
   subscribeToUnreadCountChanges,
@@ -26,16 +27,23 @@ const UnreadCountsContext = createContext<UnreadCountsContextValue>({
 });
 
 const REFETCH_DEBOUNCE_MS = 250;
-const FALLBACK_POLL_MS = 60_000;
 
 export const UnreadCountsProvider = ({ children }: { children: ReactNode }) => {
   const { accessState, user } = useAuth();
   const userId = accessState.status === 'allowed' ? user?.id ?? null : null;
   const [state, setState] = useState<UnreadCountsState>({ status: 'loading' });
+  const [stateOwnerId, setStateOwnerId] = useState<string | null>(null);
   const versionRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearCounts = useCallback(() => {
+    versionRef.current += 1;
+    setState({ status: 'loading' });
+    setStateOwnerId(null);
+  }, []);
 
   const refresh = useCallback(async () => {
+    setState({ status: 'loading' });
+    setStateOwnerId(userId);
     if (!userId) return;
     const version = ++versionRef.current;
     try {
@@ -54,6 +62,7 @@ export const UnreadCountsProvider = ({ children }: { children: ReactNode }) => {
   }, [userId]);
 
   useEffect(() => {
+    clearCounts();
     if (!userId) return undefined;
     void refresh();
     const schedule = () => {
@@ -61,26 +70,26 @@ export const UnreadCountsProvider = ({ children }: { children: ReactNode }) => {
       timerRef.current = setTimeout(() => { void refresh(); }, REFETCH_DEBOUNCE_MS);
     };
     const unsubscribe = subscribeToUnreadCountChanges(userId, schedule);
-    const poll = setInterval(() => { void refresh(); }, FALLBACK_POLL_MS);
-    const onFocus = () => schedule();
-    window.addEventListener('focus', onFocus);
+    const stopRefresh = subscribeToHealthDataRefresh(refresh, clearCounts);
     return () => {
       unsubscribe();
-      clearInterval(poll);
-      window.removeEventListener('focus', onFocus);
+      stopRefresh();
       if (timerRef.current) clearTimeout(timerRef.current);
       versionRef.current += 1;
     };
-  }, [refresh, userId]);
+  }, [clearCounts, refresh, userId]);
 
+  const visibleState = useMemo<UnreadCountsState>(() => (
+    userId && stateOwnerId === userId ? state : { status: 'loading' }
+  ), [state, stateOwnerId, userId]);
   const value = useMemo<UnreadCountsContextValue>(() => ({
-    state,
+    state: visibleState,
     countForConversation: (conversationId) => {
-      if (state.status !== 'success' || !conversationId) return null;
-      return state.counts.find((item) => item.conversationId === conversationId)?.unreadCount ?? 0;
+      if (visibleState.status !== 'success' || !conversationId) return null;
+      return visibleState.counts.find((item) => item.conversationId === conversationId)?.unreadCount ?? 0;
     },
     refresh,
-  }), [refresh, state]);
+  }), [refresh, visibleState]);
 
   return <UnreadCountsContext.Provider value={value}>{children}</UnreadCountsContext.Provider>;
 };
