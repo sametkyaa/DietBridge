@@ -16,6 +16,8 @@ on:
       - 'supabase/tests/health_consent_meal_contract.sql'
       - 'supabase/tests/disposable/health_consent_meals_bootstrap.sql'
       - 'supabase/tests/health_consent_contract.sql'
+      - 'supabase/tests/health_consent_notes_contract.sql'
+      - 'supabase/tests/disposable/health_consent_notes_bootstrap.sql'
       - 'supabase/tests/disposable/health_consent_bootstrap.sql'
       - 'scripts/runDisposableHealthConsentCore.mjs'
       - '.github/workflows/health-consent-core.yml'

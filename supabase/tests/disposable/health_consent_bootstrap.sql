@@ -17,7 +17,8 @@ create table public.client_medications(id uuid primary key default gen_random_uu
 create table public.measurements(id uuid primary key default gen_random_uuid(), client_id uuid references public.profiles(id), weight numeric);
 create table public.body_measurements(id uuid primary key default gen_random_uuid(), client_id uuid references public.profiles(id), waist_cm numeric);
 create table public.daily_logs(id uuid primary key default gen_random_uuid(), client_id uuid references public.profiles(id), water_intake numeric);
-create table public.dietitian_clients(dietitian_id uuid,client_id uuid,status text);
+create type public.client_status as enum ('active','pending','rejected','inactive');
+create table public.dietitian_clients(dietitian_id uuid,client_id uuid,status public.client_status);
 insert into public.profiles values
  ('11111111-1111-4111-8111-111111111111','client'),
  ('22222222-2222-4222-8222-222222222222','client'),

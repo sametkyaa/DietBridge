@@ -24,12 +24,16 @@ try {
     'supabase/tests/disposable/health_consent_bootstrap.sql',
     'supabase/tests/disposable/health_consent_meals_bootstrap.sql',
     'supabase/tests/disposable/health_consent_chat_bootstrap.sql',
+    'supabase/tests/disposable/health_consent_notes_bootstrap.sql',
+    'supabase/migrations/20260813120000_create_persistent_dietitian_notes.sql',
     'supabase/migrations/20261011191135_health_data_consent.sql',
     'supabase/migrations/20261011193450_health_consent_meal_paths.sql',
     'supabase/migrations/20261011195445_health_consent_chat_background_paths.sql',
+    'supabase/migrations/20261011214629_health_consent_notes.sql',
     'supabase/tests/health_consent_contract.sql',
     'supabase/tests/health_consent_meal_contract.sql',
     'supabase/tests/health_consent_chat_contract.sql',
+    'supabase/tests/health_consent_notes_contract.sql',
   ]) {
     const result = docker(['exec','-i',name,'psql','-h','127.0.0.1','-X','-U','postgres','-v','ON_ERROR_STOP=1','-f','-'],
       {input:readFileSync(new URL('../'+file,import.meta.url),'utf8')});
@@ -41,6 +45,9 @@ try {
     }
     if (file.endsWith('health_consent_chat_contract.sql') && !result.includes('HEALTH_CONSENT_CHAT_CONTRACT_PASS')) {
       throw new Error('Missing chat SQL contract success marker');
+    }
+    if (file.endsWith('health_consent_notes_contract.sql') && !result.includes('HEALTH_CONSENT_NOTES_CONTRACT_PASS')) {
+      throw new Error('Missing notes SQL contract success marker');
     }
     process.stdout.write(`PASS: ${file}\n`);
   }

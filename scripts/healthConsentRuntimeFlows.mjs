@@ -47,6 +47,12 @@ export const runHealthConsentRuntimeFlows = async (context) => {
   }).select().single(), 'dormant request');
   const reviewInput = { p_request_id: request.id, p_decision: 'approved', p_response_note: null };
   assertNoError(await dietyApi.rpc('review_meal_change_request', reviewInput), 'dormant reviewed request');
+  const note = assertNoError(await dietyApi.from('dietitian_notes').insert({
+    dietitian_id: diety.id, client_id: client.id, title: 'Disposable linked note', content: 'Disposable health note',
+  }).select().single(), 'dormant linked note');
+  const generalNote = assertNoError(await dietyApi.from('dietitian_notes').insert({
+    dietitian_id: diety.id, client_id: null, title: 'General task', content: 'General task without client health content',
+  }).select().single(), 'dormant general note');
 
   runSql('update private.health_consent_settings set enabled=true where singleton;');
   const state = assertNoError(await clientApi.rpc('get_my_health_consent'), 'health state');
@@ -83,6 +89,10 @@ export const runHealthConsentRuntimeFlows = async (context) => {
   assertNoError(await clientApi.from('chat_messages').select('id').eq('id', message.id).single(), 'own old message');
   await assertHidden(dietyApi, 'chat_messages', 'id', message.id, 'HEALTH_HTTP_DIETITIAN_OLD_MESSAGE_HIDDEN');
   await assertHidden(dietyApi, 'measurements', 'client_id', client.id, 'HEALTH_HTTP_DIETITIAN_WEIGHT_HIDDEN');
+  await assertHidden(dietyApi, 'dietitian_notes', 'id', note.id, 'HEALTH_HTTP_LINKED_NOTE_NO_CONSENT_HIDDEN');
+  assertNoError(await dietyApi.from('dietitian_notes').select('id').eq('id', generalNote.id).single(), 'general note without consent');
+  expectDenied(await dietyApi.from('dietitian_notes').insert({ dietitian_id: diety.id,
+    client_id: client.id, title: 'Denied', content: 'Denied' }), 'HEALTH_HTTP_LINKED_NOTE_INSERT_NO_CONSENT');
   await expectValidatorDenied(await validate(clientApi), 'HEALTH_EDGE_NO_CONSENT');
   const intentUnchanged = assertNoError(await admin.from('chat_upload_intents').select('validated_at').eq('id', intent.id).single(), 'intent unchanged');
   assert(intentUnchanged.validated_at === null, 'HEALTH_EDGE_DENY_DID_NOT_VALIDATE');
@@ -96,12 +106,18 @@ export const runHealthConsentRuntimeFlows = async (context) => {
   assertNoError(await clientApi.rpc('set_my_meal_completion_with_photo', { p_meal_id: mealId,
     p_is_eaten: true, p_completion_photo_url: photoPath }), 'personal completion with photo');
   await assertHidden(dietyApi, 'meals', 'id', mealId, 'HEALTH_HTTP_PERSONAL_TRACKING_NOT_SHARED');
+  await assertHidden(dietyApi, 'dietitian_notes', 'id', note.id, 'HEALTH_HTTP_STORAGE_ONLY_NOT_NOTE_SHARING');
   expectStorageDenied(await dietyApi.storage.from('meal-completion-photos').download(photoPath), 'HEALTH_STORAGE_COMPLETION_NOT_SHARED');
   expectDenied(await clientApi.rpc('send_chat_message', messageInput), 'HEALTH_HTTP_STORAGE_ONLY_TEXT_REPLAY_DENIED');
   await expectValidatorDenied(await validate(clientApi), 'HEALTH_EDGE_STORAGE_ONLY_DENIED');
 
   await consent(true, true);
   assertNoError(await dietyApi.from('meals').select('id').eq('id', mealId).single(), 'dietitian meal with sharing');
+  assertNoError(await dietyApi.from('dietitian_notes').update({ content: 'Sharing permits update' }).eq('id', note.id).select().single(), 'linked note update with sharing');
+  expectDenied(await dietyApi.from('dietitian_notes').update({ client_id: null }).eq('id', note.id),
+    'HEALTH_HTTP_LINKED_NOTE_CANNOT_BECOME_GENERAL');
+  await assertHidden(foreignApi, 'dietitian_notes', 'id', note.id, 'HEALTH_HTTP_FOREIGN_NOTE_STILL_DENIED');
+  await assertHidden(clientApi, 'dietitian_notes', 'id', note.id, 'HEALTH_HTTP_NOTE_STAYS_DIETITIAN_PRIVATE');
   const repeated = assertNoError(await clientApi.rpc('send_chat_message', messageInput), 'text replay with sharing');
   assert(repeated.id === message.id, 'HEALTH_HTTP_REAL_TEXT_REPLAY_WITH_SHARING');
   const imageValidation = assertNoError(await validate(clientApi), 'real Edge JPEG validation');
@@ -132,6 +148,13 @@ export const runHealthConsentRuntimeFlows = async (context) => {
     JPEG_FIXTURE, { contentType: 'image/jpeg', upsert: false }), 'second real image upload');
 
   await consent(false, false);
+  await assertHidden(dietyApi, 'dietitian_notes', 'id', note.id, 'HEALTH_HTTP_LINKED_NOTE_HIDDEN_AFTER_NEGATIVE');
+  expectDenied(await admin.from('dietitian_notes').update({ content: 'Denied service update' }).eq('id', note.id),
+    'HEALTH_HTTP_SERVICE_NOTE_WRITE_DENIED');
+  expectDenied(await admin.from('dietitian_notes').update({ client_id: null }).eq('id', note.id),
+    'HEALTH_HTTP_SERVICE_NOTE_UNLINK_DENIED');
+  assertNoError(await admin.from('dietitian_notes').select('id').eq('id', note.id).single(), 'linked note retention is separate');
+  assertNoError(await dietyApi.from('dietitian_notes').delete().eq('id', generalNote.id).select().single(), 'general note delete without consent');
   await expectValidatorDenied(await validate(clientApi, pendingIntent.id), 'HEALTH_EDGE_PENDING_AFTER_NEGATIVE');
   expectDenied(await admin.rpc('record_chat_image_validation', { p_intent_id: pendingIntent.id,
     p_validated_mime: 'image/jpeg', p_validated_byte_size: JPEG_FIXTURE.length,
@@ -188,6 +211,8 @@ export const runHealthConsentRuntimeFlows = async (context) => {
   assert(newState.storage_granted === false, 'HEALTH_HTTP_NEW_AUTH_BOOTSTRAP_WITHOUT_CONSENT');
   await consent(true, true);
   runSql("update private.health_consent_settings set document_version='health-runtime-v2' where singleton;");
+  await assertHidden(dietyApi, 'dietitian_notes', 'id', note.id, 'HEALTH_HTTP_NOTE_DOCUMENT_VERSION_INVALIDATES');
+  assertNoError(await admin.from('dietitian_notes').delete().eq('id', note.id).select().single(), 'privileged account-note cleanup remains possible');
   expectDenied(await clientApi.rpc('send_chat_message', { ...messageInput, p_client_message_id: randomUUID() }),
     'HEALTH_HTTP_NEW_DOCUMENT_VERSION_BLOCKS_OLD_CONSENT');
   assert(runSql(`select count(*) from private.health_consent_events where user_id='${client.id}'`) === '4',

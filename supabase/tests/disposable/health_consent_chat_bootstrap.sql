@@ -90,7 +90,6 @@ grant usage on schema private to service_role;
 grant select,insert,update,delete on public.chat_messages,public.chat_upload_intents,public.notifications,public.measurements,public.meals,private.push_occurrences,private.push_deliveries to service_role;
 
 -- Actual producer/bulk bodies retained to exercise entry edits on repository SQL.
-create type public.client_status as enum ('active','pending','rejected','inactive');
 create function private.upsert_notification_aggregate(
   p_recipient_id uuid,
   p_category text,

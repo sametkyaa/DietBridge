@@ -74,6 +74,7 @@ export const HEALTH_RUNTIME_EXTRA_MIGRATIONS = Object.freeze([
   '20261011191135_health_data_consent.sql',
   '20261011193450_health_consent_meal_paths.sql',
   '20261011195445_health_consent_chat_background_paths.sql',
+  '20261011214629_health_consent_notes.sql',
 ]);
 
 export const addHealthConsentRuntimeMigrations = ({ repoRoot, tempRoot }) => {
