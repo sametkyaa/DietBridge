@@ -1,0 +1,22 @@
+name: Health Consent Core Contract
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*health_data_consent.sql'
+      - 'supabase/tests/health_consent_contract.sql'
+      - 'supabase/tests/disposable/health_consent_bootstrap.sql'
+      - 'scripts/runDisposableHealthConsentCore.mjs'
+      - '.github/workflows/health-consent-core.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  core-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/runDisposableHealthConsentCore.mjs

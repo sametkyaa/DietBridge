@@ -22,6 +22,8 @@ const defaultRepoRoot = resolve(dirname(scriptPath), '..');
 const SUPABASE_CLI_VERSION = '2.110.0';
 const TEMP_PREFIX = 'dietbridge-supabase-replay-';
 const ISOLATED_PHASE2_MIGRATIONS = new Set([
+  // Dormant consent core has its own isolated SQL harness and rollout gates.
+  '20261011191135_health_data_consent.sql',
   '20261011103029_mobile_weight_istanbul_date.sql',
   // Feature migrations are applied explicitly by their dedicated disposable harness.
   '20261005120859_dietitian_invite_codes.sql',
