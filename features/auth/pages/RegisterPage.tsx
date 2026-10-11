@@ -210,7 +210,7 @@ const RegisterPage = () => {
           </label>
           <label htmlFor="confirm-kvkk" className="flex items-start gap-2.5 text-13.5 leading-6 text-ink-2">
             <input type="checkbox" id="confirm-kvkk" checked={formData.kvkkAccepted} onChange={handleKvkkChange} className="mt-1 h-4 w-4 shrink-0 accent-[rgb(var(--db-brand))]" />
-            <span><a href="https://dietbridge.com.tr/kvkk" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand hover:underline">KVKK Aydınlatma Metni</a>'ni okudum ve kişisel verilerimin işlenmesini kabul ediyorum.</span>
+            <span><a href="https://dietbridge.com.tr/kvkk" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand hover:underline">KVKK Aydınlatma Metni</a>'ni okudum ve kişisel verilerimin işlenmesi hakkında bilgilendirildim.</span>
           </label>
         </div>
 
