@@ -8,6 +8,7 @@ import { assertCiSafeEnvironment } from './ciSafetyGuard.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const harnesses = [
+  'scripts/runDisposableMobileWeightDateHarness.mjs',
   'scripts/runDisposableFaz2RuntimeHarness.mjs',
   'scripts/runDisposableNotificationCoreRuntimeHarness.mjs',
   'scripts/runDisposableAppointmentRuntimeHarness.mjs',
