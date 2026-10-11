@@ -10,6 +10,7 @@ Tarih: 11.10.2026 · Kaynak: canlı Supabase **yalnız şema metadata okuması**
 - Web: diyetisyen mesleki planlama ve danışan kayıtlarını görme sürecine katılır; DietBridge kendi başına teşhis/tedavi önermez.
 - Üretim Supabase bölgesi `eu-central-1` (Frankfurt). Canlı metadata'da `client_profiles` (kilo, boy, kronik hastalıklar, ilaçlar, intoleranslar, kan grubu, tahlil tarihi), `client_medical_conditions`, `client_medications`, `measurements`, `daily_logs` bulunur.
 - `profiles.terms_accepted_at` ve `profiles.kvkk_accepted_at` vardır; bunlar **sağlık verisi açık rızası** ya da belge sürümü değildir.
+- Salt okunur canlı RLS kontrolünde `client_profiles`, `client_medical_conditions`, `client_medications`, `measurements` tablolarında diyetisyen genel rol kapısı **RESTRICTIVE**, ilişkili diyetisyen okuma politikaları ise `dietitian_clients.status='active'` şartlı olarak görüldü. Bu olumlu metadata bulgusudur; iki kullanıcıyla gerçek negatif erişim testi yerine geçmez.
 - Mevcut mobil sağlık bilgilendirmesi bir **aydınlatma** bileşenidir; açık rıza oluşturmaz.
 
 ## 2. İşleme şartı önerisi (KVKK m.6)
