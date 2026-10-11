@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'supabase/migrations/*health_data_consent.sql'
+      - 'supabase/migrations/*health_consent_meal_paths.sql'
+      - 'supabase/tests/health_consent_meal_contract.sql'
+      - 'supabase/tests/disposable/health_consent_meals_bootstrap.sql'
       - 'supabase/tests/health_consent_contract.sql'
       - 'supabase/tests/disposable/health_consent_bootstrap.sql'
       - 'scripts/runDisposableHealthConsentCore.mjs'

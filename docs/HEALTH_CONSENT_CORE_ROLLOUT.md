@@ -11,7 +11,9 @@
 
 `client_profiles`, `client_medical_conditions`, `client_medications`, `measurements`, `body_measurements`, `daily_logs` için INSERT/UPDATE trigger'ları hazırdır. JWT taşıyan SECURITY DEFINER yazıcılar da trigger'dan geçer. Boş auth profil oluşturma ve DELETE akışları korunur. Mevcut rol/sahiplik/aktif ilişki kontrolleri devam eder; rıza erişim yetkisi vermez. Bu tabloların diyetisyen SELECT yollarına ilave RESTRICTIVE paylaşım kontrolü eklenir. Kullanıcı kendi kayıtlarına erişebilir.
 
-**Tüm sağlık verisi yolları kapatılmış sayılmaz:** beslenme planları, öğün/fotoğraf kayıtları, chat/ekler, bildirimler, hedefler, SECURITY DEFINER okuma RPC'leri ve servis rolü işlerinin kapsamı ayrıca tamamlanmalı. Bu çekirdek korumayı tek başına etkinleştirmek tam rıza koruması sağlamaz.
+**Öğün genişletmesi:** `meal_plans`, `meals`, `meal_change_requests`, `client_nutrition_targets` INSERT/UPDATE ve diyetisyen SELECT yolları da korunur. Kişisel `meal-completion-photos` Storage SELECT/INSERT/UPDATE yollarına ilave RESTRICTIVE kontroller eklenir; mevcut sahiplik/RLS yetkileri genişlemez. Doğrudan ve JWT taşıyan definer yazıcılar kontrol edilir. Sağlık kaydının danışanı değiştirilemez. DELETE ve kişinin kendi eski kayıtlarını okuması korunur.
+
+**Tüm sağlık verisi yolları kapatılmış sayılmaz:** chat/ekler, bildirimler, paylaşılan plan/tarif görselleri, SECURITY DEFINER okuma ve idempotent tekrar yanıtları, servis rolü işleri ve önceden üretilmiş signed URL/cache içeriği ayrıca tamamlanmalı. Bu çekirdek korumayı tek başına etkinleştirmek tam rıza koruması sağlamaz.
 
 ## Etkinleştirme öncesi yalnız gerekli kapılar
 
@@ -23,10 +25,12 @@ Bu kapılar ve canlı uygulama onayı olmadan `private.health_consent_settings.e
 
 ## Doğrulama
 
-Yerel çekirdek SQL harness'i gerçek migration'ı minimal, izole PostgreSQL uyumlu fixture üzerinde çalıştırır. Rıza yok/var, doğrudan yazma, definer yazma, aktif/yabancı diyetisyen, değişen metin sürümü, negatif tercih ve silme senaryolarını sınar. Tam Supabase migration replay'i veya gerçek HTTP testinin yerine geçmez. CI'da aynı harness `postgres:17-alpine` üzerinde ağ ve port açmadan çalışır:
+Yerel çekirdek ve öğün SQL harness'i gerçek migration'ı minimal, izole PostgreSQL uyumlu fixture üzerinde çalıştırır. Rıza yok/var, doğrudan yazma, definer yazma, aktif/yabancı diyetisyen, değişen metin sürümü, negatif tercih ve silme senaryolarını sınar. Tam Supabase migration replay'i veya gerçek HTTP testinin yerine geçmez. CI'da aynı harness `postgres:17-alpine` üzerinde ağ ve port açmadan çalışır:
 
 `node scripts/runDisposableHealthConsentCore.mjs`
 
 Migration kaldırılarak geri dönülmez; sorun varsa onaylı bir düzeltme migration'ı ve etkinleştirme kapısının kontrolü gerekir. Etkinleşmiş ortamda korumayı kapatmak sağlık kaydını rızasız açabileceğinden olağan rollback olarak kullanılmaz.
 
 Kaynak: https://www.kvkk.gov.tr/Icerik/2037/Acik-Riza-Alirken-Dikkat-Edilecek-Hususlar
+
+Öğün genişletmesi yerelde PGlite ile gerçek iki migration üzerinde PASS: rızasız tamamlamaya ret, saklama/paylaşım ayrımı, yabancı diyetisyen, fotoğraf erişimi ve yanlış yol, negatif tercih sonrası engelleme, kendi geçmiş kayıtları ve silme. Bu fixture gerçek Supabase/PostgREST/Storage HTTP testi değildir. CI PostgreSQL 17 matrisini aynı dosyalarla çalıştırır.

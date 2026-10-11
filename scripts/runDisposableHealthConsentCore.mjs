@@ -22,13 +22,19 @@ try {
   if (!ready) throw new Error('Disposable PostgreSQL did not become ready');
   for (const file of [
     'supabase/tests/disposable/health_consent_bootstrap.sql',
+    'supabase/tests/disposable/health_consent_meals_bootstrap.sql',
     'supabase/migrations/20261011191135_health_data_consent.sql',
+    'supabase/migrations/20261011193450_health_consent_meal_paths.sql',
     'supabase/tests/health_consent_contract.sql',
+    'supabase/tests/health_consent_meal_contract.sql',
   ]) {
     const result = docker(['exec','-i',name,'psql','-h','127.0.0.1','-X','-U','postgres','-v','ON_ERROR_STOP=1','-f','-'],
       {input:readFileSync(new URL('../'+file,import.meta.url),'utf8')});
     if (file.endsWith('health_consent_contract.sql') && !result.includes('HEALTH_CONSENT_CORE_CONTRACT_PASS')) {
       throw new Error('Missing SQL contract success marker');
+    }
+    if (file.endsWith('health_consent_meal_contract.sql') && !result.includes('HEALTH_CONSENT_MEAL_CONTRACT_PASS')) {
+      throw new Error('Missing meal SQL contract success marker');
     }
     process.stdout.write(`PASS: ${file}\n`);
   }
