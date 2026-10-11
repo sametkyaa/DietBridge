@@ -14,7 +14,9 @@ try {
   started = true;
   let ready = false;
   for (let attempt=0; attempt<60; attempt+=1) {
-    try { docker(['exec',name,'pg_isready','-U','postgres']); ready=true; break; }
+    // The image briefly starts an initialization server on a Unix socket.
+    // Wait for the final TCP listener so tests cannot race that server's stop.
+    try { docker(['exec',name,'pg_isready','-h','127.0.0.1','-U','postgres']); ready=true; break; }
     catch { await delay(500); }
   }
   if (!ready) throw new Error('Disposable PostgreSQL did not become ready');
@@ -23,7 +25,7 @@ try {
     'supabase/migrations/20261011191135_health_data_consent.sql',
     'supabase/tests/health_consent_contract.sql',
   ]) {
-    const result = docker(['exec','-i',name,'psql','-X','-U','postgres','-v','ON_ERROR_STOP=1','-f','-'],
+    const result = docker(['exec','-i',name,'psql','-h','127.0.0.1','-X','-U','postgres','-v','ON_ERROR_STOP=1','-f','-'],
       {input:readFileSync(new URL('../'+file,import.meta.url),'utf8')});
     if (file.endsWith('health_consent_contract.sql') && !result.includes('HEALTH_CONSENT_CORE_CONTRACT_PASS')) {
       throw new Error('Missing SQL contract success marker');
