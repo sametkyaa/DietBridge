@@ -148,7 +148,11 @@ export const runHealthConsentRuntimeFlows = async (context) => {
     'HEALTH_HTTP_REAL_FINALIZED_REPLAY_DENIED');
   const cleared = assertNoError(await dietyApi.rpc('set_client_nutrition_target', { p_client_id: client.id,
     p_min_kcal: null, p_max_kcal: null }), 'nutrition cleanup without sharing');
-  assert(cleared === null, 'HEALTH_HTTP_CLEANUP_DOES_NOT_RETURN_OLD_TARGET');
+  // PostgREST serializes SQL NULL composite results as an all-null object.
+  // Assert no target field survives, rather than requiring a JS scalar null.
+  assert(cleared === null || (typeof cleared === 'object' && !Array.isArray(cleared)
+    && Object.values(cleared).every((value) => value === null)),
+  'HEALTH_HTTP_CLEANUP_DOES_NOT_RETURN_OLD_TARGET', JSON.stringify(cleared));
   const targets = assertNoError(await admin.from('client_nutrition_targets').select('client_id').eq('client_id', client.id), 'target cleanup result');
   assert(targets.length === 0, 'HEALTH_HTTP_TARGET_CLEANUP_REALLY_REMOVED');
   expectStorageDenied(await dietyApi.storage.from('chat-images').createSignedUrl(intent.object_path, 300),
