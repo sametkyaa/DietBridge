@@ -3,6 +3,14 @@ Tarih: 11.10.2026 · Kaynak: canlı Supabase **yalnız şema metadata okuması**
 
 > Bu belge hukukî bir uygunluk onayı değildir. Gerçek danışan sağlık verileri henüz olmadığı bildirildi. Tasarım önerileri canlıya alınmadan hukukî doğrulama, gerçek teknik negatif test ve ayrı deploy izni gerekir.
 
+## Taslak işletmeci adı — 11.10.2026 kararı
+
+- **Belgelerde şimdilik kullanılacak ad:** **DietBridge** (ürün/marka/platform adı).
+- **Önerilen taslak gösterim:** `DietBridge (platform adı) — işletmeci/veri sorumlusunun resmî kimlik ve iletişim bilgileri yayından önce tamamlanacaktır.`
+- **Hukukî sıfat:** “DietBridge” adının tek başına kayıtlı bir şirket veya ayrı bir tüzel kişilik olduğu ileri sürülmez. KVKK aydınlatma metnindeki veri sorumlusunun **gerçek kişi adı-soyadı veya tüzel kişinin tam ticaret unvanı**, adresi ve başvuru kanalı faaliyet başlamadan kesinleştirilmelidir. Veri işleyen / veri sorumlusu rolleri faaliyet bazında belirlenir.
+- **Kapsam:** Bu adlandırma **yalnız taslak belgeler ve hazırlık kayıtları** içindir. Kamuya açık kesin aydınlatma veya sağlayıcı sözleşmesi tarafı olarak resmî kimlik yerine kullanılamaz.
+- **Durum:** Kullanıcı tercihiyle marka adı geçici olarak netleştirildi; hukukî tarafın kimliği ve imza yetkisi **yayın öncesi açık iş**.
+
 ## 1. Doğrulanan uygulama modeli
 
 - Danışan, diyetisyenle ilişki olmadan bağımsız hesap açıp boy/kilo, beslenme amacı, intolerans ve sonrasında kronik hastalık, ilaç, kan grubu/tahlil bilgileri girebilir.
