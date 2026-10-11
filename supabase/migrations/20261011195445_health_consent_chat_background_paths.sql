@@ -270,6 +270,7 @@ begin
  -- An unlinked dietitian calendar appointment has no client health record.
  if v_client is null then return p_row.category='appointment' and p_row.dietitian_client_id is null and p_row.conversation_id is null
    and exists(select 1 from public.appointments a where a.id=p_row.appointment_id and a.client_id is null); end if;
+ if not p_read then perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_client::text,8311)); end if;
  return (p_read and auth.uid()=v_client) or private.health_consent_has(v_client,true);
 end $$;
 revoke all on function private.notification_health_allows(public.notifications,boolean) from public,anon,service_role;
