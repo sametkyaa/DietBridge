@@ -1,0 +1,71 @@
+name: Health Consent Core Contract
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*health_data_consent.sql'
+      - 'supabase/migrations/*health_consent_meal_paths.sql'
+      - 'supabase/migrations/*health_consent_chat_background_paths.sql'
+      - 'supabase/tests/health_consent_chat_contract.sql'
+      - 'supabase/tests/disposable/health_consent_chat_bootstrap.sql'
+      - 'supabase/functions/validate-chat-image/**'
+      - 'scripts/runChatImageValidatorTests.mjs'
+      - 'scripts/healthConsentRuntimeFlows.mjs'
+      - 'scripts/runDisposableFaz2RuntimeHarness.mjs'
+      - 'scripts/addCurrentIsolatedMigrations.mjs'
+      - 'supabase/migrations/*.sql'
+      - 'supabase/tests/health_consent_meal_contract.sql'
+      - 'supabase/tests/disposable/health_consent_meals_bootstrap.sql'
+      - 'supabase/tests/health_consent_contract.sql'
+      - 'supabase/tests/health_consent_notes_contract.sql'
+      - 'supabase/tests/disposable/health_consent_notes_bootstrap.sql'
+      - 'supabase/tests/disposable/health_consent_bootstrap.sql'
+      - 'scripts/runDisposableHealthConsentCore.mjs'
+      - '.github/workflows/health-consent-core.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  core-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/runDisposableHealthConsentCore.mjs
+  validator-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/runChatImageValidatorTests.mjs
+  deno-validator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.7
+      - name: Check the actual Deno sources
+        run: deno check --no-lock --config supabase/functions/validate-chat-image/deno.json supabase/functions/validate-chat-image/index.ts supabase/functions/validate-chat-image/handler.ts supabase/functions/validate-chat-image/contracts.ts supabase/functions/validate-chat-image/jpegValidator.ts
+      - name: Handler and real JPEG decoder tests
+        run: deno test --no-lock --allow-net --config supabase/functions/validate-chat-image/deno.json supabase/functions/validate-chat-image/handler.test.ts supabase/functions/validate-chat-image/jpegValidator.test.ts
+  full-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Complete migration chain and real Auth, RPC, Storage and Edge
+        run: npm run test:faz2:runtime -- --health-consent

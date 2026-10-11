@@ -1,0 +1,51 @@
+-- Continue after the core matrix. No linked database or real data.
+reset role;
+set request.jwt.claim.sub='';
+update private.health_consent_settings set enabled=false;
+insert into public.meal_plans(id,client_id,dietitian_id) values
+ ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333'),
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','22222222-2222-4222-8222-222222222222','44444444-4444-4444-8444-444444444444');
+insert into public.meals(id,plan_id,completion_photo_url) values
+ ('cccccccc-cccc-4ccc-8ccc-cccccccccccc','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','11111111-1111-4111-8111-111111111111/cccccccc-cccc-4ccc-8ccc-cccccccccccc/photo.jpg');
+set role authenticated;
+set request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+select public.fixture_definer_meal('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+reset role;
+update private.health_consent_settings set enabled=true;
+set role authenticated;
+select public.fixture_denied($$select public.fixture_definer_meal('cccccccc-cccc-4ccc-8ccc-cccccccccccc')$$,'completion definer denied');
+select public.fixture_denied($$insert into public.meal_change_requests(client_id,notes) values(auth.uid(),'fixture')$$,'meal request denied');
+select public.fixture_denied($$insert into public.client_nutrition_targets(client_id,min_kcal) values(auth.uid(),1700)$$,'nutrition target denied');
+select public.fixture_denied($$insert into storage.objects(bucket_id,name) values('meal-completion-photos','11111111-1111-4111-8111-111111111111/cccccccc-cccc-4ccc-8ccc-cccccccccccc/photo.jpg')$$,'photo upload denied');
+select public.set_my_health_consent('v2',true,false);
+select public.fixture_definer_meal('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+insert into public.meal_change_requests(client_id,notes) values(auth.uid(),'fixture');
+insert into public.client_nutrition_targets(client_id,min_kcal) values(auth.uid(),1700);
+insert into storage.objects(bucket_id,name) values('meal-completion-photos','11111111-1111-4111-8111-111111111111/cccccccc-cccc-4ccc-8ccc-cccccccccccc/photo.jpg');
+select public.fixture_assert(not private.completion_photo_consent_allows('malformed',false),'bad path fails without cast');
+select public.fixture_assert(not private.completion_photo_consent_allows('22222222-2222-4222-8222-222222222222/cccccccc-cccc-4ccc-8ccc-cccccccccccc/photo.jpg',false),'foreign photo denied');
+insert into storage.objects(bucket_id,name) values('avatars','unrelated-fixture');
+set request.jwt.claim.sub='33333333-3333-4333-8333-333333333333';
+select public.fixture_assert((select count(*)=0 from public.meal_plans),'dietitian plan read requires sharing');
+select public.fixture_assert((select count(*)=0 from public.meals),'dietitian meal read requires sharing');
+select public.fixture_assert((select count(*)=0 from storage.objects where bucket_id='meal-completion-photos'),'dietitian photo read requires sharing');
+set request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+select public.set_my_health_consent('v2',true,true);
+select public.fixture_denied($$select public.fixture_reassign_meal('cccccccc-cccc-4ccc-8ccc-cccccccccccc','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')$$,'definer cannot change health record client');
+set request.jwt.claim.sub='33333333-3333-4333-8333-333333333333';
+select public.fixture_assert((select count(*)=1 from public.meals),'dietitian meal read with sharing');
+select public.fixture_assert((select count(*)=1 from storage.objects where bucket_id='meal-completion-photos'),'dietitian photo read with sharing');
+update public.client_nutrition_targets set min_kcal=1800 where client_id='11111111-1111-4111-8111-111111111111';
+set request.jwt.claim.sub='44444444-4444-4444-8444-444444444444';
+select public.fixture_assert((select count(*)=0 from public.meals),'foreign dietitian denied by ownership');
+set request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+select public.set_my_health_consent('v2',false,false);
+select public.fixture_denied($$select public.fixture_definer_meal('cccccccc-cccc-4ccc-8ccc-cccccccccccc')$$,'completion denied after negative choice');
+select public.fixture_assert((select count(*)=1 from public.meals),'own existing records remain readable');
+select public.fixture_assert((select count(*)=1 from storage.objects where bucket_id='meal-completion-photos'),'own existing photo remains readable');
+delete from public.meal_change_requests where client_id=auth.uid();
+delete from storage.objects where bucket_id='meal-completion-photos';
+set request.jwt.claim.sub='';
+select public.fixture_denied($$select public.fixture_reassign_meal('cccccccc-cccc-4ccc-8ccc-cccccccccccc','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')$$,'no JWT definer denied');
+reset role;
+select 'HEALTH_CONSENT_MEAL_CONTRACT_PASS' as result;

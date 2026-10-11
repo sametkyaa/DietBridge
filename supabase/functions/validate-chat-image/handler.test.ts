@@ -130,6 +130,9 @@ function createHarness(options: HarnessOptions = {}): Harness {
       if (url.endsWith("/auth/v1/user")) {
         return Promise.resolve(json({ id: USER_ID }));
       }
+      if (url.endsWith("/rest/v1/rpc/can_process_my_chat_image")) {
+        return Promise.resolve(json(true));
+      }
       if (url.includes("/rest/v1/chat_upload_intents?")) {
         return Promise.resolve(json(intent === null ? [] : [intent]));
       }
@@ -279,7 +282,7 @@ Deno.test("does not disclose missing or another user's intent", async () => {
     404,
     "not_found",
   );
-  assertEquals(foreign.calls.length, 2);
+  assertEquals(foreign.calls.length, 3);
 });
 
 Deno.test("requires the same active conversation relationship as the upload intent RPC", async () => {
@@ -289,7 +292,7 @@ Deno.test("requires the same active conversation relationship as the upload inte
     404,
     "not_found",
   );
-  assertEquals(harness.calls.length, 3);
+  assertEquals(harness.calls.length, 4);
 });
 
 Deno.test("rejects aborted, finalized, and expired pending intents", async () => {
@@ -435,7 +438,7 @@ Deno.test("returns already-complete validation metadata without Storage or RPC w
   assertEquals(response.status, 200);
   const value = await body(response);
   assertEquals((value.data as Record<string, unknown>).idempotent, true);
-  assertEquals(harness.calls.length, 3);
+  assertEquals(harness.calls.length, 4);
 });
 
 Deno.test("does not report a successful validation when Storage or validation RPC fails", async () => {
@@ -478,4 +481,18 @@ Deno.test("contains unexpected internal errors without exposing raw details", as
     ),
   );
   assert(!text.includes("sensitive decoder failure"));
+});
+
+Deno.test("consent precheck uses user JWT and blocks all service reads/downloads on deny or invalid response", async () => {
+  for (const result of [json(false), json(null), json("true"), json({}, 503)]) {
+    const harness = createHarness({ responder: (url) =>
+      url.endsWith("/rest/v1/rpc/can_process_my_chat_image") ? result : undefined });
+    await assertError(await handleValidateChatImageRequest(request(), harness.dependencies), 404, "not_found");
+    assertEquals(harness.calls.length, 2);
+    const call = harness.calls[1];
+    assertEquals(new Headers(call.init?.headers).get("authorization"), "Bearer valid-jwt");
+    assertEquals(new Headers(call.init?.headers).get("apikey"), "anon-test-key");
+    assertEquals(JSON.parse(String(call.init?.body)), { p_intent_id: INTENT_ID });
+    assert(!harness.calls.some((entry) => entry.url.includes("/storage/") || entry.url.includes("/chat_upload_intents?")));
+  }
 });

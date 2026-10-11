@@ -5,6 +5,7 @@ import { DietitianProfile } from '../../../shared/types';
 import { AuthAccessState, AuthSignInResult } from '../types';
 import { getSafeAuthErrorMessage, resolveAuthAccess } from '../services/authService';
 import { getAuthLifecycleAction } from '../services/authLifecycle';
+import { clearChatImageSignedUrlCache } from '../../chat/services/chatImageReadService';
 
 interface AuthContextType {
   session: Session | null;
@@ -54,6 +55,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   const pendingSignOutMessage = useRef<string | undefined>(undefined);
 
   const clearAccessState = useCallback((message?: string) => {
+    clearChatImageSignedUrlCache();
     if (!mounted.current) return;
     setSession(null);
     setUser(null);
@@ -68,6 +70,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   }, []);
 
   const signOut = useCallback(async (message?: string) => {
+    clearChatImageSignedUrlCache();
     requestVersion.current += 1;
     const requestedMessage = message || pendingSignOutMessage.current;
     pendingSignOutMessage.current = requestedMessage;
@@ -87,6 +90,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   }, [clearAccessState]);
 
   const updateSessionOnly = useCallback((nextSession: Session) => {
+    if (sessionRef.current?.user.id !== nextSession.user.id) clearChatImageSignedUrlCache();
     sessionRef.current = nextSession;
     if (!mounted.current) return;
     setSession(nextSession);
@@ -140,6 +144,8 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'SIGNED_OUT' || event === 'PASSWORD_RECOVERY'
+          || sessionRef.current?.user.id !== nextSession?.user.id) clearChatImageSignedUrlCache();
       if (event === 'PASSWORD_RECOVERY') {
         requestVersion.current += 1;
         setSession(nextSession);

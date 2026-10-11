@@ -295,3 +295,72 @@ test('private URL resolver batches paths, caches them and purges tombstones', as
   await readService.resolveChatImageSignedUrls([readableMessage()]);
   assert.equal(calls, 2);
 });
+
+test('clearing a session rejects an old pending URL and cannot erase a newer request', async () => {
+  readService.clearChatImageSignedUrlCache();
+  const completions = [];
+  supabaseClient.__setStorageHandler(() => ({ createSignedUrls: (paths) => new Promise((resolve) => {
+    completions.push((url) => resolve({ data: paths.map((item) => ({ path: item, signedUrl: url })), error: null }));
+  }) }));
+  const old = readService.resolveChatImageSignedUrls([readableMessage()]);
+  readService.clearChatImageSignedUrlCache();
+  const next = readService.resolveChatImageSignedUrls([readableMessage()]);
+  completions[0]('https://signed.invalid/old-account');
+  assert.equal((await old).size, 0);
+  assert.equal(readService.getCachedChatImageSignedUrl(objectPath), null);
+  const sameNext = readService.resolveChatImageSignedUrls([readableMessage()]);
+  assert.equal(completions.length, 2, 'old completion must not remove the new in-flight request');
+  completions[1]('https://signed.invalid/new-account');
+  assert.equal((await next).get(objectPath), 'https://signed.invalid/new-account');
+  assert.equal((await sameNext).get(objectPath), 'https://signed.invalid/new-account');
+});
+
+test('forced access recheck never serves a cached URL after Storage denies access', async () => {
+  readService.clearChatImageSignedUrlCache();
+  supabaseClient.__setStorageHandler(() => ({ createSignedUrls: async (paths) => ({
+    data: paths.map((item) => ({ path: item, signedUrl: 'https://signed.invalid/allowed' })), error: null,
+  }) }));
+  await readService.resolveChatImageSignedUrls([readableMessage()]);
+  supabaseClient.__setStorageHandler(() => ({ createSignedUrls: async () => ({ data: null, error: new Error('denied') }) }));
+  assert.equal((await readService.resolveChatImageSignedUrls([readableMessage()], { forceRefresh: true })).size, 0);
+  assert.equal(readService.getCachedChatImageSignedUrl(objectPath), null);
+});
+
+test('purging a pending tombstone prevents its late result from repopulating cache', async () => {
+  readService.clearChatImageSignedUrlCache();
+  let complete;
+  supabaseClient.__setStorageHandler(() => ({ createSignedUrls: (paths) => new Promise((resolve) => {
+    complete = () => resolve({ data: paths.map((item) => ({ path: item, signedUrl: 'https://signed.invalid/deleted' })), error: null });
+  }) }));
+  const pending = readService.resolveChatImageSignedUrls([readableMessage()]);
+  readService.purgeChatImageSignedUrl(objectPath);
+  complete();
+  assert.equal((await pending).size, 0);
+  assert.equal(readService.getCachedChatImageSignedUrl(objectPath), null);
+});
+
+test('visible health projections refresh on focus/poll and hidden pages invalidate responses', () => {
+  const { subscribeToHealthDataRefresh, HEALTH_DATA_REFRESH_MS } = require(path.join(buildDir, 'shared/utils/healthDataRefresh.js'));
+  const listeners = new Map();
+  let tick, refreshed = 0, invalidated = 0, cleared = false;
+  global.window = {
+    setInterval: (callback, period) => { assert.equal(period, 60_000); tick = callback; return 1; },
+    clearInterval: () => { cleared = true; },
+    addEventListener: (name, callback) => listeners.set(name, callback),
+    removeEventListener: (name) => listeners.delete(name),
+  };
+  global.document = {
+    visibilityState: 'visible',
+    addEventListener: (name, callback) => listeners.set(name, callback),
+    removeEventListener: (name) => listeners.delete(name),
+  };
+  try {
+    assert.equal(HEALTH_DATA_REFRESH_MS, 60_000);
+    const stop = subscribeToHealthDataRefresh(() => { refreshed += 1; }, () => { invalidated += 1; });
+    tick(); listeners.get('focus')(); assert.equal(refreshed, 2);
+    document.visibilityState = 'hidden'; listeners.get('visibilitychange')(); tick();
+    assert.equal(refreshed, 2); assert.equal(invalidated, 1);
+    document.visibilityState = 'visible'; listeners.get('visibilitychange')(); assert.equal(refreshed, 3);
+    stop(); assert.equal(listeners.size, 0); assert.equal(cleared, true); assert.equal(invalidated, 2);
+  } finally { delete global.window; delete global.document; }
+});

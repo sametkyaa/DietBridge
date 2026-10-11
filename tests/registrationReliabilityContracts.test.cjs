@@ -197,7 +197,7 @@ test('complete-registration is state-aware and all non-approved states remain fa
   const authService = read('features/auth/services/authService.ts');
   const authContext = read('features/auth/context/AuthContext.tsx');
 
-  assert.match(route, /case 'allowed':[\s\S]*allowIncomplete \? <Navigate to="\/" replace \/> : <Outlet \/>/u);
+  assert.match(route, /case 'allowed':[\s\S]*allowIncomplete \? <Navigate to="\/" replace \/> : <React\.Fragment key=\{user\?\.id\}><Outlet \/><\/React\.Fragment>/u);
   assert.match(route, /case 'incomplete_registration':[\s\S]*allowIncomplete \? <Outlet \/>/u);
   assert.match(route, /case 'pending':\s*case 'rejected':\s*return <VerificationStatusPage/u);
   assert.match(route, /case 'access_error':[\s\S]*<BlockedAccessState/u);

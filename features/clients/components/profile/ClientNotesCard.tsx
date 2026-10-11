@@ -10,7 +10,7 @@ const formatUpdated = (value: string): string => new Intl.DateTimeFormat('tr-TR'
 /** Latest dietitian notes attached to this client (plain text, never rendered as HTML). */
 export const ClientNotesCard = ({ clientId, refreshToken }: { clientId: string; refreshToken: number }) => {
   const loader = useCallback(() => fetchClientNotes(clientId, 3), [clientId]);
-  const { state, reload } = useProfileSection(loader, refreshToken);
+  const { state, reload } = useProfileSection(loader, refreshToken, true);
   return (
     <Card as="section" aria-labelledby="client-notes-title">
       <CardHeader

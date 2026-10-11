@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { subscribeToHealthDataRefresh } from '../../../shared/utils/healthDataRefresh';
 
 export type ProfileSectionState<T> =
   | { status: 'loading' }
@@ -10,7 +11,7 @@ export type ProfileSectionState<T> =
  * retry without blocking the rest of the page. `refreshToken` changes trigger
  * a quiet reload that keeps the previous data visible.
  */
-export const useProfileSection = <T>(loader: () => Promise<T>, refreshToken: number) => {
+export const useProfileSection = <T>(loader: () => Promise<T>, refreshToken: number, revalidateHealthAccess = false) => {
   const [state, setState] = useState<ProfileSectionState<T>>({ status: 'loading' });
   const versionRef = useRef(0);
   const loaderRef = useRef(loader);
@@ -33,8 +34,16 @@ export const useProfileSection = <T>(loader: () => Promise<T>, refreshToken: num
   useEffect(() => {
     const quiet = lastLoader.current === loader;
     lastLoader.current = loader;
-    void load(quiet);
-  }, [load, loader, refreshToken]);
+    void load(quiet && !revalidateHealthAccess);
+  }, [load, loader, refreshToken, revalidateHealthAccess]);
+
+  useEffect(() => {
+    if (!revalidateHealthAccess) return undefined;
+    return subscribeToHealthDataRefresh(() => load(false), () => {
+      versionRef.current += 1;
+      setState({ status: 'loading' });
+    });
+  }, [load, loader, revalidateHealthAccess]);
 
   useEffect(() => () => { versionRef.current += 1; }, []);
 

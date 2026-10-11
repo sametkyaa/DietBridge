@@ -43,7 +43,15 @@ const NotesPage = () => {
     try { setClients(await fetchNoteClientOptions()); }
     catch (error) { setClientError(error instanceof NoteServiceError ? error.userMessage : 'Danışanlar yüklenemedi.'); }
   })(); }, []);
-  useEffect(() => { if (selectedId && !notes.some((note) => note.id === selectedId)) setSelectedId(null); }, [notes, selectedId]);
+  useEffect(() => {
+    // Keep a valid edit draft across a refresh, but never turn an inaccessible
+    // existing health note into a new/general note containing the same text.
+    if (viewState.status === 'loading') return;
+    if (selectedId && !notes.some((note) => note.id === selectedId)) {
+      setSelectedId(null); setEditing(false); setDraft(EMPTY_DRAFT);
+    }
+    if (noteToDelete && !notes.some((note) => note.id === noteToDelete.id)) setNoteToDelete(null);
+  }, [noteToDelete, notes, selectedId, viewState.status]);
 
   const counts = useMemo(() => ({
     all: notes.length,
@@ -63,6 +71,7 @@ const NotesPage = () => {
   const submit = async () => {
     const validation = validateNoteDraft(draft);
     if (validation.success === false) { setFormError(validation.message); return; }
+    if (selectedId && !selected) return;
     const result = selected ? await updateNote(selected.id, validation.value) : await createNote(validation.value);
     if (result.success) { setEditing(false); setSelectedId(result.noteId ?? selected?.id ?? null); }
   };
@@ -156,7 +165,7 @@ const NotesPage = () => {
         <main className="p-5 sm:p-8">
           {editing ? (
             <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="mx-auto flex max-w-3xl flex-col gap-4">
-              <h2 className="m-0 text-20 font-bold text-ink">{selected ? 'Notu Düzenle' : 'Yeni Not'}</h2>
+              <h2 className="m-0 text-20 font-bold text-ink">{selectedId ? 'Notu Düzenle' : 'Yeni Not'}</h2>
               <label className="flex flex-col gap-1.5 text-13 font-semibold text-ink">Danışan (isteğe bağlı)
                 <select value={draft.clientId ?? ''} onChange={(e) => setDraft((value) => ({ ...value, clientId: e.target.value || null }))} className="h-[42px] w-full rounded-control border border-line-strong bg-surface px-3 text-14 font-normal focus:border-brand focus:outline-none focus:shadow-focus">
                   <option value="">Genel not</option>

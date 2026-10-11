@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../types/chat';
 import { getReadableChatImagePath, purgeChatImageSignedUrl, resolveChatImageSignedUrls } from '../services/chatImageReadService';
+import { clearChatImageSignedUrlCache } from '../services/chatImageReadService';
+import { subscribeToHealthDataRefresh } from '../../../shared/utils/healthDataRefresh';
 
 export interface ChatImageUrlState { url: string | null; loading: boolean; error: boolean; }
 export type ChatImageUrlStates = Readonly<Record<string, ChatImageUrlState>>;
@@ -11,6 +13,11 @@ const EMPTY: ChatImageUrlState = { url: null, loading: false, error: false };
 export const useChatImageUrls = (conversationId: string | null | undefined, messages: readonly ChatMessage[]) => {
   const [states, setStates] = useState<ChatImageUrlStates>({});
   const tokenRef = useRef(0);
+  const invalidate = useCallback(() => {
+    tokenRef.current += 1;
+    setStates({});
+    clearChatImageSignedUrlCache();
+  }, []);
 
   const resolve = useCallback(async (forceRefresh = false): Promise<void> => {
     const token = ++tokenRef.current;
@@ -29,10 +36,9 @@ export const useChatImageUrls = (conversationId: string | null | undefined, mess
   }, [messages]);
 
   useEffect(() => {
-    void resolve();
-    const timer = window.setInterval(() => void resolve(true), 240_000);
-    return () => { tokenRef.current += 1; window.clearInterval(timer); };
-  }, [conversationId, resolve]);
+    void resolve(true);
+    return subscribeToHealthDataRefresh(() => resolve(true), invalidate);
+  }, [conversationId, invalidate, resolve]);
 
   const retry = useCallback((message: ChatMessage): void => {
     const path = getReadableChatImagePath(message);
