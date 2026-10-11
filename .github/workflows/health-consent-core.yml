@@ -66,4 +66,4 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Complete migration chain and real Auth, RPC, Storage and Edge
-        run: node scripts/runDisposableFaz2RuntimeHarness.mjs --health-consent
+        run: npm run test:faz2:runtime -- --health-consent
