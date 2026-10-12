@@ -8,9 +8,16 @@ on:
       - 'supabase/tests/health_consent_chat_contract.sql'
       - 'supabase/tests/disposable/health_consent_chat_bootstrap.sql'
       - 'supabase/functions/validate-chat-image/**'
+      - 'supabase/functions/validate-chat-media/**'
+      - 'supabase/functions/cleanup-chat-images/**'
+      - 'supabase/functions/delete-client-account/**'
       - 'scripts/runChatImageValidatorTests.mjs'
       - 'scripts/healthConsentRuntimeFlows.mjs'
       - 'scripts/runDisposableFaz2RuntimeHarness.mjs'
+      - 'scripts/chatMediaRuntimeFlows.mjs'
+      - 'scripts/runDisposableSupabaseLocalReplay.mjs'
+      - 'supabase/preflight/chat_media_*.sql'
+      - 'tests/fixtures/chat-media-video.webm'
       - 'scripts/addCurrentIsolatedMigrations.mjs'
       - 'supabase/migrations/*.sql'
       - 'supabase/tests/health_consent_meal_contract.sql'
@@ -69,3 +76,27 @@ jobs:
       - run: npm ci
       - name: Complete migration chain and real Auth, RPC, Storage and Edge
         run: npm run test:faz2:runtime -- --health-consent
+  media-validator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.7
+      - name: Check media broker, cleanup and account deletion
+        run: deno check --no-lock --node-modules-dir=none --config supabase/functions/validate-chat-media/deno.json supabase/functions/validate-chat-media/index.ts supabase/functions/cleanup-chat-images/index.ts supabase/functions/delete-client-account/index.ts
+      - name: Media format, broker, cleanup and account deletion tests
+        run: deno test --no-lock --node-modules-dir=none --allow-net --config supabase/functions/validate-chat-media/deno.json supabase/functions/validate-chat-media/handler.test.ts supabase/functions/validate-chat-media/mediaValidator.test.ts supabase/functions/cleanup-chat-images/handler.test.ts supabase/functions/delete-client-account/handler.test.ts
+  media-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Media migration and real file, video, JPEG and receipt flows in a disposable stack
+        run: npm run test:chat-media:runtime

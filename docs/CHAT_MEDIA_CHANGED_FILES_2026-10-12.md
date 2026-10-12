@@ -4,7 +4,9 @@
 
 ## Web
 
+- .github/workflows/health-consent-core.yml
 - docs/CHAT_MEDIA_CHANGED_FILES_2026-10-12.md
+- docs/CHAT_MEDIA_PR_REVIEW_2026-10-12.md
 - docs/CHAT_MEDIA_RELEASE_2026-10-12.md
 - features/chat/components/ChatComposer.tsx
 - features/chat/components/ChatMediaBubble.tsx
@@ -52,8 +54,11 @@
 - apps/mobile/src/features/chat/services/chatMediaService.js
 - apps/mobile/src/features/chat/services/chatService.js
 - apps/mobile/src/features/chat/utils/__tests__/chatImageReadContracts.test.cjs
+- apps/mobile/src/features/chat/utils/__tests__/chatMediaHistory.test.cjs
 - apps/mobile/src/features/chat/utils/__tests__/chatMediaPolicy.test.cjs
+- apps/mobile/src/features/chat/utils/__tests__/chatMediaReconcile.test.cjs
 - apps/mobile/src/features/chat/utils/__tests__/chatMediaService.test.cjs
+- apps/mobile/src/features/chat/utils/__tests__/chatMediaUploadLifecycle.test.cjs
 - apps/mobile/src/features/chat/utils/__tests__/chatScrollRuntime.test.cjs
 - apps/mobile/src/features/chat/utils/__tests__/chatSourceContracts.test.cjs
 - apps/mobile/src/features/chat/utils/chatMediaPolicy.js

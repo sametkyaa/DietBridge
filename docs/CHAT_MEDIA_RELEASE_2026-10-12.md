@@ -50,7 +50,7 @@ Kotalar kullanıcının tüm sohbetleri için ortaktır. İptal edilen ve süres
 | Kontrol | Sonuç |
 |---|---|
 | Web `npm run quality` | Başarılı: typecheck, lint (0 hata, mevcut 5 uyarı), 609 test, production build |
-| Mobil `npm run quality` | Başarılı: typecheck, lint (0 hata, mevcut 41 uyarı), 501 test, Android ve iOS JS export |
+| Mobil `npm run quality` | Başarılı: typecheck, lint (0 hata, mevcut 41 uyarı), 511 test, Android ve iOS JS export |
 | Üç Edge girişinin Deno typecheck'i | Başarılı |
 | Medya doğrulama, mevcut temizlik ve hesap silme Edge testleri | 50 başarılı test, 2 alt adım, 0 hata |
 | `npm run test:chat-media:runtime` | Başarılı; yalnız geçici yerel Supabase ortamı |
@@ -61,6 +61,8 @@ Yerel Supabase testi gerçek Auth, REST, Storage ve Edge üzerinden TXT yükleme
 Web kontrat testleri mobil dosyaları da okuduğundan komut şu environment ile çalıştı: `DIETBRIDGE_MOBILE_REPO=C:\dev\DietBridge-Release-Fixes\2026-10-12\mobile-chat-media`.
 
 Kanıtlar: `C:\dev\DietBridge-Release-Audit\2026-10-12\chat-*-quality.log`, `chat-edge-check.log`, `chat-edge-test.log`, `chat-backend-runtime.log`, `chat-web-browser.log`, `chat-web-desktop.png`, `chat-web-narrow.png`. Bunlar yerel artefaktlardır; production veya fiziksel cihaz kabul kanıtı değildir.
+
+PR incelemesinde mobil picker kilidi, geçmişten yüklenen ekin dosya adı ve gönderim sonrası reconciliation bekleme/sohbet değişikliği koruması düzeltildi. 10 yeni regresyon testi eklendi. Yeni medya Edge testleri ve gerçek migration/Storage akışı `media-validator` / `media-runtime` GitHub kontrol kapılarına bağlandı. Ayrıntılar: `CHAT_MEDIA_PR_REVIEW_2026-10-12.md`.
 
 `expo-document-picker ~14.0.8` SDK 54'ün uyumlu native modülü olarak eklendi (MIT). Mevcut picker kamera/galeriye odaklandığı için genel belge seçiminde gereklidir. Expo export boyutu yaklaşık 4.46 MB; bu APK/IPA boyutu veya picker'ın tek başına boyut etkisi değildir. Major paket yükseltmesi yapılmadı.
 
