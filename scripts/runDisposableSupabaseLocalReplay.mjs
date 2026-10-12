@@ -22,6 +22,7 @@ const defaultRepoRoot = resolve(dirname(scriptPath), '..');
 const SUPABASE_CLI_VERSION = '2.110.0';
 const TEMP_PREFIX = 'dietbridge-supabase-replay-';
 const ISOLATED_PHASE2_MIGRATIONS = new Set([
+  '20261012080237_chat_media_and_rate_limits.sql',
   // Dormant consent core has its own isolated SQL harness and rollout gates.
   '20261011191135_health_data_consent.sql',
   '20261011193450_health_consent_meal_paths.sql',
@@ -499,6 +500,7 @@ export const HANDLER_TESTED_FUNCTIONS = Object.freeze([
   'process-recipe-import',
   'cleanup-recipe-imports',
   'send-application-result-emails',
+  'validate-chat-media', // Explicitly re-added with sources by the chat-media HTTP harness.
 ]);
 export const withoutHandlerTestedFunctions = (configText) => {
   const sections = configText.split(/^(?=\[[^\r\n]+\]\s*$)/m);

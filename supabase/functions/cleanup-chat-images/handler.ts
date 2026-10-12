@@ -22,7 +22,7 @@ export interface CleanupDependencies {
 
 interface CleanupClaim {
   cleanup_id: string;
-  bucket_id: typeof CHAT_IMAGE_BUCKET;
+  bucket_id: typeof CHAT_IMAGE_BUCKET | 'chat-media';
   object_path: string;
 }
 
@@ -140,9 +140,10 @@ function parseClaims(value: unknown): CleanupClaim[] | null {
     if (
       typeof record.cleanup_id !== "string" ||
       !UUID_PATTERN.test(record.cleanup_id) ||
-      record.bucket_id !== CHAT_IMAGE_BUCKET ||
+      ![CHAT_IMAGE_BUCKET, 'chat-media'].includes(String(record.bucket_id)) ||
       typeof record.object_path !== "string" ||
-      !OBJECT_PATH_PATTERN.test(record.object_path)
+      !(record.bucket_id === CHAT_IMAGE_BUCKET ? OBJECT_PATH_PATTERN.test(record.object_path)
+        : /^pending\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(mp4|mov|webm|pdf|docx|xlsx|txt|csv)$/.test(record.object_path))
     ) return null;
 
     const objectKey = `${record.bucket_id}\n${record.object_path}`;
@@ -154,7 +155,7 @@ function parseClaims(value: unknown): CleanupClaim[] | null {
     objectKeys.add(objectKey);
     claims.push({
       cleanup_id: record.cleanup_id,
-      bucket_id: CHAT_IMAGE_BUCKET,
+      bucket_id: record.bucket_id as CleanupClaim['bucket_id'],
       object_path: record.object_path,
     });
   }

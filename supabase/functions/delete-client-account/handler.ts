@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.87.0";
 
 const AVATAR_BUCKET = "avatars";
 const CHAT_IMAGE_BUCKET = "chat-images";
+const CHAT_MEDIA_BUCKET = "chat-media";
 const COMPLETION_PHOTO_BUCKET = "meal-completion-photos";
 const STORAGE_PAGE_SIZE = 1000;
 const STORAGE_DELETE_BATCH_SIZE = 100;
@@ -14,6 +15,7 @@ const CHAT_IMAGE_PATH_PATTERN = new RegExp(
   `^pending/${UUID_SOURCE}/${UUID_SOURCE}\\.jpg$`,
   "i",
 );
+const CHAT_MEDIA_PATH_PATTERN = new RegExp(`^pending/${UUID_SOURCE}/${UUID_SOURCE}\\.(?:mp4|mov|webm|pdf|docx|xlsx|txt|csv)$`, "i");
 
 type LogLevel = "warn" | "error";
 
@@ -381,6 +383,7 @@ const validateStorageManifestPath = (
     }
     return;
   }
+  if (bucket === CHAT_MEDIA_BUCKET && CHAT_MEDIA_PATH_PATTERN.test(objectPath)) return;
   throw new Error("storage_manifest_bucket_contract_failed");
 };
 
@@ -397,7 +400,7 @@ const fetchChatUploadIntentPaths = async (
   configuration: ServiceConfiguration,
   filter: Record<string, string>,
   dependencies: DeleteClientAccountDependencies,
-): Promise<string[]> => {
+): Promise<{ bucket_id: string; object_path: string }[]> => {
   const rows = await listRestRows(
     configuration,
     "chat_upload_intents",
@@ -409,11 +412,11 @@ const fetchChatUploadIntentPaths = async (
     if (!isRecord(row)) throw new Error("chat_intent_row_malformed");
     const intent = row as unknown as ChatUploadIntentRow;
     if (
-      intent.bucket_id !== CHAT_IMAGE_BUCKET ||
+      typeof intent.bucket_id !== 'string' || ![CHAT_IMAGE_BUCKET, CHAT_MEDIA_BUCKET].includes(intent.bucket_id) ||
       typeof intent.object_path !== "string" ||
-      !CHAT_IMAGE_PATH_PATTERN.test(intent.object_path)
+      !(intent.bucket_id === CHAT_IMAGE_BUCKET ? CHAT_IMAGE_PATH_PATTERN : CHAT_MEDIA_PATH_PATTERN).test(intent.object_path)
     ) throw new Error("chat_intent_path_contract_failed");
-    return intent.object_path;
+    return { bucket_id: intent.bucket_id, object_path: intent.object_path };
   });
 };
 
@@ -421,7 +424,7 @@ const fetchClientChatImagePaths = async (
   configuration: ServiceConfiguration,
   userId: string,
   dependencies: DeleteClientAccountDependencies,
-): Promise<string[]> => {
+): Promise<{ bucket_id: string; object_path: string }[]> => {
   const conversationRows = await listRestRows(
     configuration,
     "chat_conversations",
@@ -438,7 +441,7 @@ const fetchClientChatImagePaths = async (
     return row.id;
   });
 
-  const paths = [] as string[];
+  const paths: { bucket_id: string; object_path: string }[] = [];
   for (const conversationId of conversationIds) {
     paths.push(
       ...await fetchChatUploadIntentPaths(
@@ -459,7 +462,7 @@ const fetchClientChatImagePaths = async (
       dependencies,
     ),
   );
-  return [...new Set(paths)];
+  return [...new Map(paths.map((row) => [`${row.bucket_id}/${row.object_path}`, row])).values()];
 };
 
 const collectOwnedStoragePaths = async (
@@ -475,7 +478,8 @@ const collectOwnedStoragePaths = async (
   return new Map([
     [AVATAR_BUCKET, [...new Set(avatarPaths)]],
     [COMPLETION_PHOTO_BUCKET, [...new Set(completionPaths)]],
-    [CHAT_IMAGE_BUCKET, [...new Set(chatPaths)]],
+    [CHAT_IMAGE_BUCKET, chatPaths.filter((row) => row.bucket_id === CHAT_IMAGE_BUCKET).map((row) => row.object_path)],
+    [CHAT_MEDIA_BUCKET, chatPaths.filter((row) => row.bucket_id === CHAT_MEDIA_BUCKET).map((row) => row.object_path)],
   ]);
 };
 

@@ -25,6 +25,8 @@ export const getChatConversationPreview = (
   if (conversation.lastMessageKind === 'image') {
     return caption || CHAT_IMAGE_PREVIEW_LABEL;
   }
+  if (conversation.lastMessageKind === 'video') return caption || 'Video';
+  if (conversation.lastMessageKind === 'file') return caption || 'Dosya';
 
   return caption || CHAT_EMPTY_CONVERSATION_LABEL;
 };

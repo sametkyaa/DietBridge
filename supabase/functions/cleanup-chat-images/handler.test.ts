@@ -117,6 +117,18 @@ Deno.test("cleanup accepts POST only", async () => {
   assertEquals(harness.calls.length, 0);
 });
 
+Deno.test('cleanup deletes only claimed media paths in the correct private bucket', async () => {
+  const path = `pending/${OWNER_ID}/${OBJECT_ID_A}.pdf`;
+  const harness = createHarness((url, init) => {
+    if (url.includes('claim_chat_image_cleanup_batch')) return json([{ cleanup_id: CLEANUP_ID_A, bucket_id: 'chat-media', object_path: path }]);
+    if (url.includes('/storage/')) { assert(url.endsWith('/chat-media')); assertEquals(JSON.parse(String(init?.body)), { prefixes: [path] }); return json([]); }
+    return json(true);
+  });
+  const result = await handleCleanupRequest(schedulerRequest(), harness.dependencies);
+  assertEquals(result.status, 200);
+  assert(harness.calls.some((call) => call.url.includes('/storage/')));
+});
+
 Deno.test("cleanup requires only the dedicated scheduler secret", async () => {
   const harness = createHarness(() => json([]));
 

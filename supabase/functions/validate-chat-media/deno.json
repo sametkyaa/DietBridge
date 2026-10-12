@@ -1,0 +1,1 @@
+{"compilerOptions":{"strict":true,"lib":["deno.window","dom","dom.iterable","esnext"]},"tasks":{"check":"deno check index.ts handler.ts mediaValidator.ts","test":"deno test handler.test.ts mediaValidator.test.ts"}}

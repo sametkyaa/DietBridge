@@ -1,4 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { enrichChatMediaRows } from './chatMediaService';
+import { normalizeChatMediaAttachment } from '../utils/chatMediaPolicy';
 import { resolveProfilePhotoUrl } from '../../../shared/utils/avatarUrl';
 import { isValidUuid } from '../../../shared/utils/uuid';
 import {
@@ -372,10 +374,12 @@ const normalizeChatMessageRow = (
     : rawAttachment !== undefined && rawAttachment !== null;
   const attachment = rawAttachment === undefined || rawAttachment === null
     ? null
-    : normalizeChatImageAttachment(rawAttachment, id);
+    : (messageKind === 'video' || messageKind === 'file')
+      ? normalizeChatMediaAttachment(rawAttachment, id, messageKind)
+      : normalizeChatImageAttachment(rawAttachment, id);
 
   let body: string | null;
-  if (messageKind === 'image') {
+  if (messageKind !== 'text') {
     // Live image rows require complete, live attachment metadata. The caption
     // is optional and an empty caption normalizes to null.
     if (!attachment || attachment.deletedAt !== null) return null;
@@ -401,7 +405,7 @@ const normalizeChatMessageRow = (
     isOwn: senderId === currentUserId,
     deliveryState: 'sent',
     messageKind,
-    attachment: messageKind === 'image' ? attachment : null,
+    attachment: messageKind !== 'text' ? attachment : null,
   };
 };
 
@@ -516,7 +520,7 @@ const fetchLastMessages = async (
 
   if (error) throw toChatServiceError(error);
 
-  return asRecords(data)
+  return (await enrichChatMediaRows(asRecords(data)))
     .map((row) => normalizeChatMessageRow(row, currentUserId))
     .filter((message): message is ChatMessage => message !== null);
 };
@@ -566,7 +570,7 @@ export const fetchChatMessageById = async (
 
     if (error) throw toChatServiceError(error);
 
-    const row = asRecords(data)[0];
+    const row = (await enrichChatMediaRows(asRecords(data)))[0];
     if (!row) return null;
 
     const message = normalizeChatMessageRow(row, normalizedCurrentUserId);
@@ -731,7 +735,7 @@ export const fetchChatMessages = async (
 
     const uniqueMessages = new Map<string, ChatMessage>();
     const clientMessageIds = new Set<string>();
-    for (const row of asRecords(data)) {
+    for (const row of await enrichChatMediaRows(asRecords(data))) {
       const message = normalizeChatMessageRow(row, normalizedCurrentUserId);
       if (!message) throwUnexpectedPayload('chat message');
       if (uniqueMessages.has(message.id) || clientMessageIds.has(message.clientMessageId)) continue;

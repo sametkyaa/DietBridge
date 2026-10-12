@@ -7,9 +7,9 @@
  * anything outside this contract is rejected fail-closed while normalizing
  * server rows.
  */
-export type ChatMessageKind = 'text' | 'image';
+export type ChatMessageKind = 'text' | 'image' | 'video' | 'file';
 
-export const CHAT_MESSAGE_KINDS: readonly ChatMessageKind[] = ['text', 'image'];
+export const CHAT_MESSAGE_KINDS: readonly ChatMessageKind[] = ['text', 'image', 'video', 'file'];
 
 export const CHAT_IMAGE_BUCKET_ID = 'chat-images';
 export const CHAT_IMAGE_MIME_TYPE = 'image/jpeg';
@@ -26,7 +26,7 @@ export const CHAT_IMAGE_OBJECT_PATH_PATTERN = new RegExp(
 );
 
 export const isChatMessageKind = (value: unknown): value is ChatMessageKind => (
-  value === 'text' || value === 'image'
+  value === 'text' || value === 'image' || value === 'video' || value === 'file'
 );
 
 export interface ChatImageAttachment {
@@ -39,4 +39,5 @@ export interface ChatImageAttachment {
   width: number;
   height: number;
   deletedAt: string | null;
+  fileName?: string;
 }

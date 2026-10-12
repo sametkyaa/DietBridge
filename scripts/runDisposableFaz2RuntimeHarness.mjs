@@ -18,11 +18,13 @@ import { createClient } from '@supabase/supabase-js';
 import { assertCiSafeEnvironment } from './ciSafetyGuard.mjs';
 import { addHealthConsentRuntimeMigrations, HEALTH_RUNTIME_EXTRA_MIGRATIONS, addCurrentIsolatedMigrations, addFaz2Migrations, addAutomaticTaskDismissalMigration, addMealRequestChatReplyMigration, MEAL_REQUEST_CHAT_REPLY_MIGRATION, FAZ2_MIGRATIONS } from './addCurrentIsolatedMigrations.mjs';
 import { runHealthConsentRuntimeFlows } from './healthConsentRuntimeFlows.mjs';
+import { runChatMediaRuntimeFlows } from './chatMediaRuntimeFlows.mjs';
 import { runDisposableSupabaseLocalReplay } from './runDisposableSupabaseLocalReplay.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SUPABASE_VERSION = '2.110.0';
-const includeHealthConsent = process.argv.includes('--health-consent');
+const includeChatMedia = process.argv.includes('--chat-media');
+const includeHealthConsent = process.argv.includes('--health-consent') || includeChatMedia;
 const expectedMigrationCount = 64 + FAZ2_MIGRATIONS.length + (includeHealthConsent ? HEALTH_RUNTIME_EXTRA_MIGRATIONS.length : 0);
 const PASSWORD = 'Disposable-Faz2-Runtime-9k!';
 const projectId = `dietbridge-faz2-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -413,9 +415,23 @@ const run = async () => {
     writeFileSync(disposable.configPath, readFileSync(disposable.configPath, 'utf8') +
       '\n[functions.validate-chat-image]\nenabled = true\nverify_jwt = true\nentrypoint = "./functions/validate-chat-image/index.ts"\n');
   }
+  if (includeChatMedia) {
+    const target = join(disposable.tempRoot, 'supabase', 'functions', 'validate-chat-media');
+    mkdirSync(target, { recursive: true });
+    for (const file of ['index.ts', 'handler.ts', 'mediaValidator.ts', 'deno.json']) {
+      copyFileSync(join(repoRoot, 'supabase', 'functions', 'validate-chat-media', file), join(target, file), 1);
+    }
+    writeFileSync(disposable.configPath, readFileSync(disposable.configPath, 'utf8') +
+      '\n[functions.validate-chat-media]\nenabled = true\nverify_jwt = true\nentrypoint = "./functions/validate-chat-media/index.ts"\n');
+  }
   const migrationFiles = readdirSync(join(disposable.tempRoot, 'supabase', 'migrations'))
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
+  // Normalize only disposable SQL copies so Windows checkouts preserve LF function markers.
+  for (const name of migrationFiles) {
+    const file = join(disposable.tempRoot, 'supabase', 'migrations', name);
+    writeFileSync(file, readFileSync(file, 'utf8').replace(/\r\n/g, '\n'));
+  }
   assert(migrationFiles.at(-1) === (includeHealthConsent ? HEALTH_RUNTIME_EXTRA_MIGRATIONS.at(-1) : MEAL_REQUEST_CHAT_REPLY_MIGRATION), 'MEAL_REQUEST_CHAT_REPLY_MIGRATION_IS_DISPOSABLE_TAIL');
   assert(migrationFiles.length === expectedMigrationCount, `DISPOSABLE_MIGRATION_CHAIN_${expectedMigrationCount}`);
   await configureDisposableProject(disposable.configPath);
@@ -440,6 +456,14 @@ const run = async () => {
     await runHealthConsentRuntimeFlows({ admin, local, runSql, createActor, signIn,
       approveDietitian, bootstrapDietitian, activateRelationship, assert, assertNoError, expectDenied });
     pass('HEALTH_CONSENT_FULL_RUNTIME_PASS');
+  }
+  if (includeChatMedia) {
+    runSqlFile(join(repoRoot, 'supabase', 'preflight', 'chat_media_preflight.sql'));
+    runSqlFile(join(repoRoot, 'supabase', 'migrations', '20261012080237_chat_media_and_rate_limits.sql'));
+    runSqlFile(join(repoRoot, 'supabase', 'preflight', 'chat_media_postflight.sql'));
+    await runChatMediaRuntimeFlows({ admin, local, runSql, createActor, signIn, approveDietitian,
+      bootstrapDietitian, activateRelationship, assert, assertNoError, expectDenied });
+    pass('CHAT_MEDIA_FULL_RUNTIME_PASS');
   }
 };
 

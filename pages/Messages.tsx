@@ -7,6 +7,7 @@ import { useChatComposer } from '../features/chat/hooks/useChatComposer';
 import { useChatConversations } from '../features/chat/hooks/useChatConversations';
 import { useChatMessages } from '../features/chat/hooks/useChatMessages';
 import { useChatImageUpload } from '../features/chat/hooks/useChatImageUpload';
+import { useChatMediaUpload } from '../features/chat/hooks/useChatMediaUpload';
 import { useChatReadState } from '../features/chat/hooks/useChatReadState';
 import { useChatRealtime } from '../features/chat/hooks/useChatRealtime';
 import { deleteChatMessage, fetchChatMessageById } from '../features/chat/services/chatService';
@@ -15,7 +16,6 @@ import { ChatConversationListItem, ChatMessage, ChatReadState } from '../feature
 import { useAuth } from '../features/auth/context/AuthContext';
 import DietitianAvatar from '../shared/components/DietitianAvatar';
 import { resolveConversationSelection } from '../features/chat/utils/messageDeepLink';
-import { env } from '../lib/env';
 import NotificationBell from '../features/notifications/components/NotificationBell';
 import { useUnreadCounts } from '../features/chat/context/UnreadCountsContext';
 import { ChatClientSummaryPanel } from '../features/chat/components/ChatClientSummaryPanel';
@@ -118,8 +118,18 @@ const Messages = () => {
 
   const imageUpload = useChatImageUpload({
     conversationId: activeConversation?.conversationId ?? null,
-    featureEnabled: env.enableChatImages,
+    featureEnabled: true,
     onFinalized: handleImageFinalized,
+  });
+
+  const mediaUpload = useChatMediaUpload({
+    conversationId: activeConversation?.conversationId ?? null,
+    onFinalized: async (result) => {
+      if (!user?.id) return;
+      const message = await fetchChatMessageById(result.messageId, result.conversationId, user.id);
+      if (message) mergeCommittedMessage(message);
+      await refetch();
+    },
   });
 
   useEffect(() => {
@@ -376,6 +386,7 @@ const Messages = () => {
                 disabled={composerDisabled}
                 conversationId={activeConversation?.conversationId ?? null}
                 imageUpload={imageUpload}
+                mediaUpload={mediaUpload}
               />
             )}
           />

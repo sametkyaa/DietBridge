@@ -106,6 +106,21 @@ function stateRow() {
   return [{ user_id: USER_ID, storage_objects: PERSISTED_MANIFEST }];
 }
 
+Deno.test('account deletion includes media from client conversations in its exact persisted manifest',async()=>{
+ const mediaPath=`pending/${INTENT_ID}/${CHAT_OBJECT_ID}.pdf`,media={bucket_id:'chat-media',object_path:mediaPath};
+ const happy=createHappyResponder();let stateCalls=0;
+ const fixture=harness((url,init)=>{
+  if(url.includes('/rpc/get_client_account_deletion_state'))return json(++stateCalls===1?[]:[{user_id:USER_ID,storage_objects:[...PERSISTED_MANIFEST,media]}]);
+  if(url.includes('/chat_upload_intents?')){const response=happy(url,init);return response.json().then(rows=>json([...rows,media]));}
+  if(url.includes('/rpc/prepare_client_account_deletion')){const body=JSON.parse(String(init?.body));equal(body.p_storage_objects,[...COLLECTED_MANIFEST,media]);return json(null);}
+  if(url.endsWith('/storage/v1/object/chat-media')){equal(JSON.parse(String(init?.body)),{prefixes:[mediaPath]});return json([]);}
+  return happy(url,init);
+ });
+ const response=await handleDeleteClientAccountRequest(request(),fixture.dependencies);
+ equal(response.status,200);equal(fixture.deletedAuthUsers,[USER_ID]);
+ assert(fixture.calls.some(call=>call.url.endsWith('/storage/v1/object/chat-media')),'media storage removed');
+});
+
 function createHappyResponder({
   prepareStatus = 200,
   storageDeleteStatus = 200,
