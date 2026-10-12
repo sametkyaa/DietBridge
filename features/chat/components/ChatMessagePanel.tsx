@@ -12,6 +12,7 @@ import { OptimisticChatMessage } from "../hooks/useChatComposer";
 import { ChatConversationListItem, ChatMessage } from "../types/chat";
 import type { MealActivity } from "../types/mealActivity";
 import { getChatReceiptState } from "../utils/receipts";
+import ChatMediaBubble from './ChatMediaBubble';
 import { ChatClientAvatar } from "./ChatConversationList";
 import ChatImageBubble from "./ChatImageBubble";
 import ChatImageViewer from "./ChatImageViewer";
@@ -101,18 +102,18 @@ const ChatReceiptIcon: React.FC<{
   );
   if (state === "read")
     return (
-      <CheckCheck className="h-3.5 w-3.5 text-sky-200" aria-label="Okundu" />
+      <CheckCheck className="h-3.5 w-3.5 text-sky-300" aria-label="Okundu" />
     );
   if (state === "delivered")
     return (
       <CheckCheck
-        className="h-3.5 w-3.5 text-emerald-100"
+        className="h-3.5 w-3.5 text-slate-300"
         aria-label="Teslim edildi"
       />
     );
   return (
     <Check
-      className="h-3.5 w-3.5 text-emerald-100"
+      className="h-3.5 w-3.5 text-slate-300"
       aria-label="Sunucuya gönderildi"
     />
   );
@@ -165,6 +166,8 @@ const ChatMessageBubble: React.FC<{
             onRetry={onRetryImage}
             onOpen={onOpenImage}
           />
+        ) : message.messageKind === 'video' || message.messageKind === 'file' ? (
+          <ChatMediaBubble message={message} />
         ) : (
           <p className="break-words whitespace-pre-wrap text-sm leading-relaxed">
             {message.body}

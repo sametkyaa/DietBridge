@@ -19,6 +19,7 @@
     "test:recipe-import": "node --test tests/recipeImportCore.test.mjs tests/openAIRecipeExtraction.test.mjs",
     "test:recipe-import:runtime": "node scripts/runDisposableRecipeImportRuntimeHarness.mjs",
     "test:backend": "node scripts/runBackendQualityGate.mjs",
+    "test:chat-media:runtime": "node scripts/runDisposableFaz2RuntimeHarness.mjs --chat-media",
     "test:meal-plan-snapshot-edit": "node scripts/runMealPlanContractTests.mjs --meal-plan-snapshot-edit-only",
     "test:meal-plan-new-recipe-custom-snapshot": "node scripts/runMealPlanContractTests.mjs --meal-plan-new-recipe-custom-snapshot-only",
     "test:meal-plan-stage3b": "node scripts/runMealPlanContractTests.mjs --meal-plan-stage3b-only",

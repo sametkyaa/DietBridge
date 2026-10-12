@@ -433,3 +433,8 @@ entrypoint = "./functions/cleanup-recipe-imports/index.ts"
 [functions.send-application-result-emails]
 verify_jwt = true
 entrypoint = "./functions/send-application-result-emails/index.ts"
+
+[functions.validate-chat-media]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/validate-chat-media/index.ts"
