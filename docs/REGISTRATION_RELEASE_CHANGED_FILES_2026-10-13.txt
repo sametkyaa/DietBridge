@@ -1,0 +1,79 @@
+WEB: codex/mobile-email-confirmation-web
+ M App.tsx
+ M lib/supabaseClient.ts
+ M playwright.features.config.ts
+ M scripts/runAllContractTests.mjs
+?? docs/MOBILE_EMAIL_CONFIRMATION.md
+?? docs/MOBILE_REGISTRATION_FLOW_REPORT_2026-10-13.md
+?? docs/REGISTRATION_RELEASE_2026-10-13.md
+?? docs/REGISTRATION_RELEASE_CHANGED_FILES_2026-10-13.txt
+?? features/auth/pages/MobileEmailConfirmationPage.tsx
+?? features/auth/services/mobileEmailConfirmationService.ts
+?? features/auth/utils/mobileEmailConfirmation.ts
+?? tests/e2e/mobile-email-confirmation.spec.ts
+?? tests/mobileEmailConfirmation.test.cjs
+MOBILE: codex/release-registration-20261013
+ M App.js
+ M app.json
+ M apps/mobile/src/features/auth/components/BrandMark.js
+ M apps/mobile/src/features/auth/components/RegisterView.js
+ M apps/mobile/src/features/auth/screens/AuthScreen.js
+ M apps/mobile/src/features/auth/screens/LegalAcceptanceScreen.js
+ M apps/mobile/src/features/auth/services/__tests__/healthDataNoticeContract.test.cjs
+ M apps/mobile/src/features/auth/services/__tests__/legalAcceptance.test.cjs
+ M apps/mobile/src/features/auth/services/__tests__/passwordRecoveryContract.test.cjs
+ M apps/mobile/src/features/auth/services/__tests__/passwordResetContract.test.cjs
+ M apps/mobile/src/features/auth/services/authService.js
+ M apps/mobile/src/features/auth/viewmodels/useAuthViewModel.js
+ M apps/mobile/src/features/auth/viewmodels/useLegalAcceptanceViewModel.js
+ M apps/mobile/src/features/clients/components/dashboard/NextMealCard.js
+ M apps/mobile/src/features/clients/components/dashboard/TodayMealsCard.js
+ M apps/mobile/src/features/clients/mappers/dashboardUiMapper.js
+ M apps/mobile/src/features/clients/screens/ProfileScreen.js
+ M apps/mobile/src/features/clients/screens/SettingsScreen.js
+ M apps/mobile/src/features/clients/services/__tests__/settingsContract.test.cjs
+ M apps/mobile/src/features/dietitianConnection/utils/__tests__/inviteViewModel.test.cjs
+ M apps/mobile/src/features/healthConsent/components/HealthConsentPanel.js
+ M apps/mobile/src/features/healthConsent/services/healthConsentClient.cjs
+ M apps/mobile/src/features/healthConsent/services/healthConsentService.js
+ M apps/mobile/src/features/meals/components/MealDetailSheet.js
+ M apps/mobile/src/features/meals/components/plan/MealPlanItem.js
+ M apps/mobile/src/features/meals/services/mealReadModel.js
+ M apps/mobile/src/features/meals/services/mealService.js
+ M apps/mobile/src/features/notifications/constants/notificationConstants.js
+ M apps/mobile/src/features/notifications/screens/NotificationCenterScreen.js
+ M apps/mobile/src/features/notifications/services/notificationService.js
+ M apps/mobile/src/features/notifications/utils/__tests__/notificationUnsupportedRows.test.cjs
+ M apps/mobile/src/features/notifications/utils/notificationNavigationPolicy.cjs
+ M apps/mobile/src/features/notifications/utils/notificationNavigationResolver.cjs
+ M apps/mobile/src/features/notifications/utils/notificationUiUtils.cjs
+ M apps/mobile/src/features/notifications/utils/notificationUtils.js
+ M apps/mobile/src/features/onboarding/screens/OnboardingSetupScreen.js
+ M apps/mobile/src/features/onboarding/viewmodels/useGettingStartedViewModel.js
+ M apps/mobile/src/features/push/services/__tests__/pushLifecycleController.test.cjs
+ M apps/mobile/src/features/push/utils/__tests__/pushClientPolicy.test.cjs
+ M apps/mobile/src/features/push/utils/pushClientPolicy.cjs
+ M apps/mobile/src/features/push/utils/pushLifecycleController.cjs
+ M apps/mobile/src/navigation/RootNavigator.js
+ M apps/mobile/src/shared/utils/mealType.js
+ M docs/HEALTH_CONSENT_CORE.md
+ M package-lock.json
+ M package.json
+?? app.config.js
+?? apps/mobile/src/features/auth/services/__tests__/emailConfirmation.test.cjs
+?? apps/mobile/src/features/auth/services/__tests__/registrationCompletion.test.cjs
+?? apps/mobile/src/features/auth/utils/emailConfirmationPolicy.cjs
+?? apps/mobile/src/features/dietitianConnection/utils/__tests__/inviteFlowRuntime.test.cjs
+?? apps/mobile/src/features/healthConsent/components/RegistrationHealthConsentFields.js
+?? apps/mobile/src/features/healthConsent/services/__tests__/registrationHealthConsent.test.cjs
+?? apps/mobile/src/features/healthConsent/services/registrationHealthConsent.cjs
+?? apps/mobile/src/features/meals/services/__tests__/mealSlotLabelContract.test.cjs
+?? apps/mobile/src/features/notifications/utils/__tests__/notificationMealPlanUpdated.test.cjs
+?? apps/mobile/src/features/onboarding/viewmodels/__tests__/
+?? apps/mobile/src/features/push/components/PushResponseController.js
+?? apps/mobile/src/features/push/utils/__tests__/pushResponseController.test.cjs
+?? apps/mobile/src/features/push/utils/pushResponseController.cjs
+?? docs/RELEASE_MEAL_NOTIFICATION_READY_2026-10-12.md
+?? docs/RELEASE_MOBILE_COMPAT_2026-10-12.md
+?? docs/RELEASE_MOBILE_INVITE_VALIDATION_2026-10-12.md
+?? tests/

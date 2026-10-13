@@ -10,6 +10,8 @@ import RegisterPage from './features/auth/pages/RegisterPage';
 import CompleteRegistrationPage from './features/auth/pages/CompleteRegistrationPage';
 import ForgotPasswordPage from './features/auth/pages/ForgotPasswordPage';
 import ResetPasswordPage from './features/auth/pages/ResetPasswordPage';
+import MobileEmailConfirmationPage from './features/auth/pages/MobileEmailConfirmationPage';
+import { isMobileEmailConfirmationPath } from './features/auth/utils/mobileEmailConfirmation';
 
 // Feature Pages
 import DashboardPage from './features/dashboard/pages/DashboardPage';
@@ -34,6 +36,8 @@ import DietitianApplicationsPage from './features/admin/pages/DietitianApplicati
 import DietitianApplicationDetailPage from './features/admin/pages/DietitianApplicationDetailPage';
 
 const App = () => {
+  // Mobile confirmation is independent of dietitian role checks and panel providers.
+  if (isMobileEmailConfirmationPath(window.location.pathname)) return <MobileEmailConfirmationPage />;
   return (
     <AuthProvider>
       <AppointmentProvider>
