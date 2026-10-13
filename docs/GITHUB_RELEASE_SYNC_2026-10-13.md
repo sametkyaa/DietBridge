@@ -17,3 +17,5 @@ Bu görevde production DB/Auth/Storage yazması veya yeni migration/RLS değişi
 Kaynak dosyalar: App.tsx, lib/supabaseClient.ts, auth doğrulama sayfası/servisi/parser ve testleri, clients davet utils/servis/landing ve testleri, migration/preflight/postflight SQL, migration replay envanterleri, PostgreSQL doğrulama script'i, quality workflow, .gitignore ve yayın raporları. Yeni branch'in tam dosya listesi PR diff'inde; önceki kısa kod görevi listesi `SHORT_INVITE_CODES_CHANGED_FILES_2026-10-13.json` içindedir.
 
 Sonraki aşama: `codex/post-release-validation`. Önceki hazırlık/yayın raporları tarihsel durumu anlatır; son GitHub eşitleme durumu bu görev ve PR kayıtlarıyla değerlendirilir.
+
+GitHub critical gate ilk koşusu, mocked e-posta doğrulama spec'inin gerçek Supabase paketine de dahil edildiğini yakaladı. Spec `playwright.config.ts` testIgnore listesine eklendi; kendi mocked feature config'i ve workflow adımı üzerinden çalışmayı sürdürür. Gerçek Auth kontrolü, başarı şartları veya test beklemeleri gevşetilmedi. İki config'in gerçek test envanteri `playwright test --list` ile ayrı doğrulanır; düzeltilmiş head'in GitHub kontrolleri yeniden çalışır.
