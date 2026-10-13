@@ -23,6 +23,7 @@ const commands = [
   ['--test', 'tests/registerTermsLinkContracts.test.cjs'],
   ['--test', 'tests/kvkkAcknowledgementCopy.test.cjs'],
   ['--test', 'tests/registrationReliabilityContracts.test.cjs'],
+  ['--test', 'tests/mobileEmailConfirmation.test.cjs'],
   ['--test', 'tests/dietitianDiplomaStorageContracts.test.cjs'],
   ['scripts/runRegistrationReliabilityRuntimeTests.mjs'],
   ['--test', 'tests/productAdminContracts.test.cjs'],

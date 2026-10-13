@@ -30,6 +30,7 @@ const ISOLATED_PHASE2_MIGRATIONS = new Set([
   '20261011214629_health_consent_notes.sql',
   '20261011103029_mobile_weight_istanbul_date.sql',
   // Feature migrations are applied explicitly by their dedicated disposable harness.
+  '20261013121103_short_dietitian_invite_codes.sql',
   '20261005120859_dietitian_invite_codes.sql',
   '20261005124951_recipe_import_core.sql',
   '20261005132107_recipe_import_extraction_metrics.sql',

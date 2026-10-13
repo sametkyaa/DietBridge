@@ -85,6 +85,16 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Meal request reply and health cache UI tests
         run: npx playwright test -c playwright.features.config.ts tests/e2e/meal-request-reply.spec.ts tests/e2e/health-cache.spec.ts
+      - name: Mobile email confirmation UI tests
+        run: npx playwright test -c playwright.features.config.ts tests/e2e/mobile-email-confirmation.spec.ts
+      - name: Short invite sharing UI tests
+        env:
+          DIETBRIDGE_TEST_INVITE_MODE: invite_code
+        run: npx playwright test -c playwright.features.config.ts tests/e2e/invite-sharing.spec.ts
+      - name: Legacy email invite fallback UI test
+        env:
+          DIETBRIDGE_TEST_INVITE_MODE: legacy_email
+        run: npx playwright test -c playwright.features.config.ts tests/e2e/invite-sharing.spec.ts --grep 'default legacy'
       - name: Run disposable critical browser E2E
         run: npm run test:e2e
       - name: Upload browser failure evidence
@@ -97,3 +107,19 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  short-invite-postgres:
+    name: Short Invite PostgreSQL Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install isolated PostgreSQL verification tool
+        run: npm install --prefix "$RUNNER_TEMP/short-invite-postgres" --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - name: Verify short and legacy invite SQL without production access
+        run: node scripts/runShortInvitePostgresVerification.mjs "$RUNNER_TEMP/short-invite-postgres/node_modules/@electric-sql/pglite"

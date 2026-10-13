@@ -2,8 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import QRCode from 'qrcode';
 import {inviteDomainAssociations} from '../scripts/createInviteDomainAssociations.mjs';
-import { inviteUrl, inviteWhatsAppUrl, normalizeInviteCode, resolveClientInviteMode } from '../features/clients/utils/inviteCode.ts';
+import { formatInviteCode, inviteUrl, inviteWhatsAppUrl, normalizeInviteCode, resolveClientInviteMode } from '../features/clients/utils/inviteCode.ts';
 const code='DB-ABCD-2345-EFGH-6789';
+
+test('short codes support manual entry and sharing without truncating legacy codes', () => {
+  for (const value of ['ABCD-2345', 'abcd2345', ' abcd 2345 ']) {
+    assert.equal(normalizeInviteCode(value), 'ABCD2345');
+    assert.equal(formatInviteCode(value), 'ABCD-2345');
+    assert.equal(inviteUrl(value), 'https://app.dietbridge.com.tr/davet/ABCD2345');
+  }
+  assert.equal(formatInviteCode(code), code);
+  const text = new URL(inviteWhatsAppUrl('ABCD-2345')).searchParams.get('text');
+  assert.ok(text.includes('ABCD-2345'));
+  assert.ok(text.includes('/davet/ABCD2345'));
+  for (const value of ['ABC2345', 'ABCD23456', 'ABCD-234I', 'ABCD-2340', 'DB-ABCD-2345', '../ABCD2345', 'ABCD_2345', 'ＡBCD2345']) {
+    assert.equal(normalizeInviteCode(value), null);
+    assert.throws(() => inviteUrl(value));
+  }
+});
 test('invite flag fails closed to the legacy production behavior',()=>{
   for(const value of [undefined,'','invalid','legacy_email']) assert.equal(resolveClientInviteMode(value),'legacy_email');
   assert.equal(resolveClientInviteMode('invite_code'),'invite_code');

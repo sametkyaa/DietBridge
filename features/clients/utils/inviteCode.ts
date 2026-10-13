@@ -3,7 +3,12 @@ export const resolveClientInviteMode = (value: unknown): ClientInviteMode => val
 export const normalizeInviteCode = (value: unknown): string | null => {
   if (typeof value !== 'string' || value.length > 64 || !/^[a-z0-9\s-]+$/i.test(value)) return null;
   const code = value.replace(/[\s-]/g, '').toUpperCase();
-  return /^DB[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{16}$/.test(code) ? code : null;
+  return /^(?:[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}|DB[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{16})$/.test(code) ? code : null;
+};
+export const formatInviteCode = (value: string): string => {
+  const code = normalizeInviteCode(value);
+  if (!code) throw new Error('Geçersiz davet kodu.');
+  return code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : `DB-${code.slice(2).match(/.{4}/g)!.join('-')}`;
 };
 export const inviteUrl = (code: string): string => {
   const normalized = normalizeInviteCode(code);

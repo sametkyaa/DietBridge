@@ -1,6 +1,6 @@
 import { supabase } from '../../../lib/supabaseClient';
 import { isValidUuid } from '../../../shared/utils/uuid';
-import { normalizeInviteCode } from '../utils/inviteCode';
+import { formatInviteCode, normalizeInviteCode } from '../utils/inviteCode';
 
 export interface DietitianInviteCode { code: string; isOpen: boolean; rotatedAt: string | null }
 const ERROR = 'Davet kodu işlemi tamamlanamadı. Lütfen tekrar deneyin.';
@@ -11,10 +11,11 @@ async function callInviteRpc(name: 'get_my_invite_code' | 'rotate_my_invite_code
   const { data: auth, error: authError } = await supabase.auth.getUser(token);
   if (authError || !auth.user) throw new Error(ERROR);
   const { data, error } = await supabase.rpc(name, args).setHeader('Authorization', `Bearer ${token}`);
+  const code = data?.short_code ?? data?.code;
   if (error || !data || !isValidUuid(data.dietitian_id) || data.dietitian_id !== auth.user.id
-    || !normalizeInviteCode(data.code) || typeof data.is_open !== 'boolean'
+    || !normalizeInviteCode(code) || typeof data.is_open !== 'boolean'
     || (data.rotated_at !== null && typeof data.rotated_at !== 'string')) throw new Error(ERROR);
-  return { code: data.code, isOpen: data.is_open, rotatedAt: data.rotated_at };
+  return { code: formatInviteCode(code), isOpen: data.is_open, rotatedAt: data.rotated_at };
 }
 export const getMyInviteCode = () => callInviteRpc('get_my_invite_code');
 export const rotateMyInviteCode = () => callInviteRpc('rotate_my_invite_code');
