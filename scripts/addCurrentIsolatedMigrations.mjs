@@ -81,7 +81,7 @@ export const addHealthConsentRuntimeMigrations = ({ repoRoot, tempRoot }) => {
   const sourceDirectory = join(repoRoot, 'supabase', 'migrations');
   const destinationDirectory = join(tempRoot, 'supabase', 'migrations');
   const source = readdirSync(sourceDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  const deferred = ['20261012080237_chat_media_and_rate_limits.sql'];
+  const deferred = ['20261012080237_chat_media_and_rate_limits.sql', '20261013121103_short_dietitian_invite_codes.sql'];
   const missing = source.filter((name) => !deferred.includes(name) && !existsSync(join(destinationDirectory, name)));
   if (JSON.stringify(missing) !== JSON.stringify(HEALTH_RUNTIME_EXTRA_MIGRATIONS)) {
     throw new Error('Health runtime migration inventory changed; review the complete chain.');

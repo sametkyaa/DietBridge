@@ -1,0 +1,209 @@
+{
+  "preflight": {
+    "rls": true,
+    "state": {
+      "count": 1,
+      "max_length": 22,
+      "min_length": 22,
+      "legacy_fingerprint": "ced5ff138b175db345a01729d221a7e2"
+    },
+    "columns": [
+      {
+        "data_type": "uuid",
+        "column_name": "dietitian_id",
+        "is_nullable": "NO",
+        "is_generated": "NEVER",
+        "column_default": null,
+        "generation_expression": null
+      },
+      {
+        "data_type": "text",
+        "column_name": "code",
+        "is_nullable": "NO",
+        "is_generated": "NEVER",
+        "column_default": null,
+        "generation_expression": null
+      },
+      {
+        "data_type": "text",
+        "column_name": "normalized_code",
+        "is_nullable": "YES",
+        "is_generated": "ALWAYS",
+        "column_default": null,
+        "generation_expression": "replace(code, '-'::text, ''::text)"
+      },
+      {
+        "data_type": "boolean",
+        "column_name": "is_open",
+        "is_nullable": "NO",
+        "is_generated": "NEVER",
+        "column_default": "true",
+        "generation_expression": null
+      },
+      {
+        "data_type": "timestamp with time zone",
+        "column_name": "created_at",
+        "is_nullable": "NO",
+        "is_generated": "NEVER",
+        "column_default": "now()",
+        "generation_expression": null
+      },
+      {
+        "data_type": "timestamp with time zone",
+        "column_name": "updated_at",
+        "is_nullable": "NO",
+        "is_generated": "NEVER",
+        "column_default": "now()",
+        "generation_expression": null
+      },
+      {
+        "data_type": "timestamp with time zone",
+        "column_name": "rotated_at",
+        "is_nullable": "YES",
+        "is_generated": "NEVER",
+        "column_default": null,
+        "generation_expression": null
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX dietitian_invite_codes_pkey ON public.dietitian_invite_codes USING btree (dietitian_id)",
+      "CREATE UNIQUE INDEX dietitian_invite_codes_code_key ON public.dietitian_invite_codes USING btree (code)",
+      "CREATE UNIQUE INDEX dietitian_invite_codes_normalized_code_key ON public.dietitian_invite_codes USING btree (normalized_code)"
+    ],
+    "policies": [
+      {
+        "cmd": "SELECT",
+        "qual": "((dietitian_id = ( SELECT auth.uid() AS uid)) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "dietitian_invite_codes",
+        "permissive": "PERMISSIVE",
+        "policyname": "invite_codes_select_own",
+        "schemaname": "public",
+        "with_check": null
+      }
+    ],
+    "triggers": 0,
+    "functions": [
+      {
+        "name": "get_my_invite_code",
+        "schema": "public",
+        "definition": "CREATE OR REPLACE FUNCTION public.get_my_invite_code()\n RETURNS dietitian_invite_codes\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'private'\nAS $function$\ndeclare v_actor uuid := private.require_invite_actor('dietitian'); v_row public.dietitian_invite_codes;\nbegin\n  perform pg_advisory_xact_lock(hashtext('invite_owner:' || v_actor::text));\n  select * into v_row from public.dietitian_invite_codes where dietitian_id=v_actor;\n  if found then return v_row; end if;\n  loop\n    begin\n      insert into public.dietitian_invite_codes(dietitian_id,code) values(v_actor,private.generate_invite_code()) returning * into v_row;\n      return v_row;\n    exception when unique_violation then null;\n    end;\n  end loop;\nend $function$\n"
+      },
+      {
+        "name": "preview_dietitian_invite_code",
+        "schema": "public",
+        "definition": "CREATE OR REPLACE FUNCTION public.preview_dietitian_invite_code(p_code text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'private'\nAS $function$\ndeclare v_actor uuid := private.require_invite_actor('client'); v_code public.dietitian_invite_codes; v_profile record;\nbegin\n  perform pg_advisory_xact_lock(hashtext(v_actor::text));\n  if private.invite_rate_limited(v_actor) then return jsonb_build_object('result','rate_limited'); end if;\n  select * into v_code from public.dietitian_invite_codes where normalized_code=private.normalize_invite_code(p_code) for share;\n  if v_code.dietitian_id is null or not exists(select 1 from public.dietitian_profiles dp join public.profiles p on p.id=dp.user_id\n     where dp.user_id=v_code.dietitian_id and dp.verification_status='approved' and dp.is_verified is true and p.role::text='dietitian') then\n    insert into private.invite_code_attempts(client_id,success) values(v_actor,false);\n    return jsonb_build_object('result','not_found');\n  end if;\n  if not v_code.is_open then\n    insert into private.invite_code_attempts(client_id,success) values(v_actor,false);\n    return jsonb_build_object('result','closed');\n  end if;\n  select p.full_name into v_profile from public.profiles p where p.id=v_code.dietitian_id;\n  -- A private avatar requires a separate authorized signed URL endpoint; no\n  -- broad avatar Storage access is granted to unconnected clients here.\n  return jsonb_build_object('result','ready','dietitian',jsonb_build_object(\n    'id',v_code.dietitian_id,'display_name',v_profile.full_name,'professional_title','Diyetisyen','avatar_url',null));\nend $function$\n"
+      },
+      {
+        "name": "redeem_dietitian_invite_code",
+        "schema": "public",
+        "definition": "CREATE OR REPLACE FUNCTION public.redeem_dietitian_invite_code(p_code text)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'private'\nAS $function$\ndeclare v_actor uuid := private.require_invite_actor('client'); v_code public.dietitian_invite_codes; v_existing public.dietitian_clients;\nbegin\n  perform pg_advisory_xact_lock(hashtext(v_actor::text));\n  if private.invite_rate_limited(v_actor) then return 'rate_limited'; end if;\n  select * into v_code from public.dietitian_invite_codes where normalized_code=private.normalize_invite_code(p_code) for share;\n  if v_code.dietitian_id is null or not exists(select 1 from public.dietitian_profiles dp join public.profiles p on p.id=dp.user_id\n    where dp.user_id=v_code.dietitian_id and dp.verification_status='approved' and dp.is_verified is true and p.role::text='dietitian') then\n    insert into private.invite_code_attempts(client_id,success) values(v_actor,false); return 'not_found';\n  end if;\n  if not v_code.is_open then\n    insert into private.invite_code_attempts(client_id,success) values(v_actor,false); return 'closed';\n  end if;\n  perform pg_advisory_xact_lock(hashtext('dietitian_client_capacity:' || v_code.dietitian_id::text));\n  select * into v_existing from public.dietitian_clients where client_id=v_actor and status='active' for update;\n  if found then\n    if v_existing.dietitian_id=v_code.dietitian_id then return 'already_connected'; end if;\n    return 'has_other_dietitian';\n  end if;\n  select * into v_existing from public.dietitian_clients where client_id=v_actor and dietitian_id=v_code.dietitian_id for update;\n  if (v_existing.id is null or v_existing.status <> 'pending')\n    and public.dietitian_active_client_usage(v_code.dietitian_id) >= public.dietitian_effective_client_limit(v_code.dietitian_id) then\n    return 'limit_reached';\n  end if;\n  -- Only this caller's old pending requests close, only after successful\n  -- checks. A failed check leaves legacy pending relationships untouched.\n  update public.dietitian_clients set status='removed' where client_id=v_actor and dietitian_id<>v_code.dietitian_id and status='pending';\n  if v_existing.id is null then\n    insert into public.dietitian_clients(dietitian_id,client_id,status) values(v_code.dietitian_id,v_actor,'pending') returning * into v_existing;\n  elsif v_existing.status in ('removed','rejected') then\n    update public.dietitian_clients set status='pending' where id=v_existing.id;\n  end if;\n  update public.dietitian_clients set status='active' where id=v_existing.id;\n  insert into private.invite_code_attempts(client_id,success) values(v_actor,true);\n  return 'connected';\nend $function$\n"
+      },
+      {
+        "name": "rotate_my_invite_code",
+        "schema": "public",
+        "definition": "CREATE OR REPLACE FUNCTION public.rotate_my_invite_code()\n RETURNS dietitian_invite_codes\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'private'\nAS $function$\ndeclare v_actor uuid := private.require_invite_actor('dietitian'); v_row public.dietitian_invite_codes;\nbegin\n  v_row := public.get_my_invite_code();\n  loop\n    begin\n      update public.dietitian_invite_codes set code=private.generate_invite_code(),updated_at=now(),rotated_at=now()\n        where dietitian_id=v_actor returning * into v_row;\n      return v_row;\n    exception when unique_violation then null;\n    end;\n  end loop;\nend $function$\n"
+      }
+    ],
+    "constraints": [
+      {
+        "name": "dietitian_invite_codes_code_key",
+        "definition": "UNIQUE (code)"
+      },
+      {
+        "name": "dietitian_invite_codes_dietitian_id_fkey",
+        "definition": "FOREIGN KEY (dietitian_id) REFERENCES profiles(id) ON DELETE CASCADE"
+      },
+      {
+        "name": "dietitian_invite_codes_normalized_code_key",
+        "definition": "UNIQUE (normalized_code)"
+      },
+      {
+        "name": "dietitian_invite_codes_pkey",
+        "definition": "PRIMARY KEY (dietitian_id)"
+      },
+      {
+        "name": "invite_code_format",
+        "definition": "CHECK ((code ~ '^DB(-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}){4}$'::text))"
+      }
+    ],
+    "prerequisites": {
+      "actor": true,
+      "pgcrypto": true
+    }
+  },
+  "postflight": {
+    "rls": true,
+    "state": {
+      "codes": 1,
+      "legacy_fingerprint": "ced5ff138b175db345a01729d221a7e2",
+      "unique_short_codes": 1,
+      "invalid_short_codes": 0,
+      "invalid_legacy_codes": 0
+    },
+    "grants": {
+      "anon_redeem": false,
+      "anon_preview": false,
+      "client_generator": false
+    },
+    "columns": [
+      {
+        "column_name": "normalized_short_code",
+        "is_nullable": "YES",
+        "is_generated": "ALWAYS",
+        "column_default": null,
+        "generation_expression": "replace(short_code, '-'::text, ''::text)"
+      },
+      {
+        "column_name": "short_code",
+        "is_nullable": "NO",
+        "is_generated": "NEVER",
+        "column_default": "private.generate_short_invite_code()",
+        "generation_expression": null
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX dietitian_invite_codes_pkey ON public.dietitian_invite_codes USING btree (dietitian_id)",
+      "CREATE UNIQUE INDEX dietitian_invite_codes_code_key ON public.dietitian_invite_codes USING btree (code)",
+      "CREATE UNIQUE INDEX dietitian_invite_codes_normalized_code_key ON public.dietitian_invite_codes USING btree (normalized_code)",
+      "CREATE UNIQUE INDEX dietitian_invite_codes_normalized_short_code_key ON public.dietitian_invite_codes USING btree (normalized_short_code)"
+    ],
+    "policies": [
+      {
+        "cmd": "SELECT",
+        "qual": "((dietitian_id = ( SELECT auth.uid() AS uid)) AND ( SELECT is_current_user_dietitian() AS is_current_user_dietitian))",
+        "roles": [
+          "authenticated"
+        ],
+        "tablename": "dietitian_invite_codes",
+        "permissive": "PERMISSIVE",
+        "policyname": "invite_codes_select_own",
+        "schemaname": "public",
+        "with_check": null
+      }
+    ],
+    "migration": [
+      {
+        "name": "short_dietitian_invite_codes",
+        "version": "20261013121103"
+      }
+    ],
+    "lookup_functions": [
+      {
+        "name": "preview_dietitian_invite_code",
+        "rate_limit": true,
+        "accepts_short": true,
+        "requires_client": true
+      },
+      {
+        "name": "redeem_dietitian_invite_code",
+        "rate_limit": true,
+        "accepts_short": true,
+        "requires_client": true
+      }
+    ]
+  },
+  "migrationApplied": true
+}

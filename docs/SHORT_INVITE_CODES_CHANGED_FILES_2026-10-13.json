@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-13",
+  "productionWrites": true,
+  "migrationAppliedToProduction": true,
+  "migrationVersion": "20261013121103",
+  "webDeploymentId": "dpl_6CCALwdvjbzmHyMT7k8mRsDAjxna",
+  "androidVersion": "1.0.3",
+  "androidVersionCode": "5",
+  "androidChannel": "internal",
+  "projects": {
+    "web": {
+      "baseline": "C:/dev/DietBridge-Web-Email-Confirmation",
+      "target": "C:/dev/DietBridge-Web-Short-Invite",
+      "branch": "codex/short-invite-codes-web",
+      "changedFiles": [
+        {
+          "file": ".gitignore",
+          "change": "modified"
+        },
+        {
+          "file": "docs/SHORT_INVITE_CODES_2026-10-13.md",
+          "change": "added"
+        },
+        {
+          "file": "docs/SHORT_INVITE_CODES_CHANGED_FILES_2026-10-13.json",
+          "change": "added"
+        },
+        {
+          "file": "docs/SHORT_INVITE_PRODUCTION_ADVISORS_2026-10-13.json",
+          "change": "added"
+        },
+        {
+          "file": "docs/SHORT_INVITE_PRODUCTION_EVIDENCE_2026-10-13.json",
+          "change": "added"
+        },
+        {
+          "file": "features/clients/pages/InviteLandingPage.tsx",
+          "change": "modified"
+        },
+        {
+          "file": "features/clients/services/inviteCodeService.ts",
+          "change": "modified"
+        },
+        {
+          "file": "features/clients/utils/inviteCode.ts",
+          "change": "modified"
+        },
+        {
+          "file": "scripts/addCurrentIsolatedMigrations.mjs",
+          "change": "modified"
+        },
+        {
+          "file": "scripts/runDisposableSupabaseLocalReplay.mjs",
+          "change": "modified"
+        },
+        {
+          "file": "scripts/runShortInvitePostgresVerification.mjs",
+          "change": "added"
+        },
+        {
+          "file": "supabase/migrations/20261013121103_short_dietitian_invite_codes.sql",
+          "change": "added"
+        },
+        {
+          "file": "supabase/preflight/short_invite_postflight.sql",
+          "change": "added"
+        },
+        {
+          "file": "supabase/preflight/short_invite_preflight.sql",
+          "change": "added"
+        },
+        {
+          "file": "tests/e2e/invite-sharing.spec.ts",
+          "change": "modified"
+        },
+        {
+          "file": "tests/inviteSharing.test.mjs",
+          "change": "modified"
+        }
+      ]
+    },
+    "mobile": {
+      "baseline": "C:/dev/DietBridge-Mobile-Registration-Release-20261013",
+      "target": "C:/dev/DietBridge-Mobile-Short-Invite",
+      "branch": "codex/short-invite-codes-mobile",
+      "changedFiles": [
+        {
+          "file": "app.json",
+          "change": "modified"
+        },
+        {
+          "file": "apps/mobile/src/features/dietitianConnection/components/InviteCodeSheet.js",
+          "change": "modified"
+        },
+        {
+          "file": "apps/mobile/src/features/dietitianConnection/components/InviteConnectionCard.js",
+          "change": "modified"
+        },
+        {
+          "file": "apps/mobile/src/features/dietitianConnection/utils/__tests__/inviteCodeContract.test.cjs",
+          "change": "modified"
+        },
+        {
+          "file": "apps/mobile/src/features/dietitianConnection/utils/__tests__/inviteViewModel.test.cjs",
+          "change": "modified"
+        },
+        {
+          "file": "apps/mobile/src/features/dietitianConnection/utils/inviteCodeContract.cjs",
+          "change": "modified"
+        },
+        {
+          "file": "apps/mobile/src/features/dietitianConnection/viewmodels/useDietitianInviteViewModel.js",
+          "change": "modified"
+        },
+        {
+          "file": "apps/mobile/src/features/onboarding/components/OnboardingConnectStep.js",
+          "change": "modified"
+        }
+      ]
+    }
+  }
+}
