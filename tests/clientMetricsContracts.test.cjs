@@ -269,5 +269,6 @@ test('active source chain uses real metrics, actions, export and functional sett
   assert.match(settingsPage, /Çıkış Yap/);
   assert.match(authService, /resetPasswordForEmail/);
   assert.match(authService, /window\.location\.origin\}\/reset-password/);
-  assert.doesNotMatch(settingsPage, /bildirim|2FA|two-factor|theme selector|language selector|account deletion/i);
+  assert.match(settingsPage, /<NotificationPreferencesPanel \/>/);
+  assert.doesNotMatch(settingsPage, /2FA|two-factor|theme selector|language selector|account deletion/i);
 });

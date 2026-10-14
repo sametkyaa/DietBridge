@@ -1,10 +1,12 @@
 import React, {
   PropsWithChildren,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from 'react';
 import { useNotifications } from '../hooks/useNotifications';
+import { useBrowserNotifications } from '../hooks/useBrowserNotifications';
 import {
   NotificationCenterContext,
   type NotificationTab,
@@ -14,10 +16,6 @@ export const NotificationCenterProvider = ({ children }: PropsWithChildren) => {
   const [activeTab, setActiveTab] = useState<NotificationTab>('all');
   const [isOpen, setIsOpen] = useState(false);
   const openerRef = useRef<HTMLElement | null>(null);
-  const notificationState = useNotifications({
-    pageSize: 25,
-    unreadOnly: activeTab === 'unread',
-  });
 
   const open = useCallback((opener?: HTMLElement | null): void => {
     openerRef.current = opener ?? (
@@ -27,6 +25,16 @@ export const NotificationCenterProvider = ({ children }: PropsWithChildren) => {
     );
     setIsOpen(true);
   }, []);
+
+  const openFromBanner = useCallback(() => open(), [open]);
+  const browserAlerts = useBrowserNotifications(openFromBanner);
+  const notificationState = useNotifications({
+    pageSize: 25,
+    unreadOnly: activeTab === 'unread',
+    onNotification: browserAlerts.receiveNotification,
+  });
+  const { seedNotifications } = browserAlerts;
+  useEffect(() => { seedNotifications(notificationState.notifications); }, [notificationState.notifications, seedNotifications]);
 
   const close = useCallback((): void => {
     setIsOpen(false);
@@ -46,6 +54,7 @@ export const NotificationCenterProvider = ({ children }: PropsWithChildren) => {
   return (
     <NotificationCenterContext.Provider value={{
       ...notificationState,
+      browserAlerts,
       activeTab,
       setActiveTab,
       isOpen,

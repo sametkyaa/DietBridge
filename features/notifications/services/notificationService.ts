@@ -557,6 +557,7 @@ const notifyRealtimeStatus = (
 export interface SubscribeToNotificationsOptions {
   onChange: (change: NotificationRealtimeChange) => void;
   onStatus?: (status: NotificationRealtimeStatus) => void;
+  onNotification?: (notification: NotificationItem) => void;
 }
 
 export const subscribeToNotifications = (
@@ -575,6 +576,13 @@ export const subscribeToNotifications = (
     }
 
     const userId = data.user.id;
+    const notifyPresentation = (row: unknown): void => {
+      if (!options.onNotification || isUnsupportedNotificationType(row)) return;
+      let notification: NotificationItem;
+      try { notification = normalizeNotificationRow(row); }
+      catch { return; } // Malformed events still refresh the data but never produce an alert.
+      if (notification.recipientId === userId) options.onNotification(notification);
+    };
     channel = supabase
       .channel(`notifications:${userId}`)
       .on(
@@ -589,6 +597,7 @@ export const subscribeToNotifications = (
           if (!active) return;
           const row = asRecord(payload.new);
           options.onChange({ event: 'INSERT', notificationId: row && typeof row.id === 'string' ? row.id : null });
+          notifyPresentation(row);
         },
       )
       .on(
@@ -603,6 +612,7 @@ export const subscribeToNotifications = (
           if (!active) return;
           const row = asRecord(payload.new);
           options.onChange({ event: 'UPDATE', notificationId: row && typeof row.id === 'string' ? row.id : null });
+          notifyPresentation(row);
         },
       );
 

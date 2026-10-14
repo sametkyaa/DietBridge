@@ -321,6 +321,31 @@ test('Realtime uses the authenticated user channel, INSERT/UPDATE only, and idem
   assert.equal(supabaseClient.__getRemovedChannels().length, 1);
 });
 
+test('Realtime presentation receives only normalized supported notifications owned by this session', async () => {
+  const callbacks = [];
+  const channel = {
+    on: (_event, _config, callback) => { callbacks.push(callback); return channel; },
+    subscribe: () => channel,
+  };
+  supabaseClient.__setChannelHandler(() => channel);
+  const alerts = []; const changes = [];
+  const subscription = service.subscribeToNotifications({
+    onChange: (change) => changes.push(change), onNotification: (notification) => alerts.push(notification),
+  });
+  await flush();
+  callbacks[0]({ new: chatRow() });
+  callbacks[1]({ new: chatRow({ event_count: 2 }) });
+  callbacks[0]({ new: chatRow({ recipient_id: ids.actor }) });
+  callbacks[0]({ new: { id: ids.notificationA } });
+  callbacks[0]({ new: chatRow({ category: 'future_category' }) });
+  assert.equal(changes.length, 5);
+  assert.equal(alerts.length, 2);
+  assert.equal(alerts[1].eventCount, 2);
+  await subscription.unsubscribe();
+  callbacks[0]({ new: chatRow() });
+  assert.equal(alerts.length, 2);
+});
+
 test('state merge replaces by id, preserves equal-timestamp ordering, and re-arm resets read state', () => {
   const current = [service.normalizeNotificationRow(chatRow({ id: ids.notificationA, occurred_at: timestamps.older, seen_at: timestamps.newer, read_at: timestamps.newer }))];
   const replacement = service.normalizeNotificationRow(chatRow({ id: ids.notificationA, occurred_at: timestamps.newer, seen_at: null, read_at: null, event_count: 2 }));
