@@ -31,6 +31,11 @@ const ISOLATED_PHASE2_MIGRATIONS = new Set([
   '20261011103029_mobile_weight_istanbul_date.sql',
   // Feature migrations are applied explicitly by their dedicated disposable harness.
   '20261013121103_short_dietitian_invite_codes.sql',
+  // Forward push runtime is verified by runPushDeliveryPostgresVerification.
+  '20261012155048_push_dispatch_worker.sql',
+  '20261012161747_push_scheduler_private_http.sql',
+  '20261012162958_push_dispatch_active_pair.sql',
+  '20261014080429_chat_push_delivery_latency.sql',
   '20261005120859_dietitian_invite_codes.sql',
   '20261005124951_recipe_import_core.sql',
   '20261005132107_recipe_import_extraction_metrics.sql',
