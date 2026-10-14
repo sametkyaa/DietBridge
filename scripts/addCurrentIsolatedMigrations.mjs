@@ -81,7 +81,14 @@ export const addHealthConsentRuntimeMigrations = ({ repoRoot, tempRoot }) => {
   const sourceDirectory = join(repoRoot, 'supabase', 'migrations');
   const destinationDirectory = join(tempRoot, 'supabase', 'migrations');
   const source = readdirSync(sourceDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  const deferred = ['20261012080237_chat_media_and_rate_limits.sql', '20261013121103_short_dietitian_invite_codes.sql'];
+  const deferred = [
+    '20261012080237_chat_media_and_rate_limits.sql', '20261013121103_short_dietitian_invite_codes.sql',
+    // The isolated push PostgreSQL CI gate replays this worker chain.
+    '20261012155048_push_dispatch_worker.sql',
+    '20261012161747_push_scheduler_private_http.sql',
+    '20261012162958_push_dispatch_active_pair.sql',
+    '20261014080429_chat_push_delivery_latency.sql',
+  ];
   const missing = source.filter((name) => !deferred.includes(name) && !existsSync(join(destinationDirectory, name)));
   if (JSON.stringify(missing) !== JSON.stringify(HEALTH_RUNTIME_EXTRA_MIGRATIONS)) {
     throw new Error('Health runtime migration inventory changed; review the complete chain.');
