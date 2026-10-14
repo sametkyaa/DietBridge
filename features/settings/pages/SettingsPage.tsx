@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SubscriptionPanel from '../../subscriptions/components/SubscriptionPanel';
+import NotificationPreferencesPanel from '../../notifications/components/NotificationPreferencesPanel';
 import { useAuth } from '../../auth/context/AuthContext';
 import { requestCurrentUserPasswordReset } from '../../auth/services/authService';
 import { Badge, Button, Callout, Card, Icon, PageContainer, PageHeader, cx, type IconName, type Tone } from '../../../shared/ui';
 
-type SettingsSection = 'account' | 'billing' | 'security';
+type SettingsSection = 'account' | 'billing' | 'notifications' | 'security';
 
 const sectionItems: Array<{
   key: SettingsSection;
@@ -15,6 +16,7 @@ const sectionItems: Array<{
 }> = [
   { key: 'account', label: 'Hesap', description: 'Profil özeti', icon: 'user' },
   { key: 'billing', label: 'Plan ve Ödeme', description: 'Abonelik ve limit', icon: 'sliders-horizontal' },
+  { key: 'notifications', label: 'Bildirimler', description: 'Masaüstü uyarıları ve ses', icon: 'bell' },
   { key: 'security', label: 'Güvenlik ve Oturum', description: 'Şifre ve çıkış', icon: 'lock' },
 ];
 
@@ -118,7 +120,7 @@ const SettingsPage = () => {
       <PageHeader
         eyebrow="Çalışma alanı"
         title="Ayarlar"
-        description="Hesabınızı, aboneliğinizi ve oturum güvenliğinizi tek bir yerden yönetin."
+        description="Hesabınızı, aboneliğinizi, bildirimlerinizi ve oturum güvenliğinizi tek bir yerden yönetin."
       />
 
       <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-12">
@@ -190,6 +192,8 @@ const SettingsPage = () => {
               </div>
             </Card>
           )}
+
+          {activeSection === 'notifications' && <NotificationPreferencesPanel />}
 
           {activeSection === 'security' && (
             <Card as="section" padding="none" className="p-5 sm:p-6" aria-labelledby="settings-security-title">

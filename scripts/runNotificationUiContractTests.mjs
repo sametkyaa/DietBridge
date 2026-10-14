@@ -19,6 +19,9 @@ const sources = [
   'features/notifications/utils/notificationFormatter.ts',
   'features/notifications/utils/notificationNavigation.ts',
   'features/notifications/utils/notificationVisibility.ts',
+  'features/notifications/services/browserNotificationPreferences.ts',
+  'features/notifications/services/browserNotificationAlerts.ts',
+  'features/notifications/services/notificationSound.ts',
   'shared/utils/uuid.ts',
 ];
 const expectedOutputs = [
@@ -58,7 +61,7 @@ for (const output of expectedOutputs) {
   if (!existsSync(join(buildDir, output))) fail(`Compiled output is missing: ${output}`);
 }
 
-const test = spawnSync(process.execPath, ['--test', join(repoRoot, 'tests', 'notificationUiContracts.test.cjs')], {
+const test = spawnSync(process.execPath, ['--test', join(repoRoot, 'tests', 'notificationUiContracts.test.cjs'), join(repoRoot, 'tests', 'notificationBrowserAlerts.test.cjs')], {
   cwd: repoRoot,
   env: { ...process.env, NOTIFICATION_UI_CONTRACT_BUILD_DIR: buildDir },
   encoding: 'utf8',

@@ -33,6 +33,7 @@ const GENERIC_REFRESH_MESSAGE = 'Bildirimler yüklenemedi. Lütfen tekrar deneyi
 export interface UseNotificationsOptions {
   unreadOnly?: boolean;
   pageSize?: number;
+  onNotification?: (notification: NotificationItem) => void;
 }
 
 export interface UseNotificationsResult {
@@ -92,6 +93,8 @@ export const useNotifications = (
     hasMore: false,
   });
   const scheduleRefreshRef = useRef<() => void>(() => undefined);
+  const onNotificationRef = useRef(options.onNotification);
+  onNotificationRef.current = options.onNotification;
 
   const isCurrentToken = useCallback((token: NotificationSessionToken): boolean => (
     mountedRef.current && guardRef.current.isCurrent(token)
@@ -205,6 +208,9 @@ export const useNotifications = (
     }
 
     const subscription = subscribeToNotifications({
+      onNotification: (notification) => {
+        if (isCurrentToken(token)) onNotificationRef.current?.(notification);
+      },
       onChange: () => {
         if (isCurrentToken(token)) scheduleRefreshRef.current();
       },
