@@ -27,9 +27,10 @@ const initialPlans = (eaten = false): Row[] => Array.from({ length: 7 }, (_, ind
     is_eaten: eaten, sort_order: 0, time: '08:30', source: 'recipe', recipe_id: recipeId, slot_label: null }] : [],
 }));
 
-async function fixture(page: Page, options: { empty?: boolean; eaten?: boolean; noTarget?: boolean; view?: 'recipes' | 'meal-plans' } = {}) {
+async function fixture(page: Page, options: { empty?: boolean; eaten?: boolean; noTarget?: boolean; delayImages?: boolean; failImages?: boolean; delayPlan?: boolean; view?: 'recipes' | 'meal-plans' } = {}) {
   const state = { recipes: options.empty ? [] : [recipe()], plans: options.empty ? [] : initialPlans(options.eaten),
     previousPlans: [] as Row[],
+    waitingImages: [] as (() => Promise<void>)[], signRequests: 0,
     failRecipeWrite: false, failPlanWrite: false, failLoad: false, savedDays: [] as Row[][],
     writes: [] as string[], storageDeletes: [] as unknown[], unexpected: [] as string[] };
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
@@ -68,6 +69,7 @@ async function fixture(page: Page, options: { empty?: boolean; eaten?: boolean; 
       data = { client_id: client, min_kcal: payload.p_min_kcal, max_kcal: payload.p_max_kcal, updated_at: now };
     }
     else if (name === 'meal_plans') {
+      if (options.delayPlan) return;
       if (state.failLoad) { status = 503; data = { message: 'private fixture plan failure' }; }
       else data = [...state.plans, ...state.previousPlans].filter(row => String(row.plan_date) >= (url.searchParams.get('plan_date') ?? '').replace('gte.', '')
         && String(row.plan_date) <= (url.searchParams.getAll('plan_date').find(value => value.startsWith('lte.')) ?? '').replace('lte.', ''));
@@ -82,7 +84,15 @@ async function fixture(page: Page, options: { empty?: boolean; eaten?: boolean; 
         data = { client_id: client, dietitian_id: owner, week_start: payload.p_week_start, week_end: dateAt(payload.p_week_start, 6), plans: state.plans };
       }
     } else if (url.pathname.includes('/storage/v1/object/sign/')) {
-      if (method === 'POST') data = { signedURL: `/object/sign/recipe-images/${photo}?token=fixture` };
+      if (method === 'POST') {
+        state.signRequests++;
+        if (options.failImages) return route.fulfill({ status: 544, contentType: 'application/json', body: JSON.stringify({ message: 'fixture storage timeout' }) });
+        data = { signedURL: `/object/sign/recipe-images/${photo}?token=fixture` };
+        if (options.delayImages) {
+          state.waitingImages.push(() => route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) }));
+          return;
+        }
+      }
       else return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSUQAAAAASUVORK5CYII=', 'base64') });
     } else if (url.pathname.includes('/storage/') && method === 'DELETE') { state.storageDeletes.push(req.postDataJSON()); data = []; }
     else if (!['client_medical_conditions', 'client_medications'].includes(name ?? '')) state.unexpected.push(`${method} ${url.pathname}`);
@@ -94,6 +104,46 @@ async function fixture(page: Page, options: { empty?: boolean; eaten?: boolean; 
   await expect(page.getByRole('heading', { level: 1, name: options.view === 'recipes' ? 'Tarifler' : 'Beslenme planı' })).toBeVisible();
   return { state, errors };
 }
+
+test('plan and recipe text load before images; late images preserve an edited meal draft', async ({ page }) => {
+  const { state, errors } = await fixture(page, { delayImages: true });
+  await expect(page.getByText('Tarifler yükleniyor...', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Plan Yükleniyor...', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Kayıtlı test tarifi', { exact: true })).toBeVisible();
+  await expect(page.getByText('Kayıtlı öğün', { exact: true }).first()).toBeVisible();
+  await expect.poll(() => state.waitingImages.length).toBeGreaterThan(0);
+  expect(state.signRequests).toBe(1);
+  await page.screenshot({ path: 'test-results/features/loading-before-images.png', fullPage: true });
+  await page.getByRole('button', { name: 'Öğün detayını aç: Kayıtlı öğün', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Düzenle', exact: true }).click();
+  const draftName = page.getByRole('dialog', { name: 'Öğün İçeriğini Düzenle', exact: true }).getByLabel('Öğün adı', { exact: true });
+  await draftName.fill('Görsel beklerken düzenlenen taslak');
+  await Promise.all(state.waitingImages.splice(0).map((finish) => finish()));
+  await expect(page.locator('img[src*="object/sign/recipe-images"]').first()).toBeVisible();
+  await expect(draftName).toHaveValue('Görsel beklerken düzenlenen taslak');
+  expect(state.writes).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('Storage 544 does not block plan text, recipes or editing', async ({ page }) => {
+  const { state } = await fixture(page, { failImages: true });
+  await expect(page.getByText('Kayıtlı test tarifi', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Öğün detayını aç: Kayıtlı öğün', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Planı kaydet', exact: true })).toBeEnabled();
+  await expect(page.getByText('Plan Yükleniyor...', { exact: true })).toHaveCount(0);
+  expect(state.writes).toEqual([]);
+});
+
+test('stalled plan read ends in an error and explicit retry recovers without a write', async ({ page }) => {
+  const options = { delayPlan: true };
+  const { state } = await fixture(page, options);
+  await expect(page.getByText('Plan yüklenemedi. Lütfen aynı hafta için tekrar deneyin.', { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Planı kaydet', exact: true })).toBeDisabled();
+  options.delayPlan = false;
+  await page.getByRole('button', { name: 'Aynı haftayı tekrar dene', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Öğün detayını aç: Kayıtlı öğün', exact: true })).toBeVisible();
+  expect(state.writes).toEqual([]);
+});
 
 test('recipe library uses service data, cards only, search and canonical create/update/delete requests', async ({ page }) => {
   const { state, errors } = await fixture(page, { view: 'recipes' });

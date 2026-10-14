@@ -22,19 +22,19 @@ export const getMealImagePreviewUrls = async (
 
   uniqueReferences.filter(isLegacyMealPhotoUrl).forEach((url) => previews.set(url, url));
 
-  const completionPhotoPreviews = await getMealCompletionPhotoPreviewUrls(
-    uniqueReferences.filter(isCanonicalMealCompletionPhotoPath),
-  );
+  const [completionPhotoPreviews, mealPhotoPreviews, recipeResults] = await Promise.all([
+    getMealCompletionPhotoPreviewUrls(
+      uniqueReferences.filter(isCanonicalMealCompletionPhotoPath),
+    ),
+    getMealPhotoPreviewUrls(uniqueReferences.filter(isCanonicalMealPhotoPath)),
+    Promise.allSettled(
+      uniqueReferences
+        .filter(isCanonicalRecipeImagePath)
+        .map(async (path) => [path, await getRecipeImagePreview(path)] as const),
+    ),
+  ]);
   completionPhotoPreviews.forEach((url, path) => previews.set(path, url));
-
-  const mealPhotoPreviews = await getMealPhotoPreviewUrls(uniqueReferences.filter(isCanonicalMealPhotoPath));
   mealPhotoPreviews.forEach((url, path) => previews.set(path, url));
-
-  const recipeResults = await Promise.allSettled(
-    uniqueReferences
-      .filter(isCanonicalRecipeImagePath)
-      .map(async (path) => [path, await getRecipeImagePreview(path)] as const),
-  );
   recipeResults.forEach((result) => {
     if (result.status === 'fulfilled') previews.set(result.value[0], result.value[1]);
   });

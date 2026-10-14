@@ -27,7 +27,8 @@ import { Avatar, Badge, Button, Card, CardHeader, ConfirmDialog, Drawer, Icon, I
 import './Nutrition.css';
 import Toast from '../shared/components/Toast';
 import {
-  fetchActiveDietitianClientList,
+  applyClientPhotoPreviews,
+  fetchActiveDietitianClientListForUser,
   fetchClientDetails,
   type ActiveClientDetails,
 } from '../features/clients/services/clientService';
@@ -92,6 +93,7 @@ import {
 } from '../features/meal-plans/utils/mealPlanSnapshotEdit';
 import {
   fetchRecipes,
+  getRecipeImagePreviews,
   getRecipeUserMessage,
   isCanonicalRecipeImagePath,
   type Recipe,
@@ -104,6 +106,7 @@ import {
   type RecipeCategoryFilter,
 } from '../features/recipes/utils/filterRecipes';
 import { getMealImagePreviewUrls } from '../features/meal-plans/services/mealImagePreviewService';
+import { applyMealImagePreviews } from '../features/meal-plans/utils/mealPlanPreview';
 
 const DAYS = MEAL_PLAN_WEEKDAY_LABELS;
 const MEAL_OPTIONS = ['Kahvaltı', 'Öğle', 'Akşam', 'Ara Öğün', 'Antrenman Öncesi', 'Antrenman Sonrası', 'Gece Ara Öğünü'];
@@ -214,7 +217,7 @@ const getMealRowDetails = (meal: MealPlanReadMeal, rowNamesByPlacement?: MealRow
 const mapCanonicalPlansToEditor = (
   plans: MealPlanReadDay[],
   weekStart: string,
-  photoPreviews: Map<string, string>,
+  photoPreviews: Map<string, string> = new Map(),
   rowNamesByPlacement?: MealRowNameByPlacement,
 ): { meals: MealRow[]; weeklyPlan: PlanState; planNotes: PlanNotesState; isEmpty: boolean } => {
   const plansByDate = mapWeeklyPlansByDate(plans, weekStart);
@@ -435,13 +438,16 @@ const MealPlans = () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user || !isValidUuid(user.id)) throw new Error('AUTH_REQUIRED');
-        const result = await fetchActiveDietitianClientList();
+        const result = await fetchActiveDietitianClientListForUser(user.id, { deferPhotos: true });
         if (!active) return;
         if (result.status === 'error') throw new Error(result.userMessage);
 
         const activeClients = result.clients;
         setDietitianId(user.id);
         setClients(activeClients);
+        if (result.loadPhotos) void result.loadPhotos().then((photos) => {
+          if (active) setClients((current) => applyClientPhotoPreviews(current, photos));
+        });
         const storageKey = `dietbridge:meal-plans:last-client:${user.id}`;
         const storedClientId = localStorage.getItem(storageKey);
         const navClientId = (location.state as { clientId?: string } | null)?.clientId;
@@ -487,21 +493,34 @@ const MealPlans = () => {
     setIsManualMealOpen(false);
   }, [selectedClient?.id]);
 
+  const recipeRequestRef = useRef(0);
   const loadRecipes = useCallback(async () => {
+    const requestId = ++recipeRequestRef.current;
     setIsLoadingRecipes(true);
     setRecipeError(null);
     try {
-      setRecipes(await fetchRecipes());
+      const loaded = await fetchRecipes({ deferImages: true });
+      if (requestId !== recipeRequestRef.current) return;
+      setRecipes(loaded);
+      void getRecipeImagePreviews(loaded.map((recipe) => recipe.imagePath)).then((photos) => {
+        if (requestId !== recipeRequestRef.current) return;
+        setRecipes((current) => current.map((recipe) => recipe.imagePath && !recipe.imagePreview
+          ? { ...recipe, imagePreview: photos.get(recipe.imagePath) ?? null }
+          : recipe));
+        setWeeklyPlan((current) => applyMealImagePreviews(current, photos));
+      });
     } catch (error) {
+      if (requestId !== recipeRequestRef.current) return;
       console.error('Failed to load recipes for meal plans:', error);
       setRecipeError(getRecipeUserMessage(error));
     } finally {
-      setIsLoadingRecipes(false);
+      if (requestId === recipeRequestRef.current) setIsLoadingRecipes(false);
     }
   }, []);
 
   useEffect(() => {
     void loadRecipes();
+    return () => { recipeRequestRef.current += 1; };
   }, [loadRecipes]);
 
   const loadWeeklyPlan = useCallback(async () => {
@@ -544,11 +563,8 @@ const MealPlans = () => {
         snapshot.weekStart,
         getMealPlanWeekDates(snapshot.weekStart)[6],
       );
-      const photoPreviews = await getMealImagePreviewUrls(
-        plans.flatMap((plan) => plan.meals.map((meal) => meal.photo_url)),
-      );
       if (requestId !== planRequestRef.current) return;
-      const editor = mapCanonicalPlansToEditor(plans, snapshot.weekStart, photoPreviews);
+      const editor = mapCanonicalPlansToEditor(plans, snapshot.weekStart);
       let rows = editor.meals;
       let notice: string | null = null;
       if (rows.length === 0) {
@@ -576,6 +592,12 @@ const MealPlans = () => {
       setWeeklyPlan(editor.weeklyPlan);
       setPlanNotes(editor.planNotes);
       setIsPlanEmpty(editor.isEmpty);
+      // Enrich only still-current cells. Never remap the editor or replace a draft
+      // after the user has started editing, moving or replacing meals.
+      void getMealImagePreviewUrls(plans.flatMap((plan) => plan.meals.map((meal) => meal.photo_url))).then((photos) => {
+        if (requestId !== planRequestRef.current) return;
+        setWeeklyPlan((current) => applyMealImagePreviews(current, photos));
+      }).catch(() => { console.warn('Plan görselleri yüklenemedi.'); });
     } catch (error) {
       if (requestId !== planRequestRef.current) return;
       console.error('Error loading plan:', getMealPlanErrorLogContext(error));
@@ -588,6 +610,7 @@ const MealPlans = () => {
 
   useEffect(() => {
     void loadWeeklyPlan();
+    return () => { planRequestRef.current += 1; };
   }, [loadWeeklyPlan]);
 
   useEffect(() => {
@@ -1649,7 +1672,7 @@ const MealPlans = () => {
               >
                 {selectedClient ? (
                   <>
-                    <Avatar name={selectedClient.name} src={selectedClient.avatar === USER_AVATAR ? null : selectedClient.avatar} size="lg" className="client-avatar" />
+                    <Avatar name={selectedClient.name} src={clients.find((client) => client.id === selectedClient.id)?.profilePhotoUrl ?? null} size="lg" className="client-avatar" />
                     <div className="text-left flex-1">
                       <p className="text-xs text-ink-2 font-medium">Seçili Danışan</p>
                       <p className="text-sm font-bold text-ink">{selectedClient.name}</p>
