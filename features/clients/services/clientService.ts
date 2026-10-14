@@ -152,12 +152,18 @@ const CLIENT_LIST_LOAD_ERROR =
   'Danışanlar yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.';
 
 export type ClientListResult =
-  | { status: 'success'; clients: Client[] }
+  | { status: 'success'; clients: Client[]; loadPhotos?: () => Promise<Map<string, string | null>> }
   | { status: 'error'; kind: 'auth' | 'query' | 'unexpected'; userMessage: string };
 
 export interface FetchDietitianClientListOptions {
   includeProgress?: boolean;
+  deferPhotos?: boolean;
 }
+
+export const applyClientPhotoPreviews = (clients: Client[], photos: Map<string, string | null>): Client[] =>
+  clients.map((client) => photos.has(client.id)
+    ? { ...client, profilePhotoUrl: photos.get(client.id) ?? null, avatar: photos.get(client.id) || USER_AVATAR }
+    : client);
 
 const formatDietDuration = (dietStartDate: string | null): string | null => {
   if (!dietStartDate) return null;
@@ -191,7 +197,7 @@ const formatDietDuration = (dietStartDate: string | null): string | null => {
 /**
  * Fetches clients associated with the logged-in dietitian.
  */
-const fetchDietitianClientListForUser = async (
+export const fetchDietitianClientListForUser = async (
   dietitianId: string,
   relationStatuses: Array<'active' | 'pending'> = ['active', 'pending'],
   options: FetchDietitianClientListOptions = {},
@@ -303,7 +309,7 @@ const fetchDietitianClientListForUser = async (
 
       const status: Client['status'] = item.status === 'active' ? 'Aktif' : 'Onay Bekliyor';
 
-      const profilePhotoUrl = await resolveProfilePhotoUrl(client.avatar_url, {
+      const profilePhotoUrl = options.deferPhotos ? null : await resolveProfilePhotoUrl(client.avatar_url, {
         subjectUserId: client.id,
         allowPrivatePath: item.status === 'active',
       });
@@ -348,7 +354,16 @@ const fetchDietitianClientListForUser = async (
       };
     });
 
-    return { status: 'success', clients };
+    const loadPhotos = options.deferPhotos ? async () => new Map(await Promise.all(rows.map(async (item) => {
+      const client = Array.isArray(item.client) ? item.client[0] : item.client;
+      if (!client || !isValidUuid(client.id)) return ['', null] as const;
+      const url = await resolveProfilePhotoUrl(client.avatar_url, {
+        subjectUserId: client.id,
+        allowPrivatePath: item.status === 'active',
+      }).catch(() => null);
+      return [client.id, url] as const;
+    }))) : undefined;
+    return { status: 'success', clients, ...(loadPhotos ? { loadPhotos } : {}) };
   } catch {
     return { status: 'error', kind: 'unexpected', userMessage: CLIENT_LIST_LOAD_ERROR };
   }
@@ -417,16 +432,17 @@ export const fetchActiveDietitianClientList = async (): Promise<ClientListResult
  */
 export const fetchActiveDietitianClientListForUser = async (
   dietitianId: string,
+  options: FetchDietitianClientListOptions = {},
 ): Promise<ClientListResult> => {
   const result = await fetchDietitianClientListForUser(
     dietitianId,
     ['active'],
-    { includeProgress: false },
+    { ...options, includeProgress: false },
   );
   if (result.status === 'error') return result;
 
   return {
-    status: 'success',
+    ...result,
     clients: result.clients.filter((client) => client.status === 'Aktif'),
   };
 };

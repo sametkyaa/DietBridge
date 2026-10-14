@@ -99,7 +99,7 @@ test('dashboard page is real-data-only for the operational summary and has disti
   const source = read('features/dashboard/pages/DashboardPage.tsx');
   assert.match(source, /summarizeDashboard\(/);
   assert.match(source, /getDashboardFocusMessage\(/);
-  assert.match(source, /fetchDietitianClients\(\)/);
+  assert.match(source, /fetchDietitianClientListForUser\(userId/);
   assert.match(source, /useAppointments\(\)/);
   assert.match(source, /useDailyTasks\(\)/);
   assert.match(source, /useAutomaticTasks\(\)/);

@@ -140,7 +140,7 @@ export const getRecipeImagePreview = async (imagePath: string): Promise<string> 
   return data.signedUrl;
 };
 
-const getRecipeImagePreviews = async (imagePaths: Array<string | null>): Promise<Map<string, string>> => {
+export const getRecipeImagePreviews = async (imagePaths: Array<string | null>): Promise<Map<string, string>> => {
   const paths = Array.from(new Set(imagePaths.filter(isCanonicalRecipeImagePath)));
   const results = await Promise.allSettled(paths.map(async (path) => [path, await getRecipeImagePreview(path)] as const));
   return new Map(results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []));
@@ -167,7 +167,7 @@ export const fetchRecipe = async (recipeId: string): Promise<Recipe> => {
   return mapRecipeRow(data as RecipeRow, dietitianId, imagePreview);
 };
 
-export const fetchRecipes = async (): Promise<Recipe[]> => {
+export const fetchRecipes = async (options: { deferImages?: boolean } = {}): Promise<Recipe[]> => {
   const dietitianId = await assertAuthenticatedDietitianId();
   const { data, error } = await supabase
     .from('recipes')
@@ -177,7 +177,7 @@ export const fetchRecipes = async (): Promise<Recipe[]> => {
   if (error || !Array.isArray(data)) {
     throw error ?? new RecipeValidationError('INVALID_RECIPE_RESPONSE', 'recipes');
   }
-  const previews = await getRecipeImagePreviews(data.map((recipe) => recipe.image_path));
+  const previews = options.deferImages ? new Map<string, string>() : await getRecipeImagePreviews(data.map((recipe) => recipe.image_path));
   return (data as RecipeRow[]).map((recipe) => mapRecipeRow(
     recipe,
     dietitianId,

@@ -1,7 +1,8 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Client } from '../../../shared/types';
-import { fetchDietitianClientList, addClientByEmail, resolveClientIdByRelationId } from '../services/clientService';
+import { applyClientPhotoPreviews, fetchDietitianClientList, fetchDietitianClientListForUser, addClientByEmail, resolveClientIdByRelationId } from '../services/clientService';
+import { useAuth } from '../../auth/context/AuthContext';
 import { exportClientsToXlsx } from '../services/clientExportService';
 import { fetchClientListInsights } from '../services/clientListInsightsService';
 import NotificationBell from '../../notifications/components/NotificationBell';
@@ -114,6 +115,8 @@ const WeightCell: React.FC<{ client: Client }> = ({ client }) => {
 };
 
 const ClientsPage = () => {
+  const { user } = useAuth();
+  const ownerId = user?.id ?? null;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const notificationRelationshipId = searchParams.get('notificationRelationshipId');
@@ -163,7 +166,9 @@ const ClientsPage = () => {
     if (showLoading) setViewState({ status: 'loading' });
 
     try {
-      const result = await fetchDietitianClientList();
+      const result = ownerId
+        ? await fetchDietitianClientListForUser(ownerId, undefined, { deferPhotos: true })
+        : await fetchDietitianClientList(undefined, { deferPhotos: true });
       if (!isMounted.current || requestId !== requestSequence.current) return false;
 
       if (result.status === 'error') {
@@ -174,6 +179,12 @@ const ClientsPage = () => {
       }
 
       setViewState({ status: 'success', clients: result.clients });
+      if (result.loadPhotos) void result.loadPhotos().then((photos) => {
+        if (!isMounted.current || requestId !== requestSequence.current) return;
+        setViewState((current) => current.status === 'success'
+          ? { ...current, clients: applyClientPhotoPreviews(current.clients, photos) }
+          : current);
+      });
       void loadInsights(result.clients);
       return true;
     } finally {
@@ -181,7 +192,7 @@ const ClientsPage = () => {
         requestInFlight.current = false;
       }
     }
-  }, [loadInsights]);
+  }, [loadInsights, ownerId]);
 
   // Load clients from Supabase on mount
   useEffect(() => {

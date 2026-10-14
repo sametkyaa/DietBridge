@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useAppointments } from '../../appointments/context/AppointmentContext';
 import {
   appointmentRangeCovers,
@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../../auth/context/AuthContext';
 import { fetchChatConversations } from '../../chat/services/chatService';
 import { useUnreadCounts } from '../../chat/context/UnreadCountsContext';
-import { fetchDietitianClients } from '../../clients/services/clientService';
+import { applyClientPhotoPreviews, fetchDietitianClientList, fetchDietitianClientListForUser } from '../../clients/services/clientService';
 import { MealChangeRequestReviewDialog } from '../../meal-change-requests/components/MealChangeRequestReviewDialog';
 import { fetchPendingMealChangeRequests } from '../../meal-change-requests/services/mealChangeRequestService';
 import type { MealChangeRequest } from '../../meal-change-requests/types/mealChangeRequest';
@@ -82,21 +82,33 @@ const DashboardPage = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
   const [clientLoadError, setClientLoadError] = useState(false);
+  const clientRequestVersion = useRef(0);
   const loadClients = useCallback(async () => {
+    const requestId = ++clientRequestVersion.current;
     setLoadingClients(true);
     setClientLoadError(false);
     try {
-      setClients(await fetchDietitianClients());
+      const result = userId
+        ? await fetchDietitianClientListForUser(userId, undefined, { deferPhotos: true })
+        : await fetchDietitianClientList(undefined, { deferPhotos: true });
+      if (requestId !== clientRequestVersion.current) return;
+      if (result.status === 'error') throw new Error(result.userMessage);
+      setClients(result.clients);
+      if (result.loadPhotos) void result.loadPhotos().then((photos) => {
+        if (requestId === clientRequestVersion.current) setClients((current) => applyClientPhotoPreviews(current, photos));
+      });
     } catch (error) {
+      if (requestId !== clientRequestVersion.current) return;
       console.error('Dashboard client load failed:', error instanceof Error ? error.message : 'unknown');
       setClients([]);
       setClientLoadError(true);
     } finally {
-      setLoadingClients(false);
+      if (requestId === clientRequestVersion.current) setLoadingClients(false);
     }
-  }, []);
+  }, [userId]);
   useEffect(() => {
     void loadClients();
+    return () => { clientRequestVersion.current += 1; };
   }, [loadClients]);
   const activeClients = useMemo(() => clients.filter((client) => client.status === 'Aktif'), [clients]);
   const pendingClientCount = clients.length - activeClients.length;
