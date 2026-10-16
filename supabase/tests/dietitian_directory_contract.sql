@@ -35,7 +35,8 @@ update public.dietitian_profiles dp
  where dp.user_id = c.user_id and c.label like 'd\_%';
 
 insert into public.dietitian_subscriptions (dietitian_id, plan_id, status, client_limit_override)
-select user_id, 'core', 'active', case when label = 'd_full' then 0 else null end
+-- d_full has no entitled subscription, so its effective client limit is 0.
+select user_id, 'core', case when label = 'd_full' then 'inactive' else 'active' end, null
 from directory_test_context where label like 'd\_%'
 on conflict (dietitian_id) do update set plan_id = excluded.plan_id, status = excluded.status,
   client_limit_override = excluded.client_limit_override;
