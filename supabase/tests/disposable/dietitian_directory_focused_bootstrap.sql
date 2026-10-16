@@ -16,7 +16,8 @@ create table public.profiles(id uuid primary key references auth.users(id) on de
 create table public.dietitian_profiles(user_id uuid primary key references public.profiles(id), phone text, university text, graduation_year int,
   experience_years int, specialization text, bio text, diploma_url text, is_verified boolean default false, created_at timestamptz default now(),
   verification_status text not null default 'pending', verified_at timestamptz, rejection_reason text);
-create table public.dietitian_subscriptions(dietitian_id uuid primary key, plan_id text, status text, client_limit_override int);
+create table public.dietitian_subscriptions(dietitian_id uuid primary key, plan_id text, status text, client_limit_override int,
+  constraint dietitian_subscriptions_client_limit_override_scale_check check (client_limit_override is null or (plan_id = 'scale' and client_limit_override > 50)));
 create table public.dietitian_clients(id uuid primary key default gen_random_uuid(), dietitian_id uuid references public.profiles(id),
   client_id uuid references public.profiles(id), status public.client_status not null default 'pending', created_at timestamptz default now(),
   requested_at timestamptz, accepted_at timestamptz, rejected_at timestamptz, removed_at timestamptz, updated_at timestamptz);
