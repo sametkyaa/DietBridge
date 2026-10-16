@@ -13,6 +13,7 @@ const buildDir = mkdtempSync(join(tmpdir(), 'dietbridge-registration-reliability
 const tscCli = join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc');
 const sources = [
   'features/dietitians/services/dietitianService.ts',
+  'features/inquiries/utils/socialLinks.ts',
   'features/auth/utils/registrationCompleteness.ts',
   'shared/types.ts',
   'shared/utils/avatarUrl.ts',
