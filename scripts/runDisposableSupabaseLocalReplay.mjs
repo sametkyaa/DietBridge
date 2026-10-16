@@ -31,6 +31,7 @@ const ISOLATED_PHASE2_MIGRATIONS = new Set([
   '20261011103029_mobile_weight_istanbul_date.sql',
   // Feature migrations are applied explicitly by their dedicated disposable harness.
   '20261013121103_short_dietitian_invite_codes.sql',
+  '20261016130000_dietitian_directory_inquiries.sql',
   // Forward push runtime is verified by runPushDeliveryPostgresVerification.
   '20261012155048_push_dispatch_worker.sql',
   '20261012161747_push_scheduler_private_http.sql',
@@ -503,6 +504,7 @@ export const copyRequiredProjectFiles = ({ repoRoot, tempRoot }) => {
 // section fails closed.
 export const HANDLER_TESTED_FUNCTIONS = Object.freeze([
   'preview-dietitian-invite',
+  'public-dietitian-avatars',
   'process-recipe-import',
   'cleanup-recipe-imports',
   'send-application-result-emails',

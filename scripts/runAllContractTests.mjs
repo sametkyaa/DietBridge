@@ -11,6 +11,7 @@ const commands = [
   ['--test', 'tests/readLoading.test.mjs'],
   ['--test', 'tests/pushDispatchHandler.test.mjs'],
   ['--test', 'tests/invitePreviewHandler.test.mjs'],
+  ['--test', 'tests/publicDietitianAvatarsHandler.test.mjs'],
   ['--test', 'tests/applicationResultEmailHandler.test.mjs'],
   ['--test', 'tests/faz2BackendContracts.test.cjs'],
   ['--test', 'tests/inviteSharing.test.mjs'],

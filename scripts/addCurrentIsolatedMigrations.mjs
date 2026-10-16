@@ -83,6 +83,8 @@ export const addHealthConsentRuntimeMigrations = ({ repoRoot, tempRoot }) => {
   const source = readdirSync(sourceDirectory).filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
   const deferred = [
     '20261012080237_chat_media_and_rate_limits.sql', '20261013121103_short_dietitian_invite_codes.sql',
+    // Applied by runDisposableDietitianDirectoryRuntimeHarness.
+    '20261016130000_dietitian_directory_inquiries.sql',
     // The isolated push PostgreSQL CI gate replays this worker chain.
     '20261012155048_push_dispatch_worker.sql',
     '20261012161747_push_scheduler_private_http.sql',
