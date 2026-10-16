@@ -107,4 +107,7 @@ export interface DietitianProfile {
   verified_at?: string | null;
   rejection_reason?: string | null;
   created_at?: string;
+  // Directory fields; undefined until the directory migration is applied.
+  is_publicly_listed?: boolean;
+  social_links?: Partial<Record<'instagram' | 'tiktok' | 'youtube' | 'linkedin' | 'x' | 'website', string>>;
 }

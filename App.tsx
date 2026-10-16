@@ -23,6 +23,7 @@ import ClientDetails from './pages/ClientDetails';
 import MealTracking from './pages/MealTracking';
 import Appointments from './pages/Appointments'; 
 import Messages from './pages/Messages'; 
+import InquiriesPage from './features/inquiries/pages/InquiriesPage';
 import Recipes from './pages/Recipes'; 
 import RecipeDetails from './pages/RecipeDetails'; 
 import Analytics from './pages/Analytics'; 
@@ -74,6 +75,7 @@ const App = () => {
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/meal-plans" element={<MealPlans />} />
                 <Route path="/messages" element={<Messages />} />
+                <Route path="/inquiries" element={<InquiriesPage />} />
                 <Route path="/notes" element={<NotesPage />} />
                 <Route path="/recipes" element={<Recipes />} />
                 <Route path="/recipes/:id" element={<RecipeDetails />} />

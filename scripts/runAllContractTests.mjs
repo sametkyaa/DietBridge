@@ -15,6 +15,7 @@ const commands = [
   ['--test', 'tests/applicationResultEmailHandler.test.mjs'],
   ['--test', 'tests/faz2BackendContracts.test.cjs'],
   ['--test', 'tests/inviteSharing.test.mjs'],
+  ['--test', 'tests/dietitianDirectoryWeb.test.mjs'],
   ['--test', 'tests/recipeImportCore.test.mjs'],
   ['--test', 'tests/openAIRecipeExtraction.test.mjs'],
   ['scripts/runMealPlanContractTests.mjs'],

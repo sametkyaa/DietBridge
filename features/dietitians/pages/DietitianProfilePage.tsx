@@ -4,6 +4,7 @@ import { getCurrentDietitianProfile, removeDietitianAvatar, uploadDietitianAvata
 import { DietitianProfile } from '../../../shared/types';
 import { useAuth } from '../../auth/context/AuthContext';
 import { useDietitianAvatarUrl } from '../../../shared/hooks/useDietitianAvatarUrl';
+import { SOCIAL_LINK_KEYS, SOCIAL_LINK_LABELS } from '../../inquiries/utils/socialLinks';
 import {
   Avatar,
   Badge,
@@ -217,6 +218,36 @@ const DietitianProfilePage = () => {
               {hasText(profile.bio) ? profile.bio : 'Henüz bir biyografi eklenmemiş.'}
             </p>
           </Card>
+
+          {profile.is_publicly_listed !== undefined && (
+            <Card>
+              <CardHeader
+                title="Danışan Aramaları"
+                actions={<Badge tone={profile.is_publicly_listed ? 'ok' : 'neutral'}>{profile.is_publicly_listed ? 'Listede görünüyor' : 'Listede görünmüyor'}</Badge>}
+              />
+              <p className="m-0 mt-3 text-13.5 text-ink-2">
+                {profile.is_publicly_listed
+                  ? 'Diyetisyeni olmayan danışanlar profilinizi mobil uygulamada görebilir ve size ön görüşme mesajı yazabilir.'
+                  : 'Profiliniz danışan aramalarında görünmüyor. Profili düzenle sayfasından açabilirsiniz.'}
+              </p>
+              <h3 className="m-0 mt-5 text-12 font-semibold uppercase tracking-[0.06em] text-ink-3">Sosyal Medya</h3>
+              {SOCIAL_LINK_KEYS.some((key) => profile.social_links?.[key]) ? (
+                <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0">
+                  {SOCIAL_LINK_KEYS.filter((key) => profile.social_links?.[key]).map((key) => (
+                    <li key={key} className="flex items-center gap-2.5 text-13.5">
+                      <Icon name="link" size={15} className="shrink-0 text-ink-3" />
+                      <span className="font-semibold">{SOCIAL_LINK_LABELS[key]}</span>
+                      <a href={profile.social_links?.[key]} target="_blank" rel="noopener noreferrer" className="min-w-0 truncate font-semibold text-brand hover:text-brand-hi">
+                        {profile.social_links?.[key]}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="m-0 mt-2 text-14 text-ink-3">Henüz sosyal medya hesabı eklenmemiş.</p>
+              )}
+            </Card>
+          )}
         </div>
       </div>
 
