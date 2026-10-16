@@ -1,6 +1,7 @@
 
 import { supabase } from '../../../lib/supabaseClient';
 import { DietitianProfile } from '../../../shared/types';
+import { normalizeSocialLinks } from '../../inquiries/utils/socialLinks';
 import {
   AVATAR_BUCKET,
   getOwnedAvatarObjectPath,
@@ -553,7 +554,10 @@ export const getCurrentDietitianProfile = async (): Promise<DietitianProfile | n
       is_verified: data.is_verified,
       verification_status: data.verification_status,
       verified_at: data.verified_at,
-      rejection_reason: data.rejection_reason
+      rejection_reason: data.rejection_reason,
+      ...('is_publicly_listed' in data
+        ? { is_publicly_listed: data.is_publicly_listed === true, social_links: normalizeSocialLinks(data.social_links) }
+        : {}),
     };
   } catch (error) {
     console.error('Error fetching profile:', error);
@@ -606,6 +610,8 @@ export const updateDietitianProfile = async (updates: Partial<DietitianProfile>)
     if (updates.experience_years !== undefined) dietitianUpdates.experience_years = updates.experience_years;
     if (updates.specialization !== undefined) dietitianUpdates.specialization = updates.specialization;
     if (updates.bio !== undefined) dietitianUpdates.bio = updates.bio;
+    if (updates.is_publicly_listed !== undefined) dietitianUpdates.is_publicly_listed = updates.is_publicly_listed;
+    if (updates.social_links !== undefined) dietitianUpdates.social_links = normalizeSocialLinks(updates.social_links);
 
     // Update dietitian_profiles
     if (Object.keys(dietitianUpdates).length > 0) {

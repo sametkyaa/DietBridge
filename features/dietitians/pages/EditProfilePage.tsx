@@ -2,7 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentDietitianProfile, updateDietitianProfile } from '../services/dietitianService';
 import { DietitianProfile } from '../../../shared/types';
-import { Button, Callout, Card, EmptyState, Input, LoadingState, PageContainer, PageHeader, Textarea } from '../../../shared/ui';
+import { Button, Callout, Card, EmptyState, Input, LoadingState, PageContainer, PageHeader, Textarea, Toggle } from '../../../shared/ui';
+import {
+  SOCIAL_LINK_KEYS,
+  SOCIAL_LINK_LABELS,
+  SOCIAL_LINK_PLACEHOLDERS,
+  SocialLinkKey,
+  validateSocialLinks,
+} from '../../inquiries/utils/socialLinks';
 
 const MIN_GRADUATION_YEAR = 1950;
 const MAX_EXPERIENCE_YEARS = 70;
@@ -19,6 +26,7 @@ const EditProfilePage = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [socialErrors, setSocialErrors] = useState<Partial<Record<SocialLinkKey, string>>>({});
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -33,6 +41,16 @@ const EditProfilePage = () => {
     if (!profile) return;
     const { name, value } = e.target;
     setProfile({ ...profile, [name]: value });
+  };
+
+  // The directory fields only exist once the directory migration is applied.
+  const supportsDirectory = profile?.is_publicly_listed !== undefined;
+  const canBeListed = profile?.verification_status === 'approved';
+
+  const handleSocialChange = (key: SocialLinkKey, value: string) => {
+    if (!profile) return;
+    setProfile({ ...profile, social_links: { ...(profile.social_links ?? {}), [key]: value } });
+    if (socialErrors[key]) setSocialErrors({ ...socialErrors, [key]: undefined });
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -61,6 +79,15 @@ const EditProfilePage = () => {
       return;
     }
 
+    if (supportsDirectory) {
+      const linkErrors = validateSocialLinks(profile.social_links ?? {});
+      setSocialErrors(linkErrors);
+      if (Object.keys(linkErrors).length > 0) {
+        setError('Lütfen sosyal medya bağlantılarını kontrol edin.');
+        return;
+      }
+    }
+
     setSaving(true);
     const result = await updateDietitianProfile({
       first_name: normalizedFirstName,
@@ -71,6 +98,9 @@ const EditProfilePage = () => {
       experience_years: experienceYears,
       specialization: profile.specialization,
       bio: profile.bio,
+      ...(supportsDirectory
+        ? { is_publicly_listed: canBeListed && profile.is_publicly_listed === true, social_links: profile.social_links ?? {} }
+        : {}),
     });
 
     if (result.success) {
@@ -121,6 +151,43 @@ const EditProfilePage = () => {
           <Input id="profile-specialization" name="specialization" label="Uzmanlık Alanı" hint="Birden fazla alanı virgülle ayırın." required value={profile.specialization ?? ''} onChange={handleChange} />
           <Textarea id="profile-bio" name="bio" label="Biyografi" rows={5} required value={profile.bio ?? ''} onChange={handleChange} />
         </div>
+
+        {supportsDirectory && (
+          <>
+            <h2 className="m-0 mt-7 border-t border-line pt-6 text-16 font-bold">Danışan Aramaları</h2>
+            <div className="mt-4 flex flex-col gap-4">
+              <Toggle
+                id="profile-public-listing"
+                checked={canBeListed && profile.is_publicly_listed === true}
+                onChange={(checked) => setProfile({ ...profile, is_publicly_listed: checked })}
+                disabled={!canBeListed || saving}
+                label="Danışan aramalarında görün"
+                description={canBeListed
+                  ? 'Açık olduğunda diyetisyeni olmayan danışanlar profilinizi mobil uygulamada görür ve size ön görüşme mesajı yazabilir.'
+                  : 'Hesabınız onaylandıktan sonra listelenmeyi açabilirsiniz.'}
+              />
+            </div>
+
+            <h2 className="m-0 mt-7 border-t border-line pt-6 text-16 font-bold">Sosyal Medya</h2>
+            <p className="m-0 mt-1 text-13 text-ink-3">Bağlantılar profilinizde danışanlara gösterilir. Boş bıraktığınız alanlar görünmez.</p>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              {SOCIAL_LINK_KEYS.map((key) => (
+                <Input
+                  key={key}
+                  id={`profile-social-${key}`}
+                  type="url"
+                  inputMode="url"
+                  label={SOCIAL_LINK_LABELS[key]}
+                  leadingIcon="link"
+                  placeholder={SOCIAL_LINK_PLACEHOLDERS[key]}
+                  value={profile.social_links?.[key] ?? ''}
+                  error={socialErrors[key]}
+                  onChange={(event) => handleSocialChange(key, event.target.value)}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="mt-7 flex flex-col-reverse gap-3 border-t border-line pt-6 sm:flex-row sm:justify-end">
           <Button type="button" variant="secondary" onClick={() => navigate('/profile')} disabled={saving}>İptal</Button>

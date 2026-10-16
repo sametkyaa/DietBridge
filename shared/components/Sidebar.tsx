@@ -70,6 +70,7 @@ const Sidebar = () => {
     { icon: 'house', label: 'Panelim', path: '/' },
     { icon: 'calendar-blank', label: 'Randevular', path: '/appointments' },
     { icon: 'chat-circle', label: 'Mesajlar', path: '/messages', count: unreadMessageCount },
+    { icon: 'user-plus', label: 'Ön görüşmeler', path: '/inquiries' },
     { icon: 'users', label: 'Danışanlar', path: '/clients' },
     { icon: 'fork-knife', label: 'Öğün takibi', path: '/meal-tracking' },
     { icon: 'chart-bar', label: 'Analizler', path: '/analytics' },
@@ -83,7 +84,7 @@ const Sidebar = () => {
     ? [byPath('/settings'), { icon: 'squares-four', label: 'Yönetim', path: '/admin' } satisfies NavItem]
     : [byPath('/settings')];
   const navGroups: NavGroup[] = [
-    { items: [byPath('/'), byPath('/appointments'), byPath('/messages')] },
+    { items: [byPath('/'), byPath('/appointments'), byPath('/messages'), byPath('/inquiries')] },
     { title: 'Danışan yönetimi', items: [byPath('/clients'), byPath('/meal-plans'), byPath('/meal-tracking'), byPath('/analytics')] },
     { title: 'Kaynaklar', items: [byPath('/recipes'), byPath('/notes')] },
     { title: 'Hesap', items: accountItems },
